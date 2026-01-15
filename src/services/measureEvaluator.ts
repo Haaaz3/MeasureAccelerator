@@ -299,7 +299,7 @@ function evaluateDataElement(
 
   switch (element.type) {
     case 'demographic':
-      const ageResult = evaluateAgeRequirement(patient, element, mpStart);
+      const ageResult = evaluateAgeRequirement(patient, element, mpStart, mpEnd);
       met = ageResult.met;
       facts.push(...ageResult.facts);
       break;
@@ -364,22 +364,46 @@ function evaluateDataElement(
 function evaluateAgeRequirement(
   patient: TestPatient,
   element: DataElement,
-  mpStart: string
+  mpStart: string,
+  mpEnd?: string
 ): { met: boolean; facts: ValidationFact[] } {
   const facts: ValidationFact[] = [];
 
-  // Calculate age at measurement period start
   const birthDate = new Date(patient.demographics.birthDate);
   const mpStartDate = new Date(mpStart);
-  let age = mpStartDate.getFullYear() - birthDate.getFullYear();
-  const monthDiff = mpStartDate.getMonth() - birthDate.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && mpStartDate.getDate() < birthDate.getDate())) {
-    age--;
+  const mpEndDate = mpEnd ? new Date(mpEnd) : new Date(mpStartDate.getFullYear(), 11, 31);
+
+  // Calculate age at measurement period start
+  let ageAtStart = mpStartDate.getFullYear() - birthDate.getFullYear();
+  const monthDiffStart = mpStartDate.getMonth() - birthDate.getMonth();
+  if (monthDiffStart < 0 || (monthDiffStart === 0 && mpStartDate.getDate() < birthDate.getDate())) {
+    ageAtStart--;
   }
+
+  // Calculate age at measurement period end
+  let ageAtEnd = mpEndDate.getFullYear() - birthDate.getFullYear();
+  const monthDiffEnd = mpEndDate.getMonth() - birthDate.getMonth();
+  if (monthDiffEnd < 0 || (monthDiffEnd === 0 && mpEndDate.getDate() < birthDate.getDate())) {
+    ageAtEnd--;
+  }
+
+  // Helper: Check if patient turns a specific age during the measurement period
+  const turnsAgeDuring = (targetAge: number): boolean => {
+    const targetBirthday = new Date(birthDate);
+    targetBirthday.setFullYear(birthDate.getFullYear() + targetAge);
+    return targetBirthday >= mpStartDate && targetBirthday <= mpEndDate;
+  };
+
+  // Helper: Get the birthday that falls in the measurement year
+  const getBirthdayInMeasurementYear = (): Date => {
+    const birthdayInYear = new Date(birthDate);
+    birthdayInYear.setFullYear(mpStartDate.getFullYear());
+    return birthdayInYear;
+  };
 
   facts.push({
     code: 'AGE',
-    display: `Age: ${age} years`,
+    display: `Age: ${ageAtStart} at MP start, ${ageAtEnd} at MP end`,
     date: patient.demographics.birthDate,
     source: 'Demographics',
   });
@@ -389,36 +413,89 @@ function evaluateAgeRequirement(
   let met = true;
 
   if (thresholds) {
-    if (thresholds.ageMin !== undefined && age < thresholds.ageMin) {
-      met = false;
-      facts.push({
-        code: 'AGE_MIN_FAIL',
-        display: `Age ${age} < minimum ${thresholds.ageMin}`,
-        source: 'Age Evaluation',
-      });
-    }
-    if (thresholds.ageMax !== undefined && age > thresholds.ageMax) {
-      met = false;
-      facts.push({
-        code: 'AGE_MAX_FAIL',
-        display: `Age ${age} > maximum ${thresholds.ageMax}`,
-        source: 'Age Evaluation',
-      });
+    const targetAge = thresholds.ageMin;
+
+    // For pediatric measures (small age values), check if child "turns X" during the year
+    // This is the standard definition for measures like CMS117 (Childhood Immunization)
+    if (targetAge !== undefined && targetAge <= 18) {
+      // Check if the child turns the target age during the measurement period
+      const turnsTargetAge = turnsAgeDuring(targetAge);
+
+      // Also check the range: age at end should be >= min and age at start should be <= max
+      const meetsMinAtEnd = thresholds.ageMin === undefined || ageAtEnd >= thresholds.ageMin;
+      const meetsMaxAtStart = thresholds.ageMax === undefined || ageAtStart <= thresholds.ageMax;
+
+      if (turnsTargetAge || (meetsMinAtEnd && meetsMaxAtStart)) {
+        met = true;
+        const birthdayInYear = getBirthdayInMeasurementYear();
+        facts.push({
+          code: 'AGE_TURNS',
+          display: `Turns ${targetAge} on ${birthdayInYear.toLocaleDateString()} (within MP)`,
+          source: 'Age Evaluation',
+        });
+      } else {
+        met = false;
+        facts.push({
+          code: 'AGE_MIN_FAIL',
+          display: `Does not turn ${targetAge} during measurement period`,
+          source: 'Age Evaluation',
+        });
+      }
+    } else {
+      // For adult measures, use traditional age-at-point-in-time logic
+      if (thresholds.ageMin !== undefined && ageAtEnd < thresholds.ageMin) {
+        met = false;
+        facts.push({
+          code: 'AGE_MIN_FAIL',
+          display: `Age ${ageAtEnd} < minimum ${thresholds.ageMin}`,
+          source: 'Age Evaluation',
+        });
+      }
+      if (thresholds.ageMax !== undefined && ageAtStart > thresholds.ageMax) {
+        met = false;
+        facts.push({
+          code: 'AGE_MAX_FAIL',
+          display: `Age ${ageAtStart} > maximum ${thresholds.ageMax}`,
+          source: 'Age Evaluation',
+        });
+      }
     }
   }
 
   // Also check additionalRequirements for age patterns
   if (element.additionalRequirements) {
     for (const req of element.additionalRequirements) {
+      // Check for "turns X" pattern (e.g., "turns 2 during measurement period")
+      const turnsMatch = req.match(/turns?\s*(\d+)/i);
+      if (turnsMatch) {
+        const targetAge = parseInt(turnsMatch[1]);
+        if (!turnsAgeDuring(targetAge)) {
+          met = false;
+          facts.push({
+            code: 'AGE_TURNS_FAIL',
+            display: `Does not turn ${targetAge} during measurement period`,
+            source: 'Age Evaluation',
+          });
+        } else {
+          facts.push({
+            code: 'AGE_TURNS_PASS',
+            display: `Turns ${targetAge} during measurement period`,
+            source: 'Age Evaluation',
+          });
+        }
+        continue;
+      }
+
       const ageMatch = req.match(/Age\s*(\d+)\s*-\s*(\d+)/i);
       if (ageMatch) {
         const minAge = parseInt(ageMatch[1]);
         const maxAge = parseInt(ageMatch[2]);
-        if (age < minAge || age > maxAge) {
+        // Use ageAtEnd for min check, ageAtStart for max check
+        if (ageAtEnd < minAge || ageAtStart > maxAge) {
           met = false;
           facts.push({
             code: 'AGE_RANGE_FAIL',
-            display: `Age ${age} outside required range ${minAge}-${maxAge}`,
+            display: `Age outside required range ${minAge}-${maxAge}`,
             source: 'Age Evaluation',
           });
         }
@@ -710,7 +787,7 @@ function evaluateAssessment(
 
   // First check for age requirements
   if (element.description.toLowerCase().includes('age') || element.thresholds?.ageMin || element.thresholds?.ageMax) {
-    return evaluateAgeRequirement(patient, element, mpStart);
+    return evaluateAgeRequirement(patient, element, mpStart, mpEnd);
   }
 
   // Try diagnosis
