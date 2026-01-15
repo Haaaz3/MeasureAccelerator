@@ -930,7 +930,6 @@ function evaluateImmunization(
   mpEnd: string
 ): { met: boolean; facts: ValidationFact[] } {
   const facts: ValidationFact[] = [];
-  let met = false;
 
   if (!patient.immunizations || patient.immunizations.length === 0) {
     facts.push({
@@ -943,6 +942,17 @@ function evaluateImmunization(
 
   const codesToMatch = getCodesFromElement(element, measure);
   const descLower = element.description.toLowerCase();
+
+  // Extract required dose count from description (e.g., "4 DTaP" or "three doses")
+  const doseMatch = descLower.match(/(\d+)\s*(dose|shot|vaccine|dtap|ipv|mmr|hib|hep|pcv|rota|varicella)/i);
+  const wordDoseMatch = descLower.match(/(one|two|three|four|five)\s*(dose|shot|vaccine)/i);
+  let requiredDoses = 1;
+  if (doseMatch) {
+    requiredDoses = parseInt(doseMatch[1]);
+  } else if (wordDoseMatch) {
+    const wordToNum: Record<string, number> = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+    requiredDoses = wordToNum[wordDoseMatch[1].toLowerCase()] || 1;
+  }
 
   // Determine CVX codes to match based on description keywords
   let fallbackCvxCodes: string[] = [];
@@ -957,6 +967,17 @@ function evaluateImmunization(
   const secondBirthday = new Date(birthDate);
   secondBirthday.setFullYear(birthDate.getFullYear() + 2);
 
+  // Detect if this is a childhood measure
+  const isChildhoodMeasure = descLower.includes('child') ||
+                              descLower.includes('infant') ||
+                              descLower.includes('2 year') ||
+                              descLower.includes('by age 2') ||
+                              descLower.includes('before age') ||
+                              measure.metadata.title?.toLowerCase().includes('childhood') ||
+                              measure.metadata.title?.toLowerCase().includes('immunization');
+
+  const matchingImmunizations: typeof patient.immunizations = [];
+
   for (const imm of patient.immunizations) {
     if (imm.status !== 'completed') continue;
 
@@ -968,9 +989,10 @@ function evaluateImmunization(
       codeMatches = fallbackCvxCodes.includes(imm.code);
     }
 
-    // If still no match and no codes defined, try matching by display name
-    if (!codeMatches && codesToMatch.length === 0 && fallbackCvxCodes.length === 0) {
+    // If still no match, try matching by display name similarity
+    if (!codeMatches && (codesToMatch.length === 0 || fallbackCvxCodes.length === 0)) {
       const immDisplayLower = imm.display.toLowerCase();
+
       // Check if the immunization display matches any keyword in the element description
       for (const keyword of Object.keys(IMMUNIZATION_CVX_CODES)) {
         if (descLower.includes(keyword) && immDisplayLower.includes(keyword)) {
@@ -978,28 +1000,34 @@ function evaluateImmunization(
           break;
         }
       }
+
+      // Also try direct substring matching between description and display
+      if (!codeMatches) {
+        const descWords = descLower.split(/\s+/).filter(w => w.length > 3);
+        for (const word of descWords) {
+          if (immDisplayLower.includes(word) && !['dose', 'shot', 'vaccine', 'with', 'from', 'that'].includes(word)) {
+            codeMatches = true;
+            break;
+          }
+        }
+      }
     }
 
     if (codeMatches) {
-      // For childhood immunizations, check if administered before 2nd birthday
+      // Check timing
       const immDate = new Date(imm.date);
-      const isChildhoodMeasure = descLower.includes('child') ||
-                                  descLower.includes('infant') ||
-                                  descLower.includes('2 year') ||
-                                  descLower.includes('by age 2') ||
-                                  measure.metadata.title?.toLowerCase().includes('childhood');
-
       let timingOk = true;
+
       if (isChildhoodMeasure) {
         // For childhood immunizations, must be before 2nd birthday
         timingOk = immDate <= secondBirthday;
-      } else {
+      } else if (element.timingRequirements && element.timingRequirements.length > 0) {
         // Use standard timing check
         timingOk = checkTiming(imm.date, element.timingRequirements, mpStart, mpEnd);
       }
 
       if (timingOk) {
-        met = true;
+        matchingImmunizations.push(imm);
         facts.push({
           code: imm.code,
           display: imm.display,
@@ -1010,10 +1038,28 @@ function evaluateImmunization(
     }
   }
 
-  if (!met) {
+  const doseCount = matchingImmunizations.length;
+  const met = doseCount >= requiredDoses;
+
+  // Add summary fact
+  if (requiredDoses > 1) {
+    facts.unshift({
+      code: 'DOSE_COUNT',
+      display: `${doseCount} of ${requiredDoses} required doses found`,
+      source: 'Immunization Evaluation',
+    });
+  }
+
+  if (!met && doseCount === 0) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching immunization found for: ${element.description}`,
+      source: 'Immunization Evaluation',
+    });
+  } else if (!met && doseCount > 0) {
+    facts.push({
+      code: 'INSUFFICIENT_DOSES',
+      display: `Only ${doseCount} of ${requiredDoses} required doses found`,
       source: 'Immunization Evaluation',
     });
   }
