@@ -233,7 +233,7 @@ function evaluateClause(
   measure: UniversalMeasureSpec,
   mpStart: string,
   mpEnd: string
-): { met: boolean; childNodes: ValidationNode[] } {
+): { met: boolean; childNodes: ValidationNode[]; matchCount?: { met: number; total: number } } {
   const childNodes: ValidationNode[] = [];
   const results: boolean[] = [];
 
@@ -263,11 +263,30 @@ function evaluateClause(
     }
   }
 
+  // Track partial matches for AND clauses
+  const metCount = results.filter(r => r).length;
+  const totalCount = results.length;
+
   // Apply logical operator
   let met: boolean;
   switch (clause.operator) {
     case 'AND':
       met = results.every(r => r);
+      // Add a summary node for AND clauses showing partial progress
+      if (totalCount > 1) {
+        childNodes.unshift({
+          id: `${clause.operator}-summary`,
+          title: `Progress: ${metCount} of ${totalCount} criteria met`,
+          type: 'decision',
+          description: met ? 'All criteria satisfied' : `${totalCount - metCount} criteria remaining`,
+          status: met ? 'pass' : (metCount > 0 ? 'partial' : 'fail'),
+          facts: [{
+            code: 'PROGRESS',
+            display: `${metCount}/${totalCount} criteria met`,
+            source: 'Clause Evaluation',
+          }],
+        });
+      }
       break;
     case 'OR':
       met = results.some(r => r);
@@ -279,12 +298,32 @@ function evaluateClause(
       met = results.every(r => r);
   }
 
-  return { met, childNodes };
+  return { met, childNodes, matchCount: { met: metCount, total: totalCount } };
 }
 
 // ============================================================================
 // Data Element Evaluation
 // ============================================================================
+
+// Immunization-related keywords to detect vaccine criteria
+const IMMUNIZATION_KEYWORDS = [
+  'dtap', 'dtp', 'tetanus', 'diphtheria', 'pertussis',
+  'ipv', 'polio', 'opv',
+  'mmr', 'measles', 'mumps', 'rubella',
+  'hib', 'haemophilus',
+  'hep a', 'hep b', 'hepa', 'hepb', 'hepatitis',
+  'varicella', 'chickenpox', 'vzv',
+  'pcv', 'pneumococcal', 'prevnar',
+  'rotavirus', 'rota',
+  'influenza', 'flu',
+  'vaccine', 'immunization', 'vaccination',
+  'cvx', 'shot', 'immunize'
+];
+
+function descriptionSuggestsImmunization(desc: string): boolean {
+  const lower = desc.toLowerCase();
+  return IMMUNIZATION_KEYWORDS.some(kw => lower.includes(kw));
+}
 
 function evaluateDataElement(
   patient: TestPatient,
@@ -296,6 +335,30 @@ function evaluateDataElement(
   const facts: ValidationFact[] = [];
   let met = false;
   let description = element.description;
+
+  // Check if description suggests this is about immunizations
+  const looksLikeImmunization = descriptionSuggestsImmunization(element.description);
+
+  // If it looks like an immunization criterion, try immunization evaluation first
+  if (looksLikeImmunization && element.type !== 'demographic') {
+    const immResult = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
+    if (immResult.met) {
+      met = immResult.met;
+      facts.push(...immResult.facts);
+      // Skip to node creation
+      const node: ValidationNode = {
+        id: element.id,
+        title: getElementTitle(element),
+        type: 'decision',
+        description,
+        status: met ? 'pass' : 'fail',
+        facts,
+        cqlSnippet: generateCqlSnippet(element),
+        source: 'Test Patient Data',
+      };
+      return { met, node };
+    }
+  }
 
   switch (element.type) {
     case 'demographic':
@@ -320,6 +383,15 @@ function evaluateDataElement(
       const procResult = evaluateProcedure(patient, element, measure, mpStart, mpEnd);
       met = procResult.met;
       facts.push(...procResult.facts);
+      // If procedure didn't match but looks like immunization, try that too
+      if (!met && looksLikeImmunization) {
+        const immResult = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
+        if (immResult.met) {
+          met = immResult.met;
+          facts.length = 0; // Clear previous facts
+          facts.push(...immResult.facts);
+        }
+      }
       break;
 
     case 'observation':
@@ -335,9 +407,9 @@ function evaluateDataElement(
       break;
 
     case 'immunization':
-      const immResult = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
-      met = immResult.met;
-      facts.push(...immResult.facts);
+      const immResult2 = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
+      met = immResult2.met;
+      facts.push(...immResult2.facts);
       break;
 
     case 'assessment':

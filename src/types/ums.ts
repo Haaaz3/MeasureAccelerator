@@ -329,7 +329,7 @@ export interface ValidationNode {
   title: string;
   type: PopulationType | 'decision' | 'collector';
   description: string;
-  status: 'pass' | 'fail' | 'not_applicable';
+  status: 'pass' | 'fail' | 'not_applicable' | 'partial';
   facts: ValidationFact[];
   cqlSnippet?: string;
   source?: string;
