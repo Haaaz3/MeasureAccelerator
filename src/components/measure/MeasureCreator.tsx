@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
-import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Database, Search, Users, Target, AlertTriangle, Minus, Sparkles, ArrowRight, Info } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Users, Target, AlertTriangle, Minus, Sparkles, ArrowRight, Info, Save } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import type { UniversalMeasureSpec, MeasureMetadata, PopulationDefinition, ValueSetReference, LogicalClause, DataElement } from '../../types/ums';
+import { CriteriaBlockBuilder, type CriteriaBlock } from './CriteriaBlockBuilder';
 
 // Step definitions for the wizard
 type WizardStep =
@@ -28,6 +29,8 @@ interface CriteriaDefinition {
   timingConstraint?: string;
   // Associated value sets for this population's criteria
   valueSets?: Set<string>;
+  // New: Advanced criteria blocks for complex logic
+  criteriaBlocks?: CriteriaBlock[];
 }
 
 interface MeasureCreatorProps {
@@ -71,22 +74,35 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     description: '',
     ageRange: {},
     valueSets: new Set(),
+    criteriaBlocks: [],
   });
   const [denominatorCriteria, setDenominatorCriteria] = useState<CriteriaDefinition>({
     description: '',
     valueSets: new Set(),
+    criteriaBlocks: [],
   });
   const [numeratorCriteria, setNumeratorCriteria] = useState<CriteriaDefinition>({
     description: '',
     valueSets: new Set(),
+    criteriaBlocks: [],
   });
   const [exclusionCriteria, setExclusionCriteria] = useState<CriteriaDefinition>({
     description: '',
     valueSets: new Set(),
+    criteriaBlocks: [],
   });
 
-  // Value set search (shared across steps)
-  const [valueSetSearch, setValueSetSearch] = useState('');
+  // Generated CQL for each population (updated in background)
+  const [generatedCql, setGeneratedCql] = useState<{
+    initialPop: string;
+    denominator: string;
+    numerator: string;
+    exclusions: string;
+  }>({ initialPop: '', denominator: '', numerator: '', exclusions: '' });
+
+  // Unsaved changes tracking
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+
 
   // Get all unique value sets from all measures
   const availableValueSets = useMemo(() => {
@@ -102,79 +118,6 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     return Array.from(vsMap.values());
   }, [measures]);
 
-  // Categorize value sets by type based on name/codes
-  const categorizedValueSets = useMemo(() => {
-    const categorize = (vs: ValueSetReference): 'diagnosis' | 'encounter' | 'procedure' | 'observation' | 'medication' | 'other' => {
-      const name = vs.name.toLowerCase();
-      const hasICD = vs.codes?.some(c => c.system === 'ICD10' || c.system === 'SNOMED');
-      const hasCPT = vs.codes?.some(c => c.system === 'CPT' || c.system === 'HCPCS');
-      const hasLOINC = vs.codes?.some(c => c.system === 'LOINC');
-      const hasRxNorm = vs.codes?.some(c => c.system === 'RxNorm');
-
-      // Check name patterns
-      if (name.includes('diagnosis') || name.includes('condition') || name.includes('disease') ||
-          name.includes('disorder') || name.includes('syndrome') || name.includes('cancer') ||
-          name.includes('diabetes') || name.includes('hypertension') || name.includes('pregnancy') ||
-          name.includes('hospice') || name.includes('frailty') || name.includes('dementia')) {
-        return 'diagnosis';
-      }
-      if (name.includes('encounter') || name.includes('visit') || name.includes('office') ||
-          name.includes('outpatient') || name.includes('inpatient') || name.includes('emergency') ||
-          name.includes('telehealth') || name.includes('home health')) {
-        return 'encounter';
-      }
-      if (name.includes('procedure') || name.includes('screening') || name.includes('colonoscopy') ||
-          name.includes('mammogram') || name.includes('cytology') || name.includes('pap') ||
-          name.includes('vaccination') || name.includes('immunization') || name.includes('surgery')) {
-        return 'procedure';
-      }
-      if (name.includes('lab') || name.includes('observation') || name.includes('result') ||
-          name.includes('hba1c') || name.includes('blood pressure') || name.includes('ldl') ||
-          name.includes('measurement') || name.includes('test result')) {
-        return 'observation';
-      }
-      if (name.includes('medication') || name.includes('drug') || name.includes('prescription') ||
-          name.includes('therapy') || name.includes('statin') || name.includes('ace inhibitor')) {
-        return 'medication';
-      }
-
-      // Fall back to code system analysis
-      if (hasRxNorm) return 'medication';
-      if (hasLOINC) return 'observation';
-      if (hasCPT) return 'procedure';
-      if (hasICD) return 'diagnosis';
-
-      return 'other';
-    };
-
-    const result = {
-      diagnosis: [] as typeof availableValueSets,
-      encounter: [] as typeof availableValueSets,
-      procedure: [] as typeof availableValueSets,
-      observation: [] as typeof availableValueSets,
-      medication: [] as typeof availableValueSets,
-      other: [] as typeof availableValueSets,
-    };
-
-    availableValueSets.forEach(item => {
-      const category = categorize(item.valueSet);
-      result[category].push(item);
-    });
-
-    return result;
-  }, [availableValueSets]);
-
-  // Filter value sets by search
-  const filteredValueSets = useMemo(() => {
-    if (!valueSetSearch) return availableValueSets;
-    const search = valueSetSearch.toLowerCase();
-    return availableValueSets.filter(v =>
-      v.valueSet.name.toLowerCase().includes(search) ||
-      (v.valueSet.oid && v.valueSet.oid.toLowerCase().includes(search)) ||
-      v.sourceMeasure.toLowerCase().includes(search)
-    );
-  }, [availableValueSets, valueSetSearch]);
-
   const resetForm = () => {
     setCurrentStep('start');
     setMode('guided');
@@ -187,14 +130,56 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     setSteward('');
     setRationale('');
     setSourceMeasureId(null);
-    setInitialPopCriteria({ description: '', ageRange: {}, valueSets: new Set() });
-    setDenominatorCriteria({ description: '', valueSets: new Set() });
-    setNumeratorCriteria({ description: '', valueSets: new Set() });
-    setExclusionCriteria({ description: '', valueSets: new Set() });
-    setValueSetSearch('');
+    setInitialPopCriteria({ description: '', ageRange: {}, valueSets: new Set(), criteriaBlocks: [] });
+    setDenominatorCriteria({ description: '', valueSets: new Set(), criteriaBlocks: [] });
+    setNumeratorCriteria({ description: '', valueSets: new Set(), criteriaBlocks: [] });
+    setExclusionCriteria({ description: '', valueSets: new Set(), criteriaBlocks: [] });
+    setGeneratedCql({ initialPop: '', denominator: '', numerator: '', exclusions: '' });
+    setShowCloseConfirm(false);
   };
 
-  const handleClose = () => {
+  // Check if user has made any progress worth saving
+  const hasUnsavedChanges = useCallback(() => {
+    // If still on start step, nothing to save
+    if (currentStep === 'start') return false;
+
+    // Check if any meaningful data has been entered
+    const hasMetadata = measureId.trim() || title.trim() || description.trim();
+    const hasInitialPop = initialPopCriteria.description.trim() ||
+                          initialPopCriteria.ageRange?.min !== undefined ||
+                          initialPopCriteria.ageRange?.max !== undefined ||
+                          (initialPopCriteria.criteriaBlocks?.length || 0) > 0;
+    const hasDenominator = denominatorCriteria.description.trim() ||
+                           (denominatorCriteria.criteriaBlocks?.length || 0) > 0;
+    const hasNumerator = numeratorCriteria.description.trim() ||
+                         (numeratorCriteria.criteriaBlocks?.length || 0) > 0;
+    const hasExclusions = exclusionCriteria.description.trim() ||
+                          (exclusionCriteria.criteriaBlocks?.length || 0) > 0;
+
+    return hasMetadata || hasInitialPop || hasDenominator || hasNumerator || hasExclusions;
+  }, [currentStep, measureId, title, description, initialPopCriteria, denominatorCriteria, numeratorCriteria, exclusionCriteria]);
+
+  const handleCloseRequest = () => {
+    if (hasUnsavedChanges()) {
+      setShowCloseConfirm(true);
+    } else {
+      resetForm();
+      onClose();
+    }
+  };
+
+  const handleConfirmClose = () => {
+    setShowCloseConfirm(false);
+    resetForm();
+    onClose();
+  };
+
+  const handleCancelClose = () => {
+    setShowCloseConfirm(false);
+  };
+
+  // Close without confirmation (used after successful create)
+  const handleCloseAfterSave = () => {
     resetForm();
     onClose();
   };
@@ -360,7 +345,74 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     addMeasure(newMeasure);
     setActiveMeasure(newMeasure.id);
     setActiveTab('editor');
-    handleClose();
+    handleCloseAfterSave();
+  };
+
+  // Convert CriteriaBlock to UMS LogicalClause/DataElement
+  const convertCriteriaBlockToUMS = (block: CriteriaBlock): LogicalClause | DataElement => {
+    if (block.type === 'group') {
+      return {
+        id: block.id,
+        operator: block.operator || 'AND',
+        description: `${block.operator || 'AND'} logic group`,
+        children: (block.children || []).map(convertCriteriaBlockToUMS),
+        confidence: block.confidence || 'medium',
+        reviewStatus: 'pending',
+      } as LogicalClause;
+    }
+
+    // Convert criterion to DataElement
+    const vsRef = block.valueSetId
+      ? availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === block.valueSetId)?.valueSet
+      : undefined;
+
+    // Build description with quantity and timing
+    let description = block.description || vsRef?.name || 'Unnamed criterion';
+    if (block.quantity) {
+      const qtyStr = block.quantity.comparator === 'between'
+        ? `${block.quantity.value}-${block.quantity.maxValue}`
+        : `${block.quantity.comparator} ${block.quantity.value}`;
+      description = `${qtyStr} ${description}`;
+    }
+    if (block.timing?.type === 'by_age' && block.timing.ageValue) {
+      description += ` by ${block.timing.ageValue} ${block.timing.ageUnit || 'years'} old`;
+    }
+
+    // Build timing requirements
+    const timingReqs = block.timing ? [{
+      description: block.timing.type === 'during_measurement_period'
+        ? 'During Measurement Period'
+        : block.timing.type === 'by_age'
+        ? `By age ${block.timing.ageValue} ${block.timing.ageUnit || 'years'}`
+        : block.timing.type === 'anytime'
+        ? 'Anytime (historical)'
+        : `Within ${block.timing.value} ${block.timing.type.replace('within_', '').replace('_of', '')} of ${block.timing.relativeTo || 'reference'}`,
+      relativeTo: block.timing.type === 'during_measurement_period' ? 'Measurement Period' : block.timing.relativeTo || 'encounter',
+      confidence: 'medium' as const,
+    }] : undefined;
+
+    // Build thresholds for quantity requirements
+    const thresholds = block.quantity ? {
+      valueMin: block.quantity.comparator === '>=' || block.quantity.comparator === '>' || block.quantity.comparator === 'between'
+        ? block.quantity.value : undefined,
+      valueMax: block.quantity.comparator === '<=' || block.quantity.comparator === '<'
+        ? block.quantity.value
+        : block.quantity.comparator === 'between'
+        ? block.quantity.maxValue : undefined,
+      comparator: block.quantity.comparator === 'between' ? undefined : block.quantity.comparator,
+    } : undefined;
+
+    return {
+      id: block.id,
+      type: block.resourceType || 'procedure',
+      description,
+      valueSet: vsRef,
+      negation: block.negation,
+      timingRequirements: timingReqs,
+      thresholds,
+      confidence: block.confidence || 'medium',
+      reviewStatus: 'pending',
+    } as DataElement;
   };
 
   // Build population definitions from user-entered criteria
@@ -376,10 +428,9 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
         id: `age-${timestamp}`,
         type: 'demographic',
         description: `Age ${initialPopCriteria.ageRange.min || 0} to ${initialPopCriteria.ageRange.max || 999} years`,
-        constraints: {
-          minAge: initialPopCriteria.ageRange.min,
-          maxAge: initialPopCriteria.ageRange.max,
-          ageUnit: 'years',
+        thresholds: {
+          ageMin: initialPopCriteria.ageRange.min,
+          ageMax: initialPopCriteria.ageRange.max,
         },
         confidence: 'medium',
         reviewStatus: 'pending',
@@ -387,25 +438,34 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     }
 
     if (initialPopCriteria.requiredDiagnosis) {
+      const vsRef = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === initialPopCriteria.requiredDiagnosis)?.valueSet;
       ipChildren.push({
         id: `dx-${timestamp}`,
         type: 'diagnosis',
-        description: initialPopCriteria.requiredDiagnosis,
-        constraints: {},
+        description: vsRef?.name || initialPopCriteria.requiredDiagnosis,
+        valueSet: vsRef,
         confidence: 'medium',
         reviewStatus: 'pending',
       } as DataElement);
     }
 
     if (initialPopCriteria.requiredEncounter) {
+      const vsRef = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === initialPopCriteria.requiredEncounter)?.valueSet;
       ipChildren.push({
         id: `enc-${timestamp}`,
         type: 'encounter',
-        description: initialPopCriteria.requiredEncounter,
-        constraints: {},
+        description: vsRef?.name || initialPopCriteria.requiredEncounter,
+        valueSet: vsRef,
         confidence: 'medium',
         reviewStatus: 'pending',
       } as DataElement);
+    }
+
+    // Add criteria blocks from advanced builder
+    if (initialPopCriteria.criteriaBlocks?.length) {
+      initialPopCriteria.criteriaBlocks.forEach(block => {
+        ipChildren.push(convertCriteriaBlockToUMS(block));
+      });
     }
 
     populations.push({
@@ -426,6 +486,13 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     });
 
     // Denominator
+    const denChildren: (LogicalClause | DataElement)[] = [];
+    if (denominatorCriteria.criteriaBlocks?.length) {
+      denominatorCriteria.criteriaBlocks.forEach(block => {
+        denChildren.push(convertCriteriaBlockToUMS(block));
+      });
+    }
+
     populations.push({
       id: `den-${timestamp}`,
       type: 'denominator',
@@ -435,7 +502,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
         id: `den-criteria-${timestamp}`,
         operator: 'AND',
         description: denominatorCriteria.description || 'Denominator Criteria',
-        children: [],
+        children: denChildren,
         confidence: 'medium',
         reviewStatus: 'pending',
       },
@@ -447,25 +514,34 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     const numChildren: (LogicalClause | DataElement)[] = [];
 
     if (numeratorCriteria.requiredProcedure) {
+      const vsRef = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === numeratorCriteria.requiredProcedure)?.valueSet;
       numChildren.push({
         id: `proc-${timestamp}`,
         type: 'procedure',
-        description: numeratorCriteria.requiredProcedure,
-        constraints: {},
+        description: vsRef?.name || numeratorCriteria.requiredProcedure,
+        valueSet: vsRef,
         confidence: 'medium',
         reviewStatus: 'pending',
       } as DataElement);
     }
 
     if (numeratorCriteria.requiredObservation) {
+      const vsRef = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === numeratorCriteria.requiredObservation)?.valueSet;
       numChildren.push({
         id: `obs-${timestamp}`,
         type: 'observation',
-        description: numeratorCriteria.requiredObservation,
-        constraints: {},
+        description: vsRef?.name || numeratorCriteria.requiredObservation,
+        valueSet: vsRef,
         confidence: 'medium',
         reviewStatus: 'pending',
       } as DataElement);
+    }
+
+    // Add criteria blocks from advanced builder
+    if (numeratorCriteria.criteriaBlocks?.length) {
+      numeratorCriteria.criteriaBlocks.forEach(block => {
+        numChildren.push(convertCriteriaBlockToUMS(block));
+      });
     }
 
     populations.push({
@@ -486,17 +562,24 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     });
 
     // Denominator Exclusion (if specified)
-    if (exclusionCriteria.description) {
+    if (exclusionCriteria.description || exclusionCriteria.criteriaBlocks?.length) {
+      const exChildren: (LogicalClause | DataElement)[] = [];
+      if (exclusionCriteria.criteriaBlocks?.length) {
+        exclusionCriteria.criteriaBlocks.forEach(block => {
+          exChildren.push(convertCriteriaBlockToUMS(block));
+        });
+      }
+
       populations.push({
         id: `denex-${timestamp}`,
         type: 'denominator_exclusion',
-        description: exclusionCriteria.description,
-        narrative: exclusionCriteria.description,
+        description: exclusionCriteria.description || 'Denominator Exclusion',
+        narrative: exclusionCriteria.description || 'Exclusion criteria',
         criteria: {
           id: `denex-criteria-${timestamp}`,
           operator: 'OR',
-          description: exclusionCriteria.description,
-          children: [],
+          description: exclusionCriteria.description || 'Exclusion criteria',
+          children: exChildren,
           confidence: 'medium',
           reviewStatus: 'pending',
         },
@@ -522,8 +605,42 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={handleClose}
+        onClick={handleCloseRequest}
       />
+
+      {/* Unsaved Changes Confirmation Dialog */}
+      {showCloseConfirm && (
+        <div className="absolute inset-0 z-60 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={handleCancelClose} />
+          <div className="relative bg-[var(--bg)] border border-[var(--border)] rounded-xl shadow-2xl p-6 max-w-md mx-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+                <Save className="w-6 h-6 text-amber-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-[var(--text)] mb-2">Unsaved Changes</h3>
+                <p className="text-sm text-[var(--text-muted)] mb-4">
+                  You have unsaved progress on this measure. Are you sure you want to close without saving?
+                </p>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleCancelClose}
+                    className="flex-1 px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm font-medium text-[var(--text)] hover:bg-[var(--bg-tertiary)] transition-colors"
+                  >
+                    Keep Editing
+                  </button>
+                  <button
+                    onClick={handleConfirmClose}
+                    className="flex-1 px-4 py-2 bg-rose-500/20 border border-rose-500/40 rounded-lg text-sm font-medium text-rose-400 hover:bg-rose-500/30 transition-colors"
+                  >
+                    Discard Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal */}
       <div className="relative w-full max-w-4xl max-h-[90vh] bg-[var(--bg)] border border-[var(--border)] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
@@ -536,7 +653,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
             </p>
           </div>
           <button
-            onClick={handleClose}
+            onClick={handleCloseRequest}
             className="p-2 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
           >
             <X className="w-5 h-5" />
@@ -797,7 +914,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
           {/* Step: Initial Population */}
           {currentStep === 'initial_pop' && (
-            <div className="max-w-2xl mx-auto space-y-6">
+            <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-500/15 flex items-center justify-center">
                   <Users className="w-8 h-8 text-blue-400" />
@@ -812,24 +929,25 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
               <div className="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
                 <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
-                  The Initial Population identifies all patients, episodes, or events who share common characteristics.
-                  All other populations (denominator, numerator, exclusions) are subsets of this population.
+                  The Initial Population identifies all patients who share common characteristics.
+                  Build your criteria using the logic builder below - add diagnoses, encounters, procedures, etc. with timing and quantity requirements.
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Population Description
+                  Population Description (narrative)
                 </label>
                 <textarea
                   value={initialPopCriteria.description}
                   onChange={(e) => setInitialPopCriteria({ ...initialPopCriteria, description: e.target.value })}
                   placeholder="e.g., Patients 18-85 years of age with a diagnosis of essential hypertension and at least one outpatient visit during the measurement period"
-                  rows={3}
+                  rows={2}
                   className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none"
                 />
               </div>
 
+              {/* Age Range - common convenience field */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[var(--text)] mb-2">
@@ -867,140 +985,22 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 </div>
               </div>
 
-              {/* Required Diagnosis - Value Set Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Required Diagnosis Value Set
-                </label>
-                <select
-                  value={initialPopCriteria.requiredDiagnosis || ''}
-                  onChange={(e) => {
-                    const vsId = e.target.value;
-                    setInitialPopCriteria({
-                      ...initialPopCriteria,
-                      requiredDiagnosis: vsId,
-                      valueSets: vsId ? new Set([...(initialPopCriteria.valueSets || []), vsId]) : initialPopCriteria.valueSets
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="">-- Select a diagnosis value set --</option>
-                  {categorizedValueSets.diagnosis.map(({ valueSet, sourceMeasure }) => (
-                    <option key={valueSet.oid || valueSet.id} value={valueSet.oid || valueSet.id}>
-                      {valueSet.name} ({valueSet.codes?.length || 0} codes) - {sourceMeasure}
-                    </option>
-                  ))}
-                  {categorizedValueSets.diagnosis.length === 0 && (
-                    <option disabled>No diagnosis value sets available</option>
-                  )}
-                </select>
-                {categorizedValueSets.diagnosis.length === 0 && (
-                  <p className="text-xs text-[var(--text-dim)] mt-1">
-                    Import measures with diagnosis value sets to populate this list
-                  </p>
-                )}
-              </div>
-
-              {/* Required Encounter - Value Set Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Required Encounter Value Set
-                </label>
-                <select
-                  value={initialPopCriteria.requiredEncounter || ''}
-                  onChange={(e) => {
-                    const vsId = e.target.value;
-                    setInitialPopCriteria({
-                      ...initialPopCriteria,
-                      requiredEncounter: vsId,
-                      valueSets: vsId ? new Set([...(initialPopCriteria.valueSets || []), vsId]) : initialPopCriteria.valueSets
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="">-- Select an encounter value set --</option>
-                  {categorizedValueSets.encounter.map(({ valueSet, sourceMeasure }) => (
-                    <option key={valueSet.oid || valueSet.id} value={valueSet.oid || valueSet.id}>
-                      {valueSet.name} ({valueSet.codes?.length || 0} codes) - {sourceMeasure}
-                    </option>
-                  ))}
-                  {categorizedValueSets.encounter.length === 0 && (
-                    <option disabled>No encounter value sets available</option>
-                  )}
-                </select>
-                {categorizedValueSets.encounter.length === 0 && (
-                  <p className="text-xs text-[var(--text-dim)] mt-1">
-                    Import measures with encounter value sets to populate this list
-                  </p>
-                )}
-              </div>
-
-              {/* Value Set Picker for Initial Population */}
-              <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4 text-cyan-400" />
-                  <label className="text-sm font-medium text-[var(--text)]">
-                    Associated Value Sets
-                  </label>
-                  <span className="text-xs text-[var(--text-dim)]">
-                    ({initialPopCriteria.valueSets?.size || 0} selected)
-                  </span>
-                </div>
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
-                  <input
-                    type="text"
-                    value={valueSetSearch}
-                    onChange={(e) => setValueSetSearch(e.target.value)}
-                    placeholder="Search value sets..."
-                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-                <div className="grid gap-2 max-h-40 overflow-auto">
-                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
-                    const key = valueSet.oid || valueSet.id;
-                    const isSelected = initialPopCriteria.valueSets?.has(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          const next = new Set(initialPopCriteria.valueSets || []);
-                          if (isSelected) next.delete(key);
-                          else next.add(key);
-                          setInitialPopCriteria({ ...initialPopCriteria, valueSets: next });
-                        }}
-                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
-                          isSelected
-                            ? 'border-cyan-500 bg-cyan-500/10'
-                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
-                          {isSelected && <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)] mt-1">
-                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
-                          {valueSet.oid && ' · '}
-                          from {sourceMeasure}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {filteredValueSets.length === 0 && (
-                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
-                      No value sets found. You can add them later in the editor.
-                    </div>
-                  )}
-                </div>
+              {/* Clinical Criteria Builder */}
+              <div className="pt-4 border-t border-[var(--border)]">
+                <CriteriaBlockBuilder
+                  criteria={initialPopCriteria.criteriaBlocks || []}
+                  onChange={(blocks) => setInitialPopCriteria({ ...initialPopCriteria, criteriaBlocks: blocks })}
+                  availableValueSets={availableValueSets}
+                  populationContext="Initial Population"
+                  onCqlGenerated={(cql) => setGeneratedCql(prev => ({ ...prev, initialPop: cql }))}
+                />
               </div>
             </div>
           )}
 
           {/* Step: Denominator */}
           {currentStep === 'denominator' && (
-            <div className="max-w-2xl mx-auto space-y-6">
+            <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-purple-500/15 flex items-center justify-center">
                   <Target className="w-8 h-8 text-purple-400" />
@@ -1015,109 +1015,46 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 <Info className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   For most proportion measures, the Denominator equals the Initial Population.
-                  Add additional criteria only if you need to further refine who is eligible.
+                  Add criteria below only if you need to further refine who is eligible.
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Denominator Description
+                  Denominator Description (narrative)
                 </label>
                 <textarea
                   value={denominatorCriteria.description}
                   onChange={(e) => setDenominatorCriteria({ ...denominatorCriteria, description: e.target.value })}
-                  placeholder="e.g., Equals Initial Population (or add additional criteria)"
-                  rows={3}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none"
+                  placeholder="e.g., Equals Initial Population (or describe additional criteria)"
+                  rows={2}
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500 resize-none"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Additional Timing Constraints (optional)
-                </label>
-                <input
-                  type="text"
-                  value={denominatorCriteria.timingConstraint || ''}
-                  onChange={(e) => setDenominatorCriteria({ ...denominatorCriteria, timingConstraint: e.target.value })}
-                  placeholder="e.g., During first 6 months of measurement period"
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+              {/* Clinical Criteria Builder */}
+              <div className="pt-4 border-t border-[var(--border)]">
+                <CriteriaBlockBuilder
+                  criteria={denominatorCriteria.criteriaBlocks || []}
+                  onChange={(blocks) => setDenominatorCriteria({ ...denominatorCriteria, criteriaBlocks: blocks })}
+                  availableValueSets={availableValueSets}
+                  populationContext="Denominator"
+                  onCqlGenerated={(cql) => setGeneratedCql(prev => ({ ...prev, denominator: cql }))}
                 />
-              </div>
-
-              {/* Value Set Picker for Denominator */}
-              <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4 text-purple-400" />
-                  <label className="text-sm font-medium text-[var(--text)]">
-                    Associated Value Sets
-                  </label>
-                  <span className="text-xs text-[var(--text-dim)]">
-                    ({denominatorCriteria.valueSets?.size || 0} selected)
-                  </span>
-                </div>
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
-                  <input
-                    type="text"
-                    value={valueSetSearch}
-                    onChange={(e) => setValueSetSearch(e.target.value)}
-                    placeholder="Search value sets..."
-                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-                <div className="grid gap-2 max-h-40 overflow-auto">
-                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
-                    const key = valueSet.oid || valueSet.id;
-                    const isSelected = denominatorCriteria.valueSets?.has(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          const next = new Set(denominatorCriteria.valueSets || []);
-                          if (isSelected) next.delete(key);
-                          else next.add(key);
-                          setDenominatorCriteria({ ...denominatorCriteria, valueSets: next });
-                        }}
-                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
-                          isSelected
-                            ? 'border-purple-500 bg-purple-500/10'
-                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
-                          {isSelected && <Check className="w-4 h-4 text-purple-400 flex-shrink-0" />}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)] mt-1">
-                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
-                          {valueSet.oid && ' · '}
-                          from {sourceMeasure}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {filteredValueSets.length === 0 && (
-                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
-                      No value sets found. You can add them later in the editor.
-                    </div>
-                  )}
-                </div>
               </div>
             </div>
           )}
 
           {/* Step: Numerator */}
           {currentStep === 'numerator' && (
-            <div className="max-w-2xl mx-auto space-y-6">
+            <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-500/15 flex items-center justify-center">
                   <Check className="w-8 h-8 text-emerald-400" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Numerator</h3>
                 <p className="text-[var(--text-muted)]">
-                  Define the criteria that indicate successful performance (quality action completed)
+                  Define the criteria that indicate successful performance
                 </p>
               </div>
 
@@ -1125,157 +1062,39 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 <Info className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   The Numerator defines patients who received the expected care or achieved the desired outcome.
-                  This is what you're measuring - the "success" criteria.
+                  Build complex criteria like immunizations (e.g., "4 DTaP vaccines by age 2") using the logic builder below.
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Numerator Description <span className="text-red-400">*</span>
+                  Numerator Description (narrative)
                 </label>
                 <textarea
                   value={numeratorCriteria.description}
                   onChange={(e) => setNumeratorCriteria({ ...numeratorCriteria, description: e.target.value })}
-                  placeholder="e.g., Patients whose most recent blood pressure is adequately controlled (systolic < 140 and diastolic < 90)"
-                  rows={3}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none"
+                  placeholder="e.g., Patients who received all recommended immunizations by their second birthday"
+                  rows={2}
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-emerald-500 resize-none"
                 />
               </div>
 
-              {/* Required Procedure - Value Set Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Required Procedure Value Set
-                </label>
-                <select
-                  value={numeratorCriteria.requiredProcedure || ''}
-                  onChange={(e) => {
-                    const vsId = e.target.value;
-                    setNumeratorCriteria({
-                      ...numeratorCriteria,
-                      requiredProcedure: vsId,
-                      valueSets: vsId ? new Set([...(numeratorCriteria.valueSets || []), vsId]) : numeratorCriteria.valueSets
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">-- Select a procedure value set --</option>
-                  {categorizedValueSets.procedure.map(({ valueSet, sourceMeasure }) => (
-                    <option key={valueSet.oid || valueSet.id} value={valueSet.oid || valueSet.id}>
-                      {valueSet.name} ({valueSet.codes?.length || 0} codes) - {sourceMeasure}
-                    </option>
-                  ))}
-                  {categorizedValueSets.procedure.length === 0 && (
-                    <option disabled>No procedure value sets available</option>
-                  )}
-                </select>
-                {categorizedValueSets.procedure.length === 0 && (
-                  <p className="text-xs text-[var(--text-dim)] mt-1">
-                    Import measures with procedure value sets to populate this list
-                  </p>
-                )}
-              </div>
-
-              {/* Required Observation - Value Set Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Required Observation/Lab Value Set
-                </label>
-                <select
-                  value={numeratorCriteria.requiredObservation || ''}
-                  onChange={(e) => {
-                    const vsId = e.target.value;
-                    setNumeratorCriteria({
-                      ...numeratorCriteria,
-                      requiredObservation: vsId,
-                      valueSets: vsId ? new Set([...(numeratorCriteria.valueSets || []), vsId]) : numeratorCriteria.valueSets
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">-- Select an observation value set --</option>
-                  {categorizedValueSets.observation.map(({ valueSet, sourceMeasure }) => (
-                    <option key={valueSet.oid || valueSet.id} value={valueSet.oid || valueSet.id}>
-                      {valueSet.name} ({valueSet.codes?.length || 0} codes) - {sourceMeasure}
-                    </option>
-                  ))}
-                  {categorizedValueSets.observation.length === 0 && (
-                    <option disabled>No observation value sets available</option>
-                  )}
-                </select>
-                {categorizedValueSets.observation.length === 0 && (
-                  <p className="text-xs text-[var(--text-dim)] mt-1">
-                    Import measures with lab/observation value sets to populate this list
-                  </p>
-                )}
-              </div>
-
-              {/* Value Set Picker for Numerator */}
-              <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4 text-emerald-400" />
-                  <label className="text-sm font-medium text-[var(--text)]">
-                    Associated Value Sets
-                  </label>
-                  <span className="text-xs text-[var(--text-dim)]">
-                    ({numeratorCriteria.valueSets?.size || 0} selected)
-                  </span>
-                </div>
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
-                  <input
-                    type="text"
-                    value={valueSetSearch}
-                    onChange={(e) => setValueSetSearch(e.target.value)}
-                    placeholder="Search value sets..."
-                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div className="grid gap-2 max-h-40 overflow-auto">
-                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
-                    const key = valueSet.oid || valueSet.id;
-                    const isSelected = numeratorCriteria.valueSets?.has(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          const next = new Set(numeratorCriteria.valueSets || []);
-                          if (isSelected) next.delete(key);
-                          else next.add(key);
-                          setNumeratorCriteria({ ...numeratorCriteria, valueSets: next });
-                        }}
-                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
-                          isSelected
-                            ? 'border-emerald-500 bg-emerald-500/10'
-                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
-                          {isSelected && <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)] mt-1">
-                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
-                          {valueSet.oid && ' · '}
-                          from {sourceMeasure}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {filteredValueSets.length === 0 && (
-                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
-                      No value sets found. You can add them later in the editor.
-                    </div>
-                  )}
-                </div>
+              {/* Clinical Criteria Builder */}
+              <div className="pt-4 border-t border-[var(--border)]">
+                <CriteriaBlockBuilder
+                  criteria={numeratorCriteria.criteriaBlocks || []}
+                  onChange={(blocks) => setNumeratorCriteria({ ...numeratorCriteria, criteriaBlocks: blocks })}
+                  availableValueSets={availableValueSets}
+                  populationContext="Numerator"
+                  onCqlGenerated={(cql) => setGeneratedCql(prev => ({ ...prev, numerator: cql }))}
+                />
               </div>
             </div>
           )}
 
           {/* Step: Exclusions */}
           {currentStep === 'exclusions' && (
-            <div className="max-w-2xl mx-auto space-y-6">
+            <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-amber-500/15 flex items-center justify-center">
                   <AlertTriangle className="w-8 h-8 text-amber-400" />
@@ -1290,13 +1109,13 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   <strong>Exclusions</strong> remove patients based on clinical appropriateness (e.g., hospice care, ESRD).
-                  <br /><strong>Exceptions</strong> allow for valid clinical reasons why the numerator action wasn't performed.
+                  <strong className="ml-2">Exceptions</strong> allow for valid clinical reasons why the numerator action wasn't performed.
                 </div>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Exclusion Description
+                  Exclusion Description (narrative)
                 </label>
                 <textarea
                   value={exclusionCriteria.description}
@@ -1307,101 +1126,19 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 />
               </div>
 
-              {/* Exclusion Diagnosis - Value Set Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Exclusion Diagnosis Value Set
-                </label>
-                <select
-                  value={exclusionCriteria.requiredDiagnosis || ''}
-                  onChange={(e) => {
-                    const vsId = e.target.value;
-                    setExclusionCriteria({
-                      ...exclusionCriteria,
-                      requiredDiagnosis: vsId,
-                      valueSets: vsId ? new Set([...(exclusionCriteria.valueSets || []), vsId]) : exclusionCriteria.valueSets
-                    });
-                  }}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-amber-500"
-                >
-                  <option value="">-- Select an exclusion value set --</option>
-                  {categorizedValueSets.diagnosis.map(({ valueSet, sourceMeasure }) => (
-                    <option key={valueSet.oid || valueSet.id} value={valueSet.oid || valueSet.id}>
-                      {valueSet.name} ({valueSet.codes?.length || 0} codes) - {sourceMeasure}
-                    </option>
-                  ))}
-                  {categorizedValueSets.diagnosis.length === 0 && (
-                    <option disabled>No diagnosis value sets available</option>
-                  )}
-                </select>
-                <p className="text-xs text-[var(--text-dim)] mt-1">
-                  Common exclusions: Hospice, ESRD, Pregnancy, Frailty, Dementia
-                </p>
-              </div>
-
               <div className="text-sm text-[var(--text-dim)] italic">
                 Leave blank if no exclusions apply to this measure.
               </div>
 
-              {/* Value Set Picker for Exclusions */}
-              <div className="mt-6 pt-6 border-t border-[var(--border)]">
-                <div className="flex items-center gap-2 mb-3">
-                  <Database className="w-4 h-4 text-amber-400" />
-                  <label className="text-sm font-medium text-[var(--text)]">
-                    Associated Value Sets
-                  </label>
-                  <span className="text-xs text-[var(--text-dim)]">
-                    ({exclusionCriteria.valueSets?.size || 0} selected)
-                  </span>
-                </div>
-                <div className="relative mb-3">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
-                  <input
-                    type="text"
-                    value={valueSetSearch}
-                    onChange={(e) => setValueSetSearch(e.target.value)}
-                    placeholder="Search value sets..."
-                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div className="grid gap-2 max-h-40 overflow-auto">
-                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
-                    const key = valueSet.oid || valueSet.id;
-                    const isSelected = exclusionCriteria.valueSets?.has(key);
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => {
-                          const next = new Set(exclusionCriteria.valueSets || []);
-                          if (isSelected) next.delete(key);
-                          else next.add(key);
-                          setExclusionCriteria({ ...exclusionCriteria, valueSets: next });
-                        }}
-                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
-                          isSelected
-                            ? 'border-amber-500 bg-amber-500/10'
-                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
-                          {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
-                        </div>
-                        <div className="text-xs text-[var(--text-dim)] mt-1">
-                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
-                          {valueSet.oid && ' · '}
-                          from {sourceMeasure}
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {filteredValueSets.length === 0 && (
-                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
-                      No value sets found. You can add them later in the editor.
-                    </div>
-                  )}
-                </div>
+              {/* Clinical Criteria Builder */}
+              <div className="pt-4 border-t border-[var(--border)]">
+                <CriteriaBlockBuilder
+                  criteria={exclusionCriteria.criteriaBlocks || []}
+                  onChange={(blocks) => setExclusionCriteria({ ...exclusionCriteria, criteriaBlocks: blocks })}
+                  availableValueSets={availableValueSets}
+                  populationContext="Exclusions"
+                  onCqlGenerated={(cql) => setGeneratedCql(prev => ({ ...prev, exclusions: cql }))}
+                />
               </div>
             </div>
           )}
@@ -1596,7 +1333,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={handleClose}
+              onClick={handleCloseRequest}
               className="px-4 py-2 text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             >
               Cancel
