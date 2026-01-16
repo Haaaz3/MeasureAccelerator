@@ -2,8 +2,44 @@
  * Universal Measure Spec (UMS) Schema
  *
  * A canonical, machine-readable representation of clinical quality measure logic.
- * Normalizes rules, value sets, temporal relationships, and attribution across programs.
+ * ALIGNED WITH FHIR R4 Measure Resource and CQL Standards.
+ *
+ * Key alignments:
+ * - Population types use FHIR measure-population CodeSystem
+ * - Value sets reference VSAC OIDs with FHIR canonical URLs
+ * - Criteria can be expressed as CQL or structured logic
+ * - Code systems use standard FHIR URIs
+ *
+ * References:
+ * - FHIR Measure: https://hl7.org/fhir/R4/measure.html
+ * - CQL: https://cql.hl7.org/
+ * - QI-Core: https://hl7.org/fhir/us/qicore/
  */
+
+import type {
+  FHIRMeasure,
+  MeasurePopulationType,
+  Expression,
+  CodeableConcept,
+  Coding,
+  Period,
+  Identifier,
+  QICoreResourceType,
+  MeasureScoringType,
+  ImprovementNotation,
+} from './fhir-measure';
+
+// Re-export FHIR types for convenience
+export type {
+  FHIRMeasure,
+  MeasurePopulationType,
+  Expression,
+  CodeableConcept,
+  Coding,
+  Period,
+  Identifier,
+  QICoreResourceType,
+};
 
 // ============================================================================
 // Core Types
@@ -13,24 +49,58 @@ export type ConfidenceLevel = 'high' | 'medium' | 'low';
 export type ReviewStatus = 'pending' | 'approved' | 'needs_revision' | 'flagged';
 export type MeasureStatus = 'in_progress' | 'published';
 export type MeasureType = 'process' | 'outcome' | 'structure' | 'patient_experience';
-export type PopulationType = 'initial_population' | 'denominator' | 'denominator_exclusion' | 'denominator_exception' | 'numerator' | 'numerator_exclusion';
+
+/** FHIR-aligned population types (using kebab-case as per FHIR spec) */
+export type PopulationType =
+  | 'initial-population'
+  | 'denominator'
+  | 'denominator-exclusion'
+  | 'denominator-exception'
+  | 'numerator'
+  | 'numerator-exclusion'
+  // Legacy underscore versions for backwards compatibility
+  | 'initial_population'
+  | 'denominator_exclusion'
+  | 'denominator_exception'
+  | 'numerator_exclusion';
+
 export type LogicalOperator = 'AND' | 'OR' | 'NOT';
 export type TemporalOperator = 'during' | 'before' | 'after' | 'overlaps' | 'starts' | 'ends' | 'within';
-export type CodeSystem = 'ICD10' | 'SNOMED' | 'CPT' | 'HCPCS' | 'LOINC' | 'RxNorm' | 'CVX';
+
+/** Standard code systems with FHIR URIs */
+export type CodeSystem =
+  | 'ICD10'        // http://hl7.org/fhir/sid/icd-10-cm
+  | 'ICD10CM'
+  | 'ICD10PCS'
+  | 'SNOMED'       // http://snomed.info/sct
+  | 'CPT'          // http://www.ama-assn.org/go/cpt
+  | 'HCPCS'        // https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets
+  | 'LOINC'        // http://loinc.org
+  | 'RxNorm'       // http://www.nlm.nih.gov/research/umls/rxnorm
+  | 'CVX'          // http://hl7.org/fhir/sid/cvx
+  | 'NDC';         // http://hl7.org/fhir/sid/ndc
 
 // ============================================================================
-// Value Sets & Codes
+// Value Sets & Codes (FHIR-aligned)
 // ============================================================================
 
 export interface CodeReference {
   code: string;
   display: string;
   system: CodeSystem;
+  /** FHIR canonical URL for the code system */
+  systemUri?: string;
+  /** Version of the code system */
+  version?: string;
 }
 
 export interface ValueSetReference {
+  /** Internal ID */
   id: string;
+  /** VSAC OID (e.g., "2.16.840.1.113883.3.464.1003.101.12.1001") */
   oid?: string;
+  /** FHIR canonical URL (e.g., "http://cts.nlm.nih.gov/fhir/ValueSet/2.16.840.1.113883.3.464.1003.101.12.1001") */
+  url?: string;
   name: string;
   version?: string;
   /** Actual codes in the value set - critical for review */
@@ -41,24 +111,40 @@ export interface ValueSetReference {
   source?: string;
   /** Whether codes have been verified against VSAC or terminology service */
   verified?: boolean;
+  /** Steward/publisher of the value set */
+  publisher?: string;
+  /** Purpose/description of the value set */
+  purpose?: string;
 }
 
 // ============================================================================
-// Timing Requirements (when data must occur relative to measurement period)
+// Timing Requirements (CQL-aligned)
 // ============================================================================
 
+/**
+ * Timing requirement aligned with CQL temporal operators
+ *
+ * CQL examples:
+ * - "during Measurement Period"
+ * - "3 months or less before start of Measurement Period"
+ * - "starts during Measurement Period"
+ */
 export interface TimingRequirement {
-  /** Human-readable description like "During measurement period" or "Within 6 months before MP start" */
+  /** Human-readable description */
   description: string;
+  /** CQL temporal operator */
+  operator?: 'during' | 'includes' | 'included in' | 'before' | 'after' | 'meets' | 'overlaps' | 'starts' | 'ends';
   /** The reference point for timing */
-  relativeTo: 'measurement_period' | 'encounter_date' | 'diagnosis_onset' | 'procedure_date' | string;
+  relativeTo: 'Measurement Period' | 'encounter' | 'diagnosis onset' | 'procedure date' | string;
   /** Optional lookback/forward window */
   window?: {
     value: number;
     unit: 'days' | 'weeks' | 'months' | 'years';
-    direction: 'before' | 'after' | 'within';
+    direction: 'before' | 'after' | 'before or after';
   };
   confidence: ConfidenceLevel;
+  /** CQL expression for this timing constraint */
+  cqlExpression?: string;
 }
 
 /** @deprecated Use TimingRequirement instead */
@@ -80,16 +166,52 @@ export interface DateRange {
 }
 
 // ============================================================================
-// Criteria & Clauses
+// Data Elements (QI-Core aligned)
 // ============================================================================
+
+/**
+ * Data element types aligned with QI-Core resource types
+ *
+ * Mapping:
+ * - diagnosis -> Condition
+ * - encounter -> Encounter
+ * - procedure -> Procedure
+ * - observation -> Observation (labs, vitals, assessments)
+ * - medication -> MedicationRequest/MedicationAdministration
+ * - demographic -> Patient
+ * - immunization -> Immunization
+ */
+export type DataElementType =
+  | 'diagnosis'     // QI-Core Condition
+  | 'encounter'     // QI-Core Encounter
+  | 'procedure'     // QI-Core Procedure
+  | 'observation'   // QI-Core Observation
+  | 'medication'    // QI-Core MedicationRequest
+  | 'demographic'   // QI-Core Patient
+  | 'assessment'    // QI-Core Observation (assessment)
+  | 'immunization'  // QI-Core Immunization
+  | 'device'        // QI-Core DeviceRequest
+  | 'communication' // QI-Core Communication
+  | 'allergy'       // QI-Core AllergyIntolerance
+  | 'goal';         // QI-Core Goal
 
 export interface DataElement {
   id: string;
-  type: 'diagnosis' | 'encounter' | 'procedure' | 'observation' | 'medication' | 'demographic' | 'assessment' | 'immunization';
+  /** QI-Core aligned data element type */
+  type: DataElementType;
+  /** QI-Core resource type (derived from type) */
+  resourceType?: QICoreResourceType;
   description: string;
+
+  /** Value set that defines valid codes for this element */
   valueSet?: ValueSetReference;
+  /** Direct codes (when not using a value set) */
   directCodes?: CodeReference[];
-  /** Numeric thresholds for demographics (age), observations (lab values), etc. */
+
+  /**
+   * Thresholds for demographics (age), observations (lab values), etc.
+   * This is the canonical location for numeric constraints.
+   */
   thresholds?: {
     ageMin?: number;
     ageMax?: number;
@@ -98,17 +220,31 @@ export interface DataElement {
     unit?: string;
     comparator?: '>' | '>=' | '<' | '<=' | '=' | '!=';
   };
-  /** When must this data element occur? (e.g., "During measurement period") */
+
+  /** When must this data element occur? */
   timingRequirements?: TimingRequirement[];
   /** @deprecated Use timingRequirements instead */
   temporalConstraints?: TemporalConstraint[];
+
   /** Additional logic requirements in plain English */
   additionalRequirements?: string[];
   /** @deprecated Use additionalRequirements instead */
   additionalConstraints?: string[];
+
+  /** Negation - true if this checks for ABSENCE of the data element */
+  negation?: boolean;
+  /** Negation rationale (for denominator exceptions) */
+  negationRationale?: string;
+
   confidence: ConfidenceLevel;
   source?: string;
   reviewStatus: ReviewStatus;
+
+  /** CQL definition name for this element */
+  cqlDefinitionName?: string;
+  /** Full CQL expression for this element */
+  cqlExpression?: string;
+
   /** AI conversation history for this component */
   aiConversation?: Array<{
     role: 'user' | 'assistant';
@@ -117,53 +253,80 @@ export interface DataElement {
   }>;
 }
 
+// ============================================================================
+// Logical Clauses (CQL expression trees)
+// ============================================================================
+
 export interface LogicalClause {
   id: string;
+  /** Logical operator: AND (conjunction), OR (disjunction), NOT (negation) */
   operator: LogicalOperator;
   description: string;
   children: (DataElement | LogicalClause)[];
   confidence: ConfidenceLevel;
   reviewStatus: ReviewStatus;
+  /** CQL snippet for this clause */
   cqlSnippet?: string;
+  /** CQL definition name */
+  cqlDefinitionName?: string;
 }
 
 // ============================================================================
-// Population Definitions
+// Population Definitions (FHIR Measure.group.population aligned)
 // ============================================================================
 
 export interface PopulationDefinition {
   id: string;
+  /** FHIR population type (use kebab-case: 'initial-population', 'denominator', etc.) */
   type: PopulationType;
+  /** Human-readable description */
   description: string;
+  /** Narrative explanation of the population logic */
   narrative: string;
+  /** Structured criteria tree */
   criteria: LogicalClause;
+  /** FHIR Expression reference to CQL definition */
+  expression?: Expression;
   confidence: ConfidenceLevel;
   reviewStatus: ReviewStatus;
   reviewNotes?: string;
+  /** CQL definition for this population */
   cqlDefinition?: string;
+  /** CQL definition name (e.g., "Initial Population", "Denominator") */
+  cqlDefinitionName?: string;
 }
 
 // ============================================================================
-// Stratification & Supplemental Data
+// Stratification & Supplemental Data (FHIR-aligned)
 // ============================================================================
 
 export interface Stratifier {
   id: string;
+  /** Code that identifies this stratifier */
+  code?: CodeableConcept;
   description: string;
   criteria: LogicalClause;
+  /** CQL expression for stratification */
+  expression?: Expression;
   confidence: ConfidenceLevel;
   reviewStatus: ReviewStatus;
 }
 
 export interface SupplementalData {
   id: string;
+  /** Code that identifies this supplemental data element */
+  code?: CodeableConcept;
   name: string;
   description: string;
+  /** Usage (e.g., risk-adjustment-factor, supplemental-data) */
+  usage?: string[];
   dataElement: DataElement;
+  /** CQL expression for this supplemental data */
+  expression?: Expression;
 }
 
 // ============================================================================
-// Attribution (for future cross-program support)
+// Attribution (for cross-program support)
 // ============================================================================
 
 export interface AttributionRule {
@@ -184,8 +347,7 @@ export interface AttributionRule {
 
 /**
  * Centralized constraints that apply across the entire measure.
- * When modified, these values propagate to all relevant places
- * (descriptions, thresholds, population criteria).
+ * When modified, these values propagate to all relevant places.
  */
 export interface GlobalConstraints {
   /** Age range for the measure's target population */
@@ -195,43 +357,119 @@ export interface GlobalConstraints {
   };
   /** Gender requirement (if any) */
   gender?: 'male' | 'female' | 'all';
-  /** Whether age is calculated at start, end, or during measurement period */
+  /** How age is calculated */
   ageCalculation?: 'at_start' | 'at_end' | 'during' | 'turns_during';
+  /** Product line (for HEDIS measures) */
+  productLine?: string[];
+  /** Continuous enrollment requirement */
+  continuousEnrollment?: {
+    days: number;
+    allowedGap?: number;
+  };
+}
+
+// ============================================================================
+// Measure Metadata (FHIR Measure resource fields)
+// ============================================================================
+
+export interface MeasureMetadata {
+  /** eCQM identifier (e.g., "CMS130v11") */
+  measureId: string;
+  /** Human-readable title */
+  title: string;
+  /** Version string */
+  version: string;
+  /** CBE/NQF number */
+  cbeNumber?: string;
+  /** Measure steward/publisher */
+  steward: string;
+  /** Program type */
+  program: 'MIPS_CQM' | 'eCQM' | 'HEDIS' | 'QOF' | 'Registry' | 'Custom';
+  /** FHIR measure type */
+  measureType: MeasureType;
+  /** Description */
+  description: string;
+  /** Clinical rationale */
+  rationale?: string;
+  /** Clinical recommendation statement */
+  clinicalRecommendation?: string;
+  /** Submission frequency */
+  submissionFrequency?: string;
+  /** Improvement notation (increase = higher is better) */
+  improvementNotation?: ImprovementNotation;
+  /** Measurement period */
+  measurementPeriod: DateRange;
+  /** Last updated timestamp */
+  lastUpdated: string;
+  /** Source document references */
+  sourceDocuments?: string[];
+
+  // FHIR-specific fields
+  /** FHIR canonical URL */
+  url?: string;
+  /** Identifiers (CMS, NQF, etc.) */
+  identifier?: Identifier[];
+  /** FHIR scoring type */
+  scoring?: MeasureScoringType;
+  /** Related CQL library references */
+  library?: string[];
+  /** Guidance text */
+  guidance?: string;
+}
+
+// ============================================================================
+// CQL Library (embedded or referenced)
+// ============================================================================
+
+export interface EmbeddedCQLLibrary {
+  /** Library name */
+  name: string;
+  /** Library version */
+  version: string;
+  /** FHIR version (e.g., "4.0.1") */
+  fhirVersion?: string;
+  /** QI-Core version */
+  qicoreVersion?: string;
+  /** Raw CQL text */
+  cql: string;
+  /** Compiled ELM (JSON) */
+  elm?: string;
 }
 
 // ============================================================================
 // Main UMS Document
 // ============================================================================
 
-export interface MeasureMetadata {
-  measureId: string;
-  title: string;
-  version: string;
-  cbeNumber?: string;
-  steward: string;
-  program: 'MIPS_CQM' | 'eCQM' | 'HEDIS' | 'QOF' | 'Registry' | 'Custom';
-  measureType: MeasureType;
-  description: string;
-  rationale?: string;
-  clinicalRecommendation?: string;
-  submissionFrequency?: string;
-  improvementNotation?: 'increase' | 'decrease';
-  measurementPeriod: DateRange;
-  lastUpdated: string;
-  sourceDocuments?: string[];
-}
-
 export interface UniversalMeasureSpec {
+  /** Internal unique ID */
   id: string;
+
+  /** FHIR resource type marker */
+  resourceType?: 'Measure';
+
+  /** Measure metadata */
   metadata: MeasureMetadata;
+
+  /** Population definitions (FHIR Measure.group.population) */
   populations: PopulationDefinition[];
+
+  /** Value sets (FHIR ValueSet references) */
   valueSets: ValueSetReference[];
+
+  /** Stratifiers (FHIR Measure.group.stratifier) */
   stratifiers?: Stratifier[];
+
+  /** Supplemental data (FHIR Measure.supplementalData) */
   supplementalData?: SupplementalData[];
+
+  /** Attribution rules */
   attribution?: AttributionRule;
 
-  /** Centralized constraints - single source of truth for age, gender, etc. */
+  /** Centralized constraints - single source of truth */
   globalConstraints?: GlobalConstraints;
+
+  /** Embedded CQL library */
+  cqlLibrary?: EmbeddedCQLLibrary;
 
   // Workflow status
   status: MeasureStatus;
@@ -252,52 +490,45 @@ export interface UniversalMeasureSpec {
   approvedBy?: string;
   approvedAt?: string;
 
-  // Lock for publish - prevents further edits
+  // Lock for publish
   lockedAt?: string;
   lockedBy?: string;
 
   // Generated artifacts
   generatedCql?: string;
   generatedSql?: string;
+  generatedElm?: string;
 
-  // Training feedback - corrections made by users to AI-generated content
+  // Training feedback
   corrections?: MeasureCorrection[];
 }
 
 // ============================================================================
-// Training Feedback Types (for AI improvement)
+// Training Feedback Types
 // ============================================================================
 
 export type CorrectionType =
-  | 'code_added'           // User added a code the AI missed
-  | 'code_removed'         // User removed an incorrect code
-  | 'code_system_changed'  // User corrected the code system
-  | 'timing_changed'       // User modified timing requirements
-  | 'logic_changed'        // User changed AND/OR logic
-  | 'description_changed'  // User refined the description
-  | 'threshold_changed'    // User adjusted numeric thresholds
-  | 'population_reassigned' // User moved element to different population
-  | 'element_added'        // User added an element AI missed
-  | 'element_removed';     // User removed an incorrect element
+  | 'code_added'
+  | 'code_removed'
+  | 'code_system_changed'
+  | 'timing_changed'
+  | 'logic_changed'
+  | 'description_changed'
+  | 'threshold_changed'
+  | 'population_reassigned'
+  | 'element_added'
+  | 'element_removed';
 
 export interface MeasureCorrection {
   id: string;
   timestamp: string;
   correctionType: CorrectionType;
-  componentId: string;           // ID of the UMS component that was corrected
-  componentPath: string;         // e.g., "populations[0].criteria.children[1]"
-
-  // What the AI originally generated
+  componentId: string;
+  componentPath: string;
   originalValue: any;
-
-  // What the user changed it to
   correctedValue: any;
-
-  // Optional context
-  userNotes?: string;            // Why the user made this change
-  sourceReference?: string;      // Reference to spec document (e.g., "Page 12, Section 3.2")
-
-  // For training purposes
+  userNotes?: string;
+  sourceReference?: string;
   measureContext: {
     measureId: string;
     measureType: string;
@@ -375,4 +606,87 @@ export interface PatientValidationTrace {
   };
   finalOutcome: 'in_numerator' | 'not_in_numerator' | 'excluded' | 'not_in_population';
   howClose?: string[];
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/**
+ * Normalize population type to FHIR kebab-case format
+ */
+export function normalizePopulationType(type: string): PopulationType {
+  const mapping: Record<string, PopulationType> = {
+    'initial_population': 'initial-population',
+    'initial-population': 'initial-population',
+    'denominator': 'denominator',
+    'denominator_exclusion': 'denominator-exclusion',
+    'denominator-exclusion': 'denominator-exclusion',
+    'denominator_exception': 'denominator-exception',
+    'denominator-exception': 'denominator-exception',
+    'numerator': 'numerator',
+    'numerator_exclusion': 'numerator-exclusion',
+    'numerator-exclusion': 'numerator-exclusion',
+  };
+  return mapping[type] || type as PopulationType;
+}
+
+/**
+ * Convert UMS to FHIR Measure resource
+ */
+export function toFHIRMeasure(ums: UniversalMeasureSpec): FHIRMeasure {
+  return {
+    resourceType: 'Measure',
+    id: ums.id,
+    url: ums.metadata.url,
+    identifier: ums.metadata.identifier,
+    version: ums.metadata.version,
+    name: ums.metadata.measureId,
+    title: ums.metadata.title,
+    status: ums.status === 'published' ? 'active' : 'draft',
+    description: ums.metadata.description,
+    rationale: ums.metadata.rationale,
+    clinicalRecommendationStatement: ums.metadata.clinicalRecommendation,
+    improvementNotation: ums.metadata.improvementNotation ? {
+      coding: [{
+        system: 'http://terminology.hl7.org/CodeSystem/measure-improvement-notation',
+        code: ums.metadata.improvementNotation,
+        display: ums.metadata.improvementNotation === 'increase' ? 'Increased score indicates improvement' : 'Decreased score indicates improvement'
+      }]
+    } : undefined,
+    library: ums.metadata.library,
+    group: [{
+      population: ums.populations.map(pop => ({
+        id: pop.id,
+        code: {
+          coding: [{
+            system: 'http://terminology.hl7.org/CodeSystem/measure-population',
+            code: normalizePopulationType(pop.type).replace('_', '-'),
+            display: pop.description
+          }]
+        },
+        description: pop.narrative,
+        criteria: pop.expression || {
+          language: 'text/cql-identifier',
+          expression: pop.cqlDefinitionName || pop.type.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        }
+      })),
+      stratifier: ums.stratifiers?.map(s => ({
+        id: s.id,
+        description: s.description,
+        criteria: s.expression || {
+          language: 'text/cql-identifier',
+          expression: s.description
+        }
+      }))
+    }],
+    supplementalData: ums.supplementalData?.map(sd => ({
+      id: sd.id,
+      description: sd.description,
+      criteria: sd.expression || {
+        language: 'text/cql-identifier',
+        expression: sd.name
+      }
+    }))
+  };
 }
