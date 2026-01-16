@@ -201,21 +201,32 @@ export function CodeGeneration() {
   );
 }
 
-// Helper to extract age range from population data elements and constraints
+// Helper to extract age range from population data elements
+// Uses UMS schema: DataElement.thresholds.ageMin/ageMax (canonical source)
 function extractAgeRange(populations: any[]): { min: number; max: number } | null {
-  // First, look for explicit age constraints in data elements
   const findAgeConstraints = (node: any): { min?: number; max?: number } | null => {
     if (!node) return null;
 
-    // Check if this node has age constraints
+    // PRIMARY: Check UMS thresholds (canonical schema)
+    if (node.thresholds) {
+      const t = node.thresholds;
+      if (t.ageMin !== undefined || t.ageMax !== undefined) {
+        return { min: t.ageMin, max: t.ageMax };
+      }
+    }
+
+    // FALLBACK: Check legacy constraints field (for backwards compatibility)
     if (node.constraints) {
       const c = node.constraints;
+      if (c.ageMin !== undefined || c.ageMax !== undefined) {
+        return { min: c.ageMin, max: c.ageMax };
+      }
       if (c.minAge !== undefined || c.maxAge !== undefined) {
         return { min: c.minAge, max: c.maxAge };
       }
     }
 
-    // Check children
+    // Recursively check children
     if (node.children) {
       for (const child of node.children) {
         const result = findAgeConstraints(child);
@@ -223,7 +234,7 @@ function extractAgeRange(populations: any[]): { min: number; max: number } | nul
       }
     }
 
-    // Check criteria
+    // Check nested criteria
     if (node.criteria) {
       return findAgeConstraints(node.criteria);
     }
@@ -277,7 +288,10 @@ function getPopulation(populations: any[], type: string): any | null {
 }
 
 function getGeneratedCode(measure: any, format: CodeOutputFormat): string {
-  const ageRange = extractAgeRange(measure.populations) || { min: 18, max: 85 };
+  // Use globalConstraints as primary source (single source of truth), fallback to population extraction
+  const ageRange = measure.globalConstraints?.ageRange ||
+                   extractAgeRange(measure.populations) ||
+                   { min: 18, max: 85 };
   const dataElements = collectDataElements(measure.populations);
   const ipPop = getPopulation(measure.populations, 'initial_population');
   const denomPop = getPopulation(measure.populations, 'denominator');
