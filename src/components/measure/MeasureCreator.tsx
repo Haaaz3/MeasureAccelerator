@@ -87,7 +87,7 @@ interface AIExtractedCriterion {
 
 export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   const { measures, addMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
-  const { selectedProvider, apiKeys, getActiveApiKey } = useSettingsStore();
+  const { selectedProvider, apiKeys, getActiveApiKey, getCustomLlmConfig } = useSettingsStore();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('start');
@@ -449,7 +449,14 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     }
 
     const apiKey = getCurrentApiKey();
-    if (!apiKey) {
+    // For custom LLM, check if base URL is configured (API key is optional for local servers)
+    if (selectedProvider === 'custom') {
+      const customConfig = getCustomLlmConfig();
+      if (!customConfig.baseUrl) {
+        setAiError('Custom LLM base URL not configured. Please configure it in Settings.');
+        return;
+      }
+    } else if (!apiKey) {
       setAiError(`No API key configured for ${selectedProvider}. Please configure it in Settings.`);
       return;
     }
@@ -567,7 +574,38 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
         const data = await response.json();
         content = data.choices?.[0]?.message?.content || '';
+      } else if (selectedProvider === 'custom') {
+        // Custom/Local LLM using OpenAI-compatible API format
+        const customConfig = getCustomLlmConfig();
+        const baseUrl = customConfig.baseUrl.replace(/\/$/, ''); // Remove trailing slash
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        // Only add Authorization header if API key is provided
+        if (customConfig.apiKey) {
+          headers['Authorization'] = `Bearer ${customConfig.apiKey}`;
+        }
+
+        const response = await fetch(`${baseUrl}/chat/completions`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: customConfig.modelName,
+            max_tokens: 8000,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          throw new Error(`Custom LLM API error: ${response.status} ${errorText}`);
+        }
+
+        const data = await response.json();
+        content = data.choices?.[0]?.message?.content || '';
       } else {
+        // Google Gemini
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

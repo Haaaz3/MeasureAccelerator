@@ -27,6 +27,7 @@ export function MeasureLibrary() {
     useAIExtraction,
     getActiveApiKey,
     getActiveProvider,
+    getCustomLlmConfig,
   } = useSettingsStore();
 
   const [dragActive, setDragActive] = useState(false);
@@ -58,12 +59,21 @@ export function MeasureLibrary() {
       return;
     }
 
-    // AI mode requires API key
+    // AI mode requires API key (except for custom provider where it's optional)
     const activeApiKey = getActiveApiKey();
     const activeProvider = getActiveProvider();
-    if (useAIExtraction && !activeApiKey) {
-      setError(`Please configure your ${activeProvider.name} API key in Settings to use AI-powered extraction, or switch to Quick Parse mode`);
-      return;
+    const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
+
+    if (useAIExtraction) {
+      if (selectedProvider === 'custom') {
+        if (!customConfig?.baseUrl) {
+          setError('Please configure your Custom LLM base URL in Settings to use AI-powered extraction');
+          return;
+        }
+      } else if (!activeApiKey) {
+        setError(`Please configure your ${activeProvider.name} API key in Settings to use AI-powered extraction, or switch to Quick Parse mode`);
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -73,7 +83,7 @@ export function MeasureLibrary() {
     try {
       // Use either AI extraction or direct parsing based on toggle
       const result = useAIExtraction
-        ? await ingestMeasureFiles(supportedFiles, activeApiKey, setProgress, selectedProvider, selectedModel)
+        ? await ingestMeasureFiles(supportedFiles, activeApiKey, setProgress, selectedProvider, selectedModel, customConfig)
         : await ingestMeasureFilesDirect(supportedFiles, setProgress);
 
       if (result.success && result.ums) {

@@ -7,7 +7,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-export type LLMProvider = 'anthropic' | 'openai' | 'google';
+export type LLMProvider = 'anthropic' | 'openai' | 'google' | 'custom';
 
 export interface LLMProviderConfig {
   id: LLMProvider;
@@ -50,6 +50,15 @@ export const LLM_PROVIDERS: LLMProviderConfig[] = [
     ],
     defaultModel: 'gemini-1.5-pro',
   },
+  {
+    id: 'custom',
+    name: 'Custom / Local LLM',
+    description: 'Self-hosted or custom API endpoint (OpenAI-compatible)',
+    models: [
+      { id: 'custom', name: 'Custom Model' },
+    ],
+    defaultModel: 'custom',
+  },
 ];
 
 interface SettingsState {
@@ -58,6 +67,10 @@ interface SettingsState {
   selectedModel: string;
   apiKeys: Record<LLMProvider, string>;
   useAIExtraction: boolean;
+
+  // Custom LLM Configuration
+  customLlmBaseUrl: string;
+  customLlmModelName: string;
 
   // VSAC Configuration
   vsacApiKey: string;
@@ -74,6 +87,8 @@ interface SettingsState {
   setSelectedModel: (model: string) => void;
   setApiKey: (provider: LLMProvider, key: string) => void;
   setUseAIExtraction: (use: boolean) => void;
+  setCustomLlmBaseUrl: (url: string) => void;
+  setCustomLlmModelName: (name: string) => void;
   setVsacApiKey: (key: string) => void;
   setUseBackendApi: (use: boolean) => void;
   setBackendUrl: (url: string) => void;
@@ -85,6 +100,7 @@ interface SettingsState {
   // Helpers
   getActiveApiKey: () => string;
   getActiveProvider: () => LLMProviderConfig;
+  getCustomLlmConfig: () => { baseUrl: string; modelName: string; apiKey: string };
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -96,8 +112,11 @@ export const useSettingsStore = create<SettingsState>()(
         anthropic: '',
         openai: '',
         google: '',
+        custom: '',
       },
       useAIExtraction: true,
+      customLlmBaseUrl: 'http://localhost:11434/v1',
+      customLlmModelName: 'llama2',
       vsacApiKey: '',
       useBackendApi: false,
       backendUrl: import.meta.env.VITE_API_URL || 'http://localhost:3001',
@@ -107,7 +126,7 @@ export const useSettingsStore = create<SettingsState>()(
         const providerConfig = LLM_PROVIDERS.find(p => p.id === provider);
         set({
           selectedProvider: provider,
-          selectedModel: providerConfig?.defaultModel || ''
+          selectedModel: provider === 'custom' ? get().customLlmModelName : (providerConfig?.defaultModel || '')
         });
       },
 
@@ -122,6 +141,8 @@ export const useSettingsStore = create<SettingsState>()(
       },
 
       setUseAIExtraction: (use) => set({ useAIExtraction: use }),
+      setCustomLlmBaseUrl: (url) => set({ customLlmBaseUrl: url }),
+      setCustomLlmModelName: (name) => set({ customLlmModelName: name, selectedModel: name }),
       setVsacApiKey: (key) => set({ vsacApiKey: key }),
       setUseBackendApi: (use) => set({ useBackendApi: use }),
       setBackendUrl: (url) => set({ backendUrl: url }),
@@ -151,6 +172,15 @@ export const useSettingsStore = create<SettingsState>()(
         const state = get();
         return LLM_PROVIDERS.find(p => p.id === state.selectedProvider) || LLM_PROVIDERS[0];
       },
+
+      getCustomLlmConfig: () => {
+        const state = get();
+        return {
+          baseUrl: state.customLlmBaseUrl,
+          modelName: state.customLlmModelName,
+          apiKey: state.apiKeys.custom || '',
+        };
+      },
     }),
     {
       name: 'measure-accelerator-settings',
@@ -159,6 +189,8 @@ export const useSettingsStore = create<SettingsState>()(
         selectedModel: state.selectedModel,
         apiKeys: state.apiKeys,
         useAIExtraction: state.useAIExtraction,
+        customLlmBaseUrl: state.customLlmBaseUrl,
+        customLlmModelName: state.customLlmModelName,
         vsacApiKey: state.vsacApiKey,
         useBackendApi: state.useBackendApi,
         backendUrl: state.backendUrl,
@@ -166,19 +198,22 @@ export const useSettingsStore = create<SettingsState>()(
       }),
       // Migration to handle old data format
       migrate: (persistedState: any, _version: number) => {
-        if (persistedState.anthropicApiKey && !persistedState.apiKeys?.anthropic) {
-          return {
-            ...persistedState,
-            apiKeys: {
-              anthropic: persistedState.anthropicApiKey,
-              openai: '',
-              google: '',
-            },
-          };
+        // Ensure apiKeys has the custom field
+        const apiKeys = persistedState.apiKeys || {};
+        if (!apiKeys.custom) {
+          apiKeys.custom = '';
         }
-        return persistedState;
+        if (persistedState.anthropicApiKey && !apiKeys.anthropic) {
+          apiKeys.anthropic = persistedState.anthropicApiKey;
+        }
+        return {
+          ...persistedState,
+          apiKeys,
+          customLlmBaseUrl: persistedState.customLlmBaseUrl || 'http://localhost:11434/v1',
+          customLlmModelName: persistedState.customLlmModelName || 'llama2',
+        };
       },
-      version: 1,
+      version: 2,
     }
   )
 );

@@ -103,31 +103,48 @@ interface ExtractedMeasureData {
   ageRange?: { min: number; max: number; unit: string };
 }
 
-type LLMProvider = 'anthropic' | 'openai' | 'google';
+type LLMProvider = 'anthropic' | 'openai' | 'google' | 'custom';
+
+export interface CustomLLMConfig {
+  baseUrl: string;
+  modelName: string;
+}
 
 /**
  * Extract measure data from document content using AI
- * Supports multiple LLM providers: Anthropic (Claude), OpenAI (GPT), Google (Gemini)
+ * Supports multiple LLM providers: Anthropic (Claude), OpenAI (GPT), Google (Gemini), Custom/Local
  */
 export async function extractMeasureWithAI(
   documentContent: string,
   apiKey: string,
   onProgress?: (progress: ExtractionProgress) => void,
   provider: LLMProvider = 'anthropic',
-  model?: string
+  model?: string,
+  customConfig?: CustomLLMConfig
 ): Promise<AIExtractionResult> {
-  if (!apiKey) {
+  // For custom provider, API key is optional but base URL is required
+  if (provider === 'custom') {
+    if (!customConfig?.baseUrl) {
+      return {
+        success: false,
+        error: 'Custom LLM base URL is required',
+      };
+    }
+  } else if (!apiKey) {
     return {
       success: false,
       error: 'API key is required for AI extraction',
     };
   }
 
-  const actualModel = model || DEFAULT_MODELS[provider];
+  const actualModel = provider === 'custom'
+    ? (customConfig?.modelName || 'default')
+    : (model || DEFAULT_MODELS[provider as keyof typeof DEFAULT_MODELS]);
   const providerNames: Record<LLMProvider, string> = {
     anthropic: 'Claude',
     openai: 'GPT',
     google: 'Gemini',
+    custom: 'Custom LLM',
   };
 
   try {
@@ -156,6 +173,10 @@ export async function extractMeasureWithAI(
       tokensUsed = result.tokensUsed;
     } else if (provider === 'google') {
       const result = await callGoogleAPI(apiKey, actualModel, systemPrompt, userPrompt);
+      content = result.content;
+      tokensUsed = result.tokensUsed;
+    } else if (provider === 'custom' && customConfig) {
+      const result = await callCustomAPI(customConfig.baseUrl, apiKey, actualModel, systemPrompt, userPrompt);
       content = result.content;
       tokensUsed = result.tokensUsed;
     } else {
@@ -468,6 +489,51 @@ async function callGoogleAPI(
   return {
     content,
     tokensUsed: data.usageMetadata?.totalTokenCount,
+  };
+}
+
+/**
+ * Call Custom/Local LLM API (OpenAI-compatible format)
+ */
+async function callCustomAPI(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string
+): Promise<{ content: string; tokensUsed?: number }> {
+  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  // Only add Authorization header if API key is provided
+  if (apiKey) {
+    headers['Authorization'] = `Bearer ${apiKey}`;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      model,
+      max_tokens: 16000,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(`Custom LLM API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  return {
+    content: data.choices?.[0]?.message?.content || '',
+    tokensUsed: (data.usage?.prompt_tokens || 0) + (data.usage?.completion_tokens || 0),
   };
 }
 

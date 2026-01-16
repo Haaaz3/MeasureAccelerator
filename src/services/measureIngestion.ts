@@ -336,8 +336,9 @@ export async function ingestMeasureFiles(
   files: File[],
   apiKey: string,
   onProgress?: (progress: IngestionProgress) => void,
-  provider: 'anthropic' | 'openai' | 'google' = 'anthropic',
-  model?: string
+  provider: 'anthropic' | 'openai' | 'google' | 'custom' = 'anthropic',
+  model?: string,
+  customConfig?: { baseUrl: string; modelName: string }
 ): Promise<IngestionResult> {
   try {
     // Stage 1: Load and extract text from documents
@@ -391,6 +392,7 @@ export async function ingestMeasureFiles(
       anthropic: 'Claude',
       openai: 'GPT',
       google: 'Gemini',
+      custom: 'Custom LLM',
     };
 
     onProgress?.({
@@ -410,7 +412,8 @@ export async function ingestMeasureFiles(
         });
       },
       provider,
-      model
+      model,
+      customConfig
     );
 
     if (!aiResult.success || !aiResult.ums) {
