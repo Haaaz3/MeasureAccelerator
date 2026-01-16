@@ -900,9 +900,15 @@ function NodeDetailPanel({
     if (!ageRange) return;
 
     if (ageRange.source === 'thresholds') {
-      // Update thresholds directly
+      // Update thresholds and also sync the description
+      let newDesc = node!.description.replace(/(\d+)\s*[-–to]+\s*(\d+)/, `${min}-${max}`);
+      // If no age range pattern found, try to update age mentions
+      if (newDesc === node?.description) {
+        newDesc = node!.description.replace(/(?:age|aged)\s*\d+/i, `age ${min}`);
+      }
       updateDataElement(measureId, nodeId, {
-        thresholds: { ...node.thresholds, ageMin: min, ageMax: max }
+        thresholds: { ...node.thresholds, ageMin: min, ageMax: max },
+        description: newDesc
       }, 'threshold_changed', `Age range changed to ${min}-${max}`);
     } else if (ageRange.source === 'additionalRequirements' && ageRange.index !== undefined) {
       // Update the specific additionalRequirement
