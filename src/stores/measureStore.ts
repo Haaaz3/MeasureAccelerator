@@ -10,6 +10,7 @@ import type {
   CodeReference,
   CorrectionExport,
 } from '../types/ums';
+import { syncAgeConstraints } from '../utils/constraintSync';
 
 export type CodeOutputFormat = 'cql' | 'synapse' | 'sql';
 
@@ -62,6 +63,9 @@ interface MeasureState {
   addCodeToValueSet: (measureId: string, valueSetId: string, code: CodeReference, userNotes?: string) => void;
   removeCodeFromValueSet: (measureId: string, valueSetId: string, codeValue: string, userNotes?: string) => void;
   updateDataElement: (measureId: string, componentId: string, updates: Record<string, any>, correctionType: CorrectionType, userNotes?: string) => void;
+
+  // Global constraint synchronization
+  syncAgeRange: (measureId: string, minAge: number, maxAge: number) => void;
 
   // Component builder actions
   addComponentToPopulation: (measureId: string, populationId: string, component: import('../types/ums').DataElement) => void;
@@ -443,6 +447,22 @@ export const useMeasureStore = create<MeasureState>()(
                 updatedAt: new Date().toISOString(),
               };
             }),
+          };
+        }),
+
+      // Global constraint synchronization - updates age everywhere in the measure
+      syncAgeRange: (measureId, minAge, maxAge) =>
+        set((state) => {
+          const measure = state.measures.find((m) => m.id === measureId);
+          if (!measure) return state;
+
+          // Use the centralized sync utility to update all age references
+          const syncedMeasure = syncAgeConstraints(measure, minAge, maxAge);
+
+          return {
+            measures: state.measures.map((m) =>
+              m.id === measureId ? syncedMeasure : m
+            ),
           };
         }),
 

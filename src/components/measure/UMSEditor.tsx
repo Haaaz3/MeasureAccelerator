@@ -6,7 +6,7 @@ import type { PopulationDefinition, LogicalClause, DataElement, ConfidenceLevel,
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 
 export function UMSEditor() {
-  const { getActiveMeasure, updateReviewStatus, approveAllHighConfidence, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab } = useMeasureStore();
+  const { getActiveMeasure, updateReviewStatus, approveAllHighConfidence, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['ip', 'den', 'ex', 'num']));
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
@@ -899,37 +899,10 @@ function NodeDetailPanel({
   const saveAgeRange = (min: number, max: number) => {
     if (!ageRange) return;
 
-    if (ageRange.source === 'thresholds') {
-      // Update thresholds and also sync the description
-      let newDesc = node!.description.replace(/(\d+)\s*[-–to]+\s*(\d+)/, `${min}-${max}`);
-      // If no age range pattern found, try to update age mentions
-      if (newDesc === node?.description) {
-        newDesc = node!.description.replace(/(?:age|aged)\s*\d+/i, `age ${min}`);
-      }
-      updateDataElement(measureId, nodeId, {
-        thresholds: { ...node.thresholds, ageMin: min, ageMax: max },
-        description: newDesc
-      }, 'threshold_changed', `Age range changed to ${min}-${max}`);
-    } else if (ageRange.source === 'additionalRequirements' && ageRange.index !== undefined) {
-      // Update the specific additionalRequirement
-      const updated = [...(node.additionalRequirements || [])];
-      updated[ageRange.index] = updated[ageRange.index].replace(/(\d+)\s*[-–to]+\s*(\d+)/, `${min}-${max}`);
-      // Also handle single age patterns
-      if (updated[ageRange.index] === node.additionalRequirements![ageRange.index]) {
-        updated[ageRange.index] = `Age ${min}-${max} years`;
-      }
-      updateDataElement(measureId, nodeId, { additionalRequirements: updated }, 'threshold_changed', `Age range changed to ${min}-${max}`);
-    } else {
-      // Update description
-      let newDesc = node!.description.replace(/(\d+)\s*[-–to]+\s*(\d+)/, `${min}-${max}`);
-      // Also handle "turns X" or "age X" patterns
-      if (newDesc === node?.description) {
-        newDesc = node!.description.replace(/(?:turns?|age)\s*\d+/i, `age ${min}-${max}`);
-      }
-      if (newDesc !== node?.description) {
-        updateDataElement(measureId, nodeId, { description: newDesc }, 'threshold_changed', `Age range changed to ${min}-${max}`);
-      }
-    }
+    // Use global sync to update ALL age references throughout the measure
+    // This ensures the measure description, population descriptions, thresholds,
+    // and all other age references are kept in sync
+    syncAgeRange(measureId, min, max);
     setEditingField(null);
   };
 

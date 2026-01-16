@@ -179,6 +179,27 @@ export interface AttributionRule {
 }
 
 // ============================================================================
+// Global Constraints (Single Source of Truth)
+// ============================================================================
+
+/**
+ * Centralized constraints that apply across the entire measure.
+ * When modified, these values propagate to all relevant places
+ * (descriptions, thresholds, population criteria).
+ */
+export interface GlobalConstraints {
+  /** Age range for the measure's target population */
+  ageRange?: {
+    min: number;
+    max: number;
+  };
+  /** Gender requirement (if any) */
+  gender?: 'male' | 'female' | 'all';
+  /** Whether age is calculated at start, end, or during measurement period */
+  ageCalculation?: 'at_start' | 'at_end' | 'during' | 'turns_during';
+}
+
+// ============================================================================
 // Main UMS Document
 // ============================================================================
 
@@ -208,6 +229,9 @@ export interface UniversalMeasureSpec {
   stratifiers?: Stratifier[];
   supplementalData?: SupplementalData[];
   attribution?: AttributionRule;
+
+  /** Centralized constraints - single source of truth for age, gender, etc. */
+  globalConstraints?: GlobalConstraints;
 
   // Workflow status
   status: MeasureStatus;
