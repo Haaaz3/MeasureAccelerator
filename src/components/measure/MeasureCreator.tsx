@@ -475,6 +475,7 @@ Extract and return a JSON object with this structure:
     "title": "measure title",
     "description": "brief description",
     "program": "MIPS_CQM" | "eCQM" | "HEDIS" | "QOF" | "Registry" | "Custom",
+    "steward": "organization that maintains this measure (e.g., NCQA for HEDIS, CMS for eCQM/MIPS)",
     "measureType": "process" | "outcome" | "structure" | "patient_experience",
     "ageRange": { "min": number, "max": number }
   },
@@ -623,6 +624,31 @@ Return ONLY valid JSON, no markdown or explanation.`;
         if (parsed.metadata.title) setTitle(parsed.metadata.title);
         if (parsed.metadata.description) setDescription(parsed.metadata.description);
         if (parsed.metadata.measureType) setMeasureType(parsed.metadata.measureType);
+
+        // Map program to dropdown value
+        if (parsed.metadata.program) {
+          const programMap: Record<string, MeasureProgram> = {
+            'MIPS_CQM': 'MIPS_CQM',
+            'MIPS': 'MIPS_CQM',
+            'eCQM': 'eCQM',
+            'ECQM': 'eCQM',
+            'HEDIS': 'HEDIS',
+            'QOF': 'QOF',
+            'Registry': 'Registry',
+            'Custom': 'Custom',
+          };
+          const mappedProgram = programMap[parsed.metadata.program] ||
+            Object.entries(programMap).find(([key]) =>
+              parsed.metadata.program.toUpperCase().includes(key.toUpperCase())
+            )?.[1];
+          if (mappedProgram) setProgram(mappedProgram);
+        }
+
+        // Set steward
+        if (parsed.metadata.steward) {
+          setSteward(parsed.metadata.steward);
+        }
+
         if (parsed.metadata.ageRange) {
           setInitialPopCriteria(prev => ({
             ...prev,
