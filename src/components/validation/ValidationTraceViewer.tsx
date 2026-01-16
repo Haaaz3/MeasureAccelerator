@@ -1330,8 +1330,8 @@ export function ValidationTraceViewer() {
 
     setIsGenerating(true);
 
-    // Get all static test patients (35 total)
-    const basePatients = generateTestPatients(measure, 35);
+    // Get all static test patients (36 total)
+    const basePatients = generateTestPatients(measure, 36);
 
     // Merge with any locally edited patients
     const editedPatients = loadEditedPatients();
@@ -1501,7 +1501,7 @@ export function ValidationTraceViewer() {
     saveEditedPatientsToStorage(editedPatients);
 
     // Reload the original patient
-    const basePatients = generateTestPatients(measure!, 35);
+    const basePatients = generateTestPatients(measure!, 36);
     const originalPatient = basePatients.find(p => p.id === patientId);
     if (originalPatient && measure) {
       const updatedPatients = testPatients.map(p =>
