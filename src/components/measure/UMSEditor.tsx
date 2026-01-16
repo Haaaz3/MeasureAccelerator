@@ -793,7 +793,7 @@ function NodeDetailPanel({
   onSelectValueSet: (vs: ValueSetReference) => void;
   updateReviewStatus: (measureId: string, componentId: string, status: ReviewStatus, notes?: string) => void;
 }) {
-  const { updateDataElement, measures } = useMeasureStore();
+  const { updateDataElement, measures, syncAgeRange } = useMeasureStore();
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string; action?: string }>>([]);
   const [isTyping, setIsTyping] = useState(false);
