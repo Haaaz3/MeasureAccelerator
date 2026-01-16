@@ -7,11 +7,10 @@ import type { UniversalMeasureSpec, MeasureMetadata, PopulationDefinition, Value
 type WizardStep =
   | 'start'           // Choose creation method
   | 'metadata'        // Basic measure information
-  | 'initial_pop'     // Define Initial Population
-  | 'denominator'     // Define Denominator
-  | 'numerator'       // Define Numerator
-  | 'exclusions'      // Define Exclusions/Exceptions
-  | 'value_sets'      // Select value sets
+  | 'initial_pop'     // Define Initial Population (with value sets)
+  | 'denominator'     // Define Denominator (with value sets)
+  | 'numerator'       // Define Numerator (with value sets)
+  | 'exclusions'      // Define Exclusions/Exceptions (with value sets)
   | 'review';         // Review and create
 
 type CreationMode = 'blank' | 'copy' | 'guided';
@@ -27,6 +26,8 @@ interface CriteriaDefinition {
   requiredProcedure?: string;
   requiredObservation?: string;
   timingConstraint?: string;
+  // Associated value sets for this population's criteria
+  valueSets?: Set<string>;
 }
 
 interface MeasureCreatorProps {
@@ -34,15 +35,14 @@ interface MeasureCreatorProps {
   onClose: () => void;
 }
 
-// Step configuration
+// Step configuration - value sets are now integrated into each population step
 const STEPS: { id: WizardStep; label: string; icon: typeof Users; description: string }[] = [
   { id: 'start', label: 'Start', icon: Plus, description: 'Choose creation method' },
   { id: 'metadata', label: 'Basics', icon: FileText, description: 'Measure information' },
-  { id: 'initial_pop', label: 'Initial Pop', icon: Users, description: 'Define eligible patients' },
-  { id: 'denominator', label: 'Denominator', icon: Target, description: 'Define denominator criteria' },
-  { id: 'numerator', label: 'Numerator', icon: Check, description: 'Define success criteria' },
-  { id: 'exclusions', label: 'Exclusions', icon: Minus, description: 'Define exclusion criteria' },
-  { id: 'value_sets', label: 'Value Sets', icon: Database, description: 'Select terminology' },
+  { id: 'initial_pop', label: 'Initial Pop', icon: Users, description: 'Define eligible patients & value sets' },
+  { id: 'denominator', label: 'Denominator', icon: Target, description: 'Define denominator & value sets' },
+  { id: 'numerator', label: 'Numerator', icon: Check, description: 'Define success criteria & value sets' },
+  { id: 'exclusions', label: 'Exclusions', icon: Minus, description: 'Define exclusions & value sets' },
   { id: 'review', label: 'Review', icon: Sparkles, description: 'Review and create' },
 ];
 
@@ -66,23 +66,26 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   // Copy mode - source measure
   const [sourceMeasureId, setSourceMeasureId] = useState<string | null>(null);
 
-  // Population criteria
+  // Population criteria (each includes associated value sets)
   const [initialPopCriteria, setInitialPopCriteria] = useState<CriteriaDefinition>({
     description: '',
     ageRange: {},
+    valueSets: new Set(),
   });
   const [denominatorCriteria, setDenominatorCriteria] = useState<CriteriaDefinition>({
     description: '',
+    valueSets: new Set(),
   });
   const [numeratorCriteria, setNumeratorCriteria] = useState<CriteriaDefinition>({
     description: '',
+    valueSets: new Set(),
   });
   const [exclusionCriteria, setExclusionCriteria] = useState<CriteriaDefinition>({
     description: '',
+    valueSets: new Set(),
   });
 
-  // Value set selection
-  const [selectedValueSets, setSelectedValueSets] = useState<Set<string>>(new Set());
+  // Value set search (shared across steps)
   const [valueSetSearch, setValueSetSearch] = useState('');
 
   // Get all unique value sets from all measures
@@ -122,11 +125,10 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     setSteward('');
     setRationale('');
     setSourceMeasureId(null);
-    setInitialPopCriteria({ description: '', ageRange: {} });
-    setDenominatorCriteria({ description: '' });
-    setNumeratorCriteria({ description: '' });
-    setExclusionCriteria({ description: '' });
-    setSelectedValueSets(new Set());
+    setInitialPopCriteria({ description: '', ageRange: {}, valueSets: new Set() });
+    setDenominatorCriteria({ description: '', valueSets: new Set() });
+    setNumeratorCriteria({ description: '', valueSets: new Set() });
+    setExclusionCriteria({ description: '', valueSets: new Set() });
     setValueSetSearch('');
   };
 
@@ -238,7 +240,14 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
       };
     } else {
       // Create new measure (blank or guided)
-      const selectedVSList = Array.from(selectedValueSets)
+      // Collect all value sets from all population criteria
+      const allSelectedVSIds = new Set<string>([
+        ...(initialPopCriteria.valueSets || []),
+        ...(denominatorCriteria.valueSets || []),
+        ...(numeratorCriteria.valueSets || []),
+        ...(exclusionCriteria.valueSets || []),
+      ]);
+      const selectedVSList = Array.from(allSelectedVSIds)
         .map(vsId => availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId)?.valueSet)
         .filter((vs): vs is ValueSetReference => vs !== undefined)
         .map(vs => ({ ...vs, id: `vs-${Date.now()}-${Math.random().toString(36).substr(2, 5)}` }));
@@ -822,6 +831,67 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                   className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
                 />
               </div>
+
+              {/* Value Set Picker for Initial Population */}
+              <div className="mt-6 pt-6 border-t border-[var(--border)]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-cyan-400" />
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Associated Value Sets
+                  </label>
+                  <span className="text-xs text-[var(--text-dim)]">
+                    ({initialPopCriteria.valueSets?.size || 0} selected)
+                  </span>
+                </div>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
+                  <input
+                    type="text"
+                    value={valueSetSearch}
+                    onChange={(e) => setValueSetSearch(e.target.value)}
+                    placeholder="Search value sets..."
+                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div className="grid gap-2 max-h-40 overflow-auto">
+                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
+                    const key = valueSet.oid || valueSet.id;
+                    const isSelected = initialPopCriteria.valueSets?.has(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          const next = new Set(initialPopCriteria.valueSets || []);
+                          if (isSelected) next.delete(key);
+                          else next.add(key);
+                          setInitialPopCriteria({ ...initialPopCriteria, valueSets: next });
+                        }}
+                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
+                          isSelected
+                            ? 'border-cyan-500 bg-cyan-500/10'
+                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
+                          {isSelected && <Check className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
+                        </div>
+                        <div className="text-xs text-[var(--text-dim)] mt-1">
+                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
+                          {valueSet.oid && ' · '}
+                          from {sourceMeasure}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredValueSets.length === 0 && (
+                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
+                      No value sets found. You can add them later in the editor.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -870,6 +940,67 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                   placeholder="e.g., During first 6 months of measurement period"
                   className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
                 />
+              </div>
+
+              {/* Value Set Picker for Denominator */}
+              <div className="mt-6 pt-6 border-t border-[var(--border)]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-purple-400" />
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Associated Value Sets
+                  </label>
+                  <span className="text-xs text-[var(--text-dim)]">
+                    ({denominatorCriteria.valueSets?.size || 0} selected)
+                  </span>
+                </div>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
+                  <input
+                    type="text"
+                    value={valueSetSearch}
+                    onChange={(e) => setValueSetSearch(e.target.value)}
+                    placeholder="Search value sets..."
+                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+                <div className="grid gap-2 max-h-40 overflow-auto">
+                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
+                    const key = valueSet.oid || valueSet.id;
+                    const isSelected = denominatorCriteria.valueSets?.has(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          const next = new Set(denominatorCriteria.valueSets || []);
+                          if (isSelected) next.delete(key);
+                          else next.add(key);
+                          setDenominatorCriteria({ ...denominatorCriteria, valueSets: next });
+                        }}
+                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
+                          isSelected
+                            ? 'border-purple-500 bg-purple-500/10'
+                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
+                          {isSelected && <Check className="w-4 h-4 text-purple-400 flex-shrink-0" />}
+                        </div>
+                        <div className="text-xs text-[var(--text-dim)] mt-1">
+                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
+                          {valueSet.oid && ' · '}
+                          from {sourceMeasure}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredValueSets.length === 0 && (
+                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
+                      No value sets found. You can add them later in the editor.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -933,6 +1064,67 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                   className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
                 />
               </div>
+
+              {/* Value Set Picker for Numerator */}
+              <div className="mt-6 pt-6 border-t border-[var(--border)]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-emerald-400" />
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Associated Value Sets
+                  </label>
+                  <span className="text-xs text-[var(--text-dim)]">
+                    ({numeratorCriteria.valueSets?.size || 0} selected)
+                  </span>
+                </div>
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
+                  <input
+                    type="text"
+                    value={valueSetSearch}
+                    onChange={(e) => setValueSetSearch(e.target.value)}
+                    placeholder="Search value sets..."
+                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div className="grid gap-2 max-h-40 overflow-auto">
+                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
+                    const key = valueSet.oid || valueSet.id;
+                    const isSelected = numeratorCriteria.valueSets?.has(key);
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          const next = new Set(numeratorCriteria.valueSets || []);
+                          if (isSelected) next.delete(key);
+                          else next.add(key);
+                          setNumeratorCriteria({ ...numeratorCriteria, valueSets: next });
+                        }}
+                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
+                          isSelected
+                            ? 'border-emerald-500 bg-emerald-500/10'
+                            : 'border-[var(--border)] hover:border-[var(--text-dim)]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
+                          {isSelected && <Check className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
+                        </div>
+                        <div className="text-xs text-[var(--text-dim)] mt-1">
+                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
+                          {valueSet.oid && ' · '}
+                          from {sourceMeasure}
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {filteredValueSets.length === 0 && (
+                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
+                      No value sets found. You can add them later in the editor.
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -973,80 +1165,66 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
               <div className="text-sm text-[var(--text-dim)] italic">
                 Leave blank if no exclusions apply to this measure.
               </div>
-            </div>
-          )}
 
-          {/* Step: Value Sets */}
-          {currentStep === 'value_sets' && (
-            <div className="max-w-3xl mx-auto space-y-6">
-              <div className="text-center mb-6">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/15 flex items-center justify-center">
-                  <Database className="w-8 h-8 text-cyan-400" />
+              {/* Value Set Picker for Exclusions */}
+              <div className="mt-6 pt-6 border-t border-[var(--border)]">
+                <div className="flex items-center gap-2 mb-3">
+                  <Database className="w-4 h-4 text-amber-400" />
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Associated Value Sets
+                  </label>
+                  <span className="text-xs text-[var(--text-dim)]">
+                    ({exclusionCriteria.valueSets?.size || 0} selected)
+                  </span>
                 </div>
-                <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Value Sets</h3>
-                <p className="text-[var(--text-muted)]">
-                  Select existing value sets to include in your measure (optional)
-                </p>
-              </div>
-
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
-                <input
-                  type="text"
-                  value={valueSetSearch}
-                  onChange={(e) => setValueSetSearch(e.target.value)}
-                  placeholder="Search value sets by name or OID..."
-                  className="w-full pl-11 pr-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="text-sm text-[var(--text-muted)]">
-                {selectedValueSets.size} value set{selectedValueSets.size !== 1 ? 's' : ''} selected
-              </div>
-
-              {/* Value Set List */}
-              <div className="grid gap-2 max-h-80 overflow-auto">
-                {filteredValueSets.length > 0 ? (
-                  filteredValueSets.map(({ valueSet, sourceMeasure }) => {
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)]" />
+                  <input
+                    type="text"
+                    value={valueSetSearch}
+                    onChange={(e) => setValueSetSearch(e.target.value)}
+                    placeholder="Search value sets..."
+                    className="w-full pl-10 pr-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div className="grid gap-2 max-h-40 overflow-auto">
+                  {filteredValueSets.slice(0, 10).map(({ valueSet, sourceMeasure }) => {
                     const key = valueSet.oid || valueSet.id;
-                    const isSelected = selectedValueSets.has(key);
+                    const isSelected = exclusionCriteria.valueSets?.has(key);
                     return (
                       <button
                         key={key}
+                        type="button"
                         onClick={() => {
-                          const next = new Set(selectedValueSets);
+                          const next = new Set(exclusionCriteria.valueSets || []);
                           if (isSelected) next.delete(key);
                           else next.add(key);
-                          setSelectedValueSets(next);
+                          setExclusionCriteria({ ...exclusionCriteria, valueSets: next });
                         }}
-                        className={`p-4 rounded-lg border text-left transition-all ${
+                        className={`p-3 rounded-lg border text-left transition-all text-sm ${
                           isSelected
-                            ? 'border-cyan-500 bg-cyan-500/10'
+                            ? 'border-amber-500 bg-amber-500/10'
                             : 'border-[var(--border)] hover:border-[var(--text-dim)]'
                         }`}
                       >
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-[var(--text)]">{valueSet.name}</span>
-                          {isSelected && <Check className="w-5 h-5 text-cyan-400 flex-shrink-0" />}
+                          {isSelected && <Check className="w-4 h-4 text-amber-400 flex-shrink-0" />}
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs">
-                          {valueSet.oid && (
-                            <span className="font-mono text-[var(--text-dim)]">{valueSet.oid}</span>
-                          )}
-                          <span className="text-[var(--text-muted)]">from {sourceMeasure}</span>
-                          <span className="text-[var(--text-dim)]">({valueSet.codes?.length || 0} codes)</span>
+                        <div className="text-xs text-[var(--text-dim)] mt-1">
+                          {valueSet.oid && <span className="font-mono">{valueSet.oid}</span>}
+                          {valueSet.oid && ' · '}
+                          from {sourceMeasure}
                         </div>
                       </button>
                     );
-                  })
-                ) : (
-                  <div className="text-center py-8 text-[var(--text-muted)]">
-                    {availableValueSets.length === 0
-                      ? 'No value sets available. You can add them later in the editor.'
-                      : 'No value sets match your search.'}
-                  </div>
-                )}
+                  })}
+                  {filteredValueSets.length === 0 && (
+                    <div className="text-sm text-[var(--text-muted)] text-center py-4">
+                      No value sets found. You can add them later in the editor.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
@@ -1091,72 +1269,104 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 {/* Populations (for guided mode) */}
                 {mode === 'guided' && (
                   <>
-                    {initialPopCriteria.description && (
+                    {(initialPopCriteria.description || (initialPopCriteria.valueSets?.size || 0) > 0) && (
                       <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
                         <div className="flex items-center gap-2 text-blue-400 text-sm font-medium mb-2">
                           <Users className="w-4 h-4" />
                           Initial Population
                         </div>
-                        <p className="text-sm text-[var(--text-muted)]">{initialPopCriteria.description}</p>
+                        {initialPopCriteria.description && (
+                          <p className="text-sm text-[var(--text-muted)]">{initialPopCriteria.description}</p>
+                        )}
                         {(initialPopCriteria.ageRange?.min !== undefined || initialPopCriteria.ageRange?.max !== undefined) && (
                           <p className="text-xs text-[var(--text-dim)] mt-1">
                             Age: {initialPopCriteria.ageRange?.min || 0} - {initialPopCriteria.ageRange?.max || '∞'} years
                           </p>
                         )}
+                        {(initialPopCriteria.valueSets?.size || 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {Array.from(initialPopCriteria.valueSets || []).map(vsId => {
+                              const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
+                              return vs ? (
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+                                  {vs.valueSet.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {denominatorCriteria.description && (
+                    {(denominatorCriteria.description || (denominatorCriteria.valueSets?.size || 0) > 0) && (
                       <div className="p-4 bg-purple-500/10 rounded-lg border border-purple-500/20">
                         <div className="flex items-center gap-2 text-purple-400 text-sm font-medium mb-2">
                           <Target className="w-4 h-4" />
                           Denominator
                         </div>
-                        <p className="text-sm text-[var(--text-muted)]">{denominatorCriteria.description}</p>
+                        {denominatorCriteria.description && (
+                          <p className="text-sm text-[var(--text-muted)]">{denominatorCriteria.description}</p>
+                        )}
+                        {(denominatorCriteria.valueSets?.size || 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {Array.from(denominatorCriteria.valueSets || []).map(vsId => {
+                              const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
+                              return vs ? (
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
+                                  {vs.valueSet.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {numeratorCriteria.description && (
+                    {(numeratorCriteria.description || (numeratorCriteria.valueSets?.size || 0) > 0) && (
                       <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
                         <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
                           <Check className="w-4 h-4" />
                           Numerator
                         </div>
-                        <p className="text-sm text-[var(--text-muted)]">{numeratorCriteria.description}</p>
+                        {numeratorCriteria.description && (
+                          <p className="text-sm text-[var(--text-muted)]">{numeratorCriteria.description}</p>
+                        )}
+                        {(numeratorCriteria.valueSets?.size || 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {Array.from(numeratorCriteria.valueSets || []).map(vsId => {
+                              const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
+                              return vs ? (
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">
+                                  {vs.valueSet.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
 
-                    {exclusionCriteria.description && (
+                    {(exclusionCriteria.description || (exclusionCriteria.valueSets?.size || 0) > 0) && (
                       <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
                         <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
                           <AlertTriangle className="w-4 h-4" />
                           Exclusions
                         </div>
-                        <p className="text-sm text-[var(--text-muted)]">{exclusionCriteria.description}</p>
-                      </div>
-                    )}
-
-                    {selectedValueSets.size > 0 && (
-                      <div className="p-4 bg-cyan-500/10 rounded-lg border border-cyan-500/20">
-                        <div className="flex items-center gap-2 text-cyan-400 text-sm font-medium mb-2">
-                          <Database className="w-4 h-4" />
-                          Value Sets ({selectedValueSets.size})
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {Array.from(selectedValueSets).slice(0, 5).map(vsId => {
-                            const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
-                            return vs ? (
-                              <span key={vsId} className="text-xs px-2 py-1 bg-[var(--bg-tertiary)] rounded">
-                                {vs.valueSet.name}
-                              </span>
-                            ) : null;
-                          })}
-                          {selectedValueSets.size > 5 && (
-                            <span className="text-xs text-[var(--text-dim)]">
-                              +{selectedValueSets.size - 5} more
-                            </span>
-                          )}
-                        </div>
+                        {exclusionCriteria.description && (
+                          <p className="text-sm text-[var(--text-muted)]">{exclusionCriteria.description}</p>
+                        )}
+                        {(exclusionCriteria.valueSets?.size || 0) > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {Array.from(exclusionCriteria.valueSets || []).map(vsId => {
+                              const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
+                              return vs ? (
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">
+                                  {vs.valueSet.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </>
