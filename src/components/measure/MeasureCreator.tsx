@@ -1,12 +1,15 @@
-import { useState, useMemo, useCallback, useEffect } from 'react';
-import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Users, Target, AlertTriangle, Minus, Sparkles, ArrowRight, Info, Save } from 'lucide-react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Users, Target, AlertTriangle, Minus, Sparkles, ArrowRight, Info, Save, Wand2, Loader2, AlertCircle, Brain, Upload, File, Trash2 } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
-import type { UniversalMeasureSpec, MeasureMetadata, PopulationDefinition, ValueSetReference, LogicalClause, DataElement } from '../../types/ums';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { extractFromFiles, type ExtractedDocument } from '../../services/documentLoader';
+import type { UniversalMeasureSpec, MeasureMetadata, PopulationDefinition, ValueSetReference, LogicalClause, DataElement, ConfidenceLevel } from '../../types/ums';
 import { CriteriaBlockBuilder, type CriteriaBlock } from './CriteriaBlockBuilder';
 
 // Step definitions for the wizard
 type WizardStep =
   | 'start'           // Choose creation method
+  | 'ai_input'        // Paste free text for AI parsing (AI-Guided mode only)
   | 'metadata'        // Basic measure information
   | 'initial_pop'     // Define Initial Population (with value sets)
   | 'denominator'     // Define Denominator (with value sets)
@@ -14,7 +17,7 @@ type WizardStep =
   | 'exclusions'      // Define Exclusions/Exceptions (with value sets)
   | 'review';         // Review and create
 
-type CreationMode = 'blank' | 'copy' | 'guided';
+type CreationMode = 'blank' | 'copy' | 'ai_guided';
 type MeasureProgram = MeasureMetadata['program'];
 type MeasureType = MeasureMetadata['measureType'];
 type ScoringType = 'proportion' | 'ratio' | 'continuous_variable';
@@ -41,6 +44,7 @@ interface MeasureCreatorProps {
 // Step configuration - value sets are now integrated into each population step
 const STEPS: { id: WizardStep; label: string; icon: typeof Users; description: string }[] = [
   { id: 'start', label: 'Start', icon: Plus, description: 'Choose creation method' },
+  { id: 'ai_input', label: 'AI Input', icon: Brain, description: 'Paste measure specification for AI analysis' },
   { id: 'metadata', label: 'Basics', icon: FileText, description: 'Measure information' },
   { id: 'initial_pop', label: 'Initial Pop', icon: Users, description: 'Define eligible patients & value sets' },
   { id: 'denominator', label: 'Denominator', icon: Target, description: 'Define denominator & value sets' },
@@ -49,12 +53,74 @@ const STEPS: { id: WizardStep; label: string; icon: typeof Users; description: s
   { id: 'review', label: 'Review', icon: Sparkles, description: 'Review and create' },
 ];
 
+// AI-parsed value set match with confidence
+interface AIValueSetMatch {
+  existingValueSet?: ValueSetReference;
+  suggestedName: string;
+  suggestedOid?: string;
+  confidence: ConfidenceLevel;
+  isPlaceholder: boolean;
+  matchReason?: string;
+}
+
+// AI extraction result for criteria
+interface AIExtractedCriterion {
+  resourceType: string;
+  description: string;
+  valueSetMatch?: AIValueSetMatch;
+  timing?: {
+    type: string;
+    value?: number;
+    unit?: string;
+    ageValue?: number;
+    ageUnit?: string;
+    relativeTo?: string;
+  };
+  quantity?: {
+    comparator: string;
+    value: number;
+    maxValue?: number;
+  };
+  negation?: boolean;
+  confidence: ConfidenceLevel;
+}
+
 export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   const { measures, addMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
+  const { selectedProvider, apiKeys, getActiveApiKey } = useSettingsStore();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('start');
-  const [mode, setMode] = useState<CreationMode>('guided');
+  const [mode, setMode] = useState<CreationMode>('ai_guided');
+
+  // AI input state
+  const [aiInputText, setAiInputText] = useState('');
+  const [aiProcessing, setAiProcessing] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiProgress, setAiProgress] = useState<string>('');
+  const [aiExtractedData, setAiExtractedData] = useState<{
+    metadata?: {
+      measureId?: string;
+      title?: string;
+      description?: string;
+      program?: string;
+      measureType?: string;
+      ageRange?: { min?: number; max?: number };
+    };
+    populations?: {
+      type: string;
+      description: string;
+      criteria: AIExtractedCriterion[];
+    }[];
+    valueSets?: AIValueSetMatch[];
+  } | null>(null);
+
+  // File upload state
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
+  const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocument[]>([]);
+  const [extractedContent, setExtractedContent] = useState<string>('');
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Basic metadata
   const [measureId, setMeasureId] = useState('');
@@ -120,7 +186,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
   const resetForm = () => {
     setCurrentStep('start');
-    setMode('guided');
+    setMode('ai_guided');
     setMeasureId('');
     setTitle('');
     setDescription('');
@@ -136,6 +202,17 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     setExclusionCriteria({ description: '', valueSets: new Set(), criteriaBlocks: [] });
     setGeneratedCql({ initialPop: '', denominator: '', numerator: '', exclusions: '' });
     setShowCloseConfirm(false);
+    // Reset AI state
+    setAiInputText('');
+    setAiProcessing(false);
+    setAiError(null);
+    setAiProgress('');
+    setAiExtractedData(null);
+    // Reset file upload state
+    setUploadedFiles([]);
+    setExtractedDocuments([]);
+    setExtractedContent('');
+    setIsDragging(false);
   };
 
   // Check if user has made any progress worth saving
@@ -145,6 +222,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
     // Check if any meaningful data has been entered
     const hasMetadata = measureId.trim() || title.trim() || description.trim();
+    const hasAiInput = aiInputText.trim().length > 100 || aiExtractedData !== null || uploadedFiles.length > 0;
     const hasInitialPop = initialPopCriteria.description.trim() ||
                           initialPopCriteria.ageRange?.min !== undefined ||
                           initialPopCriteria.ageRange?.max !== undefined ||
@@ -156,8 +234,8 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     const hasExclusions = exclusionCriteria.description.trim() ||
                           (exclusionCriteria.criteriaBlocks?.length || 0) > 0;
 
-    return hasMetadata || hasInitialPop || hasDenominator || hasNumerator || hasExclusions;
-  }, [currentStep, measureId, title, description, initialPopCriteria, denominatorCriteria, numeratorCriteria, exclusionCriteria]);
+    return hasMetadata || hasAiInput || hasInitialPop || hasDenominator || hasNumerator || hasExclusions;
+  }, [currentStep, measureId, title, description, aiInputText, aiExtractedData, uploadedFiles, initialPopCriteria, denominatorCriteria, numeratorCriteria, exclusionCriteria]);
 
   const handleCloseRequest = () => {
     if (hasUnsavedChanges()) {
@@ -187,15 +265,432 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   // Navigation
   const getCurrentStepIndex = () => STEPS.findIndex(s => s.id === currentStep);
 
+  // File upload handlers
+  const handleFileSelect = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    const validFiles = fileArray.filter(f => {
+      const ext = f.name.split('.').pop()?.toLowerCase();
+      return ['pdf', 'html', 'htm', 'xlsx', 'xls', 'csv', 'zip', 'txt', 'md', 'cql', 'json', 'xml'].includes(ext || '');
+    });
+
+    if (validFiles.length === 0) {
+      setAiError('No valid files selected. Supported formats: PDF, HTML, Excel, CSV, ZIP, TXT, CQL, JSON, XML');
+      return;
+    }
+
+    setUploadedFiles(prev => [...prev, ...validFiles]);
+    setAiError(null);
+    setAiProgress('Extracting content from files...');
+
+    try {
+      const result = await extractFromFiles(validFiles);
+      setExtractedDocuments(prev => [...prev, ...result.documents]);
+      setExtractedContent(prev => prev + '\n\n' + result.combinedContent);
+      setAiProgress(`Extracted content from ${result.documents.length} file(s)`);
+
+      if (result.errors.length > 0) {
+        console.warn('File extraction warnings:', result.errors);
+      }
+    } catch (err) {
+      setAiError(`Failed to extract content: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files);
+    }
+  }, [handleFileSelect]);
+
+  const removeFile = useCallback((index: number) => {
+    setUploadedFiles(prev => prev.filter((_, i) => i !== index));
+    setExtractedDocuments(prev => prev.filter((_, i) => i !== index));
+    // Re-combine remaining content
+    setExtractedContent(extractedDocuments
+      .filter((_, i) => i !== index)
+      .map(d => `\n=== FILE: ${d.filename} (${d.fileType}) ===\n${d.content}`)
+      .join('\n\n'));
+  }, [extractedDocuments]);
+
+  const clearAllFiles = useCallback(() => {
+    setUploadedFiles([]);
+    setExtractedDocuments([]);
+    setExtractedContent('');
+  }, []);
+
+  // Get the current API key based on provider
+  const getCurrentApiKey = useCallback(() => {
+    return getActiveApiKey();
+  }, [getActiveApiKey]);
+
+  // Match value sets from AI extraction against existing value sets
+  const matchValueSets = useCallback((suggestedName: string, suggestedOid?: string): AIValueSetMatch => {
+    // Try exact OID match first (high confidence)
+    if (suggestedOid) {
+      const oidMatch = availableValueSets.find(v => v.valueSet.oid === suggestedOid);
+      if (oidMatch) {
+        return {
+          existingValueSet: oidMatch.valueSet,
+          suggestedName,
+          suggestedOid,
+          confidence: 'high',
+          isPlaceholder: false,
+          matchReason: 'Exact OID match',
+        };
+      }
+    }
+
+    // Try name-based matching (medium confidence)
+    const normalizedName = suggestedName.toLowerCase().trim();
+    for (const vs of availableValueSets) {
+      const vsName = vs.valueSet.name.toLowerCase().trim();
+      // Exact name match
+      if (vsName === normalizedName) {
+        return {
+          existingValueSet: vs.valueSet,
+          suggestedName,
+          suggestedOid,
+          confidence: 'high',
+          isPlaceholder: false,
+          matchReason: 'Exact name match',
+        };
+      }
+      // Partial name match
+      if (vsName.includes(normalizedName) || normalizedName.includes(vsName)) {
+        return {
+          existingValueSet: vs.valueSet,
+          suggestedName,
+          suggestedOid,
+          confidence: 'medium',
+          isPlaceholder: false,
+          matchReason: 'Partial name match',
+        };
+      }
+    }
+
+    // No match found - create placeholder (low confidence)
+    return {
+      suggestedName,
+      suggestedOid,
+      confidence: 'low',
+      isPlaceholder: true,
+      matchReason: 'No existing match - placeholder created',
+    };
+  }, [availableValueSets]);
+
+  // Convert AI extracted data to CriteriaBlocks
+  const convertToCriteriaBlocks = useCallback((criteria: AIExtractedCriterion[]): CriteriaBlock[] => {
+    return criteria.map((crit, idx) => {
+      const block: CriteriaBlock = {
+        id: `ai-block-${Date.now()}-${idx}`,
+        type: 'criterion',
+        resourceType: crit.resourceType as CriteriaBlock['resourceType'],
+        description: crit.description,
+        confidence: crit.confidence,
+        negation: crit.negation,
+      };
+
+      // Add value set reference if we have a match
+      if (crit.valueSetMatch?.existingValueSet) {
+        block.valueSetId = crit.valueSetMatch.existingValueSet.oid || crit.valueSetMatch.existingValueSet.id;
+      }
+
+      // Add timing if present
+      if (crit.timing && crit.timing.type) {
+        block.timing = {
+          type: crit.timing.type as 'during_measurement_period' | 'before_measurement_period' | 'by_age' | 'within_days_of' | 'within_months_of' | 'within_years_of' | 'anytime',
+          value: crit.timing.value,
+          unit: crit.timing.unit as 'days' | 'months' | 'years' | undefined,
+          ageValue: crit.timing.ageValue,
+          ageUnit: crit.timing.ageUnit as 'days' | 'months' | 'years' | undefined,
+          relativeTo: crit.timing.relativeTo,
+        };
+      }
+
+      // Add quantity if present
+      if (crit.quantity && crit.quantity.comparator) {
+        block.quantity = {
+          comparator: crit.quantity.comparator as '>=' | '>' | '<=' | '<' | '=' | 'between',
+          value: crit.quantity.value,
+          maxValue: crit.quantity.maxValue,
+        };
+      }
+
+      return block;
+    });
+  }, []);
+
+  // Process AI input and extract measure structure
+  const processAiInput = useCallback(async () => {
+    // Combine extracted file content with free text input
+    const combinedInput = [
+      extractedContent.trim(),
+      aiInputText.trim()
+    ].filter(Boolean).join('\n\n--- Additional Context ---\n\n');
+
+    if (!combinedInput) {
+      setAiError('Please upload files or enter measure specification text.');
+      return;
+    }
+
+    const apiKey = getCurrentApiKey();
+    if (!apiKey) {
+      setAiError(`No API key configured for ${selectedProvider}. Please configure it in Settings.`);
+      return;
+    }
+
+    setAiProcessing(true);
+    setAiError(null);
+    setAiProgress('Analyzing measure specification...');
+
+    try {
+      // Build prompt for measure criteria extraction
+      const prompt = `You are a clinical quality measure expert. Analyze the following measure specification and extract structured data.
+
+This content may come from PDF documents, HTML specifications, Excel files, and/or free text descriptions.
+Extract ALL relevant information about the measure including populations, criteria, timing constraints, and value sets.
+
+MEASURE SPECIFICATION:
+${combinedInput}
+
+Extract and return a JSON object with this structure:
+{
+  "metadata": {
+    "measureId": "extracted measure ID or suggested ID based on title",
+    "title": "measure title",
+    "description": "brief description",
+    "program": "MIPS_CQM" | "eCQM" | "HEDIS" | "QOF" | "Registry" | "Custom",
+    "measureType": "process" | "outcome" | "structure" | "patient_experience",
+    "ageRange": { "min": number, "max": number }
+  },
+  "populations": [
+    {
+      "type": "initial_population" | "denominator" | "numerator" | "denominator_exclusion",
+      "description": "narrative description",
+      "criteria": [
+        {
+          "resourceType": "Condition" | "Encounter" | "Procedure" | "Observation" | "MedicationRequest" | "Immunization" | "Patient",
+          "description": "what this criterion checks",
+          "valueSetName": "suggested value set name",
+          "valueSetOid": "OID if known (2.16.840.1...)",
+          "timing": {
+            "type": "during_measurement_period" | "by_age" | "within_days_of" | "within_months_of" | "anytime",
+            "value": number (for within_X_of),
+            "unit": "days" | "months" | "years",
+            "ageValue": number (for by_age),
+            "ageUnit": "years" | "months" | "weeks",
+            "relativeTo": "encounter" | "measurement_period" | "birth" | etc
+          },
+          "quantity": {
+            "comparator": ">=" | "<=" | ">" | "<" | "=" | "between",
+            "value": number,
+            "maxValue": number (for between)
+          },
+          "negation": boolean (true if checking for absence),
+          "confidence": "high" | "medium" | "low"
+        }
+      ]
+    }
+  ]
+}
+
+IMPORTANT:
+- Extract ALL criteria from each population with proper timing constraints
+- For immunizations/screenings, include quantity requirements (e.g., "at least 4 doses")
+- Include age-based timing (e.g., "by age 2", "before 13th birthday")
+- Include value set names even if you don't know the OID - I'll match against existing sets
+- Set confidence based on how explicit the spec is about each criterion
+- If timing is ambiguous, use "medium" confidence and your best interpretation
+
+Return ONLY valid JSON, no markdown or explanation.`;
+
+      setAiProgress('Sending to AI for analysis...');
+
+      // Call the appropriate API
+      let content: string;
+      if (selectedProvider === 'anthropic') {
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 8000,
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        content = data.content?.[0]?.text || '';
+      } else if (selectedProvider === 'openai') {
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o',
+            max_tokens: 8000,
+            messages: [{ role: 'user', content: prompt }],
+            response_format: { type: 'json_object' },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        content = data.choices?.[0]?.message?.content || '';
+      } else {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 8000, responseMimeType: 'application/json' },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      }
+
+      setAiProgress('Parsing AI response...');
+
+      // Parse the JSON response
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        // Try to extract JSON from the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('Failed to parse AI response as JSON');
+        }
+      }
+
+      setAiProgress('Matching value sets...');
+
+      // Process populations and match value sets
+      const processedPopulations = (parsed.populations || []).map((pop: any) => ({
+        type: pop.type,
+        description: pop.description,
+        criteria: (pop.criteria || []).map((crit: any) => ({
+          ...crit,
+          valueSetMatch: matchValueSets(crit.valueSetName || crit.description, crit.valueSetOid),
+        })),
+      }));
+
+      setAiExtractedData({
+        metadata: parsed.metadata,
+        populations: processedPopulations,
+      });
+
+      // Auto-populate metadata
+      if (parsed.metadata) {
+        if (parsed.metadata.measureId) setMeasureId(parsed.metadata.measureId);
+        if (parsed.metadata.title) setTitle(parsed.metadata.title);
+        if (parsed.metadata.description) setDescription(parsed.metadata.description);
+        if (parsed.metadata.measureType) setMeasureType(parsed.metadata.measureType);
+        if (parsed.metadata.ageRange) {
+          setInitialPopCriteria(prev => ({
+            ...prev,
+            ageRange: parsed.metadata.ageRange,
+          }));
+        }
+      }
+
+      // Auto-populate criteria blocks for each population
+      for (const pop of processedPopulations) {
+        const blocks = convertToCriteriaBlocks(pop.criteria);
+
+        switch (pop.type) {
+          case 'initial_population':
+            setInitialPopCriteria(prev => ({
+              ...prev,
+              description: pop.description,
+              criteriaBlocks: blocks,
+            }));
+            break;
+          case 'denominator':
+            setDenominatorCriteria(prev => ({
+              ...prev,
+              description: pop.description,
+              criteriaBlocks: blocks,
+            }));
+            break;
+          case 'numerator':
+            setNumeratorCriteria(prev => ({
+              ...prev,
+              description: pop.description,
+              criteriaBlocks: blocks,
+            }));
+            break;
+          case 'denominator_exclusion':
+          case 'denominator_exception':
+            setExclusionCriteria(prev => ({
+              ...prev,
+              description: pop.description,
+              criteriaBlocks: blocks,
+            }));
+            break;
+        }
+      }
+
+      setAiProgress('Complete! Review the extracted data below.');
+      setAiProcessing(false);
+
+    } catch (err) {
+      console.error('AI extraction error:', err);
+      setAiError(err instanceof Error ? err.message : 'Unknown error occurred');
+      setAiProcessing(false);
+    }
+  }, [aiInputText, extractedContent, selectedProvider, getCurrentApiKey, matchValueSets, convertToCriteriaBlocks]);
+
   const canGoNext = () => {
     switch (currentStep) {
       case 'start':
         return mode === 'copy' ? !!sourceMeasureId : true;
+      case 'ai_input':
+        // Can proceed if AI has extracted data OR user wants to skip (no files and no text)
+        return aiExtractedData !== null || (uploadedFiles.length === 0 && aiInputText.trim() === '');
       case 'metadata':
         return measureId.trim() && title.trim();
       case 'initial_pop':
         return initialPopCriteria.description.trim() ||
-               (initialPopCriteria.ageRange?.min !== undefined || initialPopCriteria.ageRange?.max !== undefined);
+               (initialPopCriteria.ageRange?.min !== undefined || initialPopCriteria.ageRange?.max !== undefined) ||
+               (initialPopCriteria.criteriaBlocks?.length || 0) > 0;
       case 'denominator':
       case 'numerator':
       case 'exclusions':
@@ -209,6 +704,12 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
   const goNext = () => {
     const currentIndex = getCurrentStepIndex();
+
+    // Skip AI input step for non-AI modes
+    if (currentStep === 'start' && mode !== 'ai_guided') {
+      setCurrentStep('metadata');
+      return;
+    }
 
     // Skip to review for copy mode after metadata
     if (mode === 'copy' && currentStep === 'metadata') {
@@ -233,6 +734,12 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     // Handle special cases for copy/blank mode
     if ((mode === 'copy' || mode === 'blank') && currentStep === 'review') {
       setCurrentStep('metadata');
+      return;
+    }
+
+    // Skip AI input step when going back for non-AI modes
+    if (currentStep === 'metadata' && mode !== 'ai_guided') {
+      setCurrentStep('start');
       return;
     }
 
@@ -594,7 +1101,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   if (!isOpen) return null;
 
   // Get visible steps based on mode
-  const visibleSteps = mode === 'guided'
+  const visibleSteps = mode === 'ai_guided'
     ? STEPS
     : STEPS.filter(s => ['start', 'metadata', 'review'].includes(s.id));
 
@@ -710,20 +1217,20 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
 
               <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
                 <button
-                  onClick={() => setMode('guided')}
+                  onClick={() => setMode('ai_guided')}
                   className={`p-6 rounded-xl border-2 text-left transition-all hover:border-cyan-500/50 ${
-                    mode === 'guided' ? 'border-cyan-500 bg-cyan-500/10' : 'border-[var(--border)]'
+                    mode === 'ai_guided' ? 'border-cyan-500 bg-cyan-500/10' : 'border-[var(--border)]'
                   }`}
                 >
                   <div className="w-14 h-14 rounded-xl bg-cyan-500/15 flex items-center justify-center mb-4">
-                    <Sparkles className="w-7 h-7 text-cyan-400" />
+                    <Brain className="w-7 h-7 text-cyan-400" />
                   </div>
-                  <h3 className="font-semibold text-[var(--text)] mb-2">Guided Builder</h3>
+                  <h3 className="font-semibold text-[var(--text)] mb-2">AI-Guided Builder</h3>
                   <p className="text-sm text-[var(--text-muted)]">
-                    Step-by-step wizard to define populations, criteria, and value sets
+                    Paste measure specs and let AI extract populations, criteria, and value sets
                   </p>
                   <div className="mt-4 flex items-center gap-1 text-xs text-cyan-400">
-                    <Check className="w-3 h-3" />
+                    <Wand2 className="w-3 h-3" />
                     <span>Recommended</span>
                   </div>
                 </button>
@@ -792,6 +1299,278 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step: AI Input - Upload files or paste measure specification */}
+          {currentStep === 'ai_input' && (
+            <div className="max-w-3xl mx-auto space-y-6">
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/15 flex items-center justify-center">
+                  <Brain className="w-8 h-8 text-cyan-400" />
+                </div>
+                <h3 className="text-xl font-semibold text-[var(--text)] mb-2">AI-Guided Extraction</h3>
+                <p className="text-[var(--text-muted)]">
+                  Upload measure documents or paste specifications - AI will extract the structure
+                </p>
+              </div>
+
+              {/* Info box */}
+              <div className="flex items-start gap-3 p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
+                <Info className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-[var(--text-muted)]">
+                  <strong>Supported inputs:</strong> PDF specifications, HTML documents, Excel/CSV files, ZIP packages, or plain text.
+                  The AI will extract populations, criteria, timing constraints, and match value sets automatically.
+                </div>
+              </div>
+
+              {/* File upload drop zone */}
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+                  isDragging
+                    ? 'border-cyan-500 bg-cyan-500/10'
+                    : 'border-[var(--border)] hover:border-cyan-500/50 hover:bg-cyan-500/5'
+                } ${aiProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.html,.htm,.xlsx,.xls,.csv,.zip,.txt,.md,.cql,.json,.xml"
+                  onChange={(e) => e.target.files && handleFileSelect(e.target.files)}
+                  className="hidden"
+                  disabled={aiProcessing}
+                />
+                <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-cyan-400' : 'text-[var(--text-dim)]'}`} />
+                <p className="text-[var(--text)] font-medium mb-1">
+                  {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
+                </p>
+                <p className="text-sm text-[var(--text-muted)]">
+                  PDF, HTML, Excel, CSV, ZIP, TXT, CQL, JSON, XML
+                </p>
+              </div>
+
+              {/* Uploaded files list */}
+              {uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-[var(--text)]">
+                      Uploaded Files ({uploadedFiles.length})
+                    </span>
+                    <button
+                      onClick={clearAllFiles}
+                      disabled={aiProcessing}
+                      className="text-xs text-rose-400 hover:text-rose-300 disabled:opacity-50"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {uploadedFiles.map((file, idx) => {
+                      const doc = extractedDocuments[idx];
+                      const hasError = doc?.error;
+                      return (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between p-3 rounded-lg ${
+                            hasError ? 'bg-rose-500/10 border border-rose-500/20' : 'bg-[var(--bg-secondary)] border border-[var(--border)]'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <File className={`w-4 h-4 flex-shrink-0 ${hasError ? 'text-rose-400' : 'text-cyan-400'}`} />
+                            <div className="min-w-0">
+                              <div className="text-sm text-[var(--text)] truncate">{file.name}</div>
+                              <div className="text-xs text-[var(--text-muted)]">
+                                {doc ? (
+                                  hasError ? (
+                                    <span className="text-rose-400">{doc.error}</span>
+                                  ) : (
+                                    <span className="text-emerald-400">{doc.content.length.toLocaleString()} chars extracted</span>
+                                  )
+                                ) : (
+                                  <span className="text-[var(--text-dim)]">Extracting...</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFile(idx);
+                            }}
+                            disabled={aiProcessing}
+                            className="p-1 text-[var(--text-muted)] hover:text-rose-400 transition-colors disabled:opacity-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Divider */}
+              <div className="flex items-center gap-4">
+                <div className="flex-1 border-t border-[var(--border)]" />
+                <span className="text-sm text-[var(--text-dim)]">and/or</span>
+                <div className="flex-1 border-t border-[var(--border)]" />
+              </div>
+
+              {/* Text input area */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text)] mb-2">
+                  Additional Text / Free-form Measure Description
+                </label>
+                <textarea
+                  value={aiInputText}
+                  onChange={(e) => setAiInputText(e.target.value)}
+                  placeholder={`Optionally add measure details, clarifications, or paste plain text specifications here...
+
+For example:
+- "Patients must have at least 4 DTaP doses by age 2"
+- "Total cholesterol must be ≤ 5.0 mmol/l"
+- "Exclude patients with hospice care or advanced illness"
+
+This text will be combined with any uploaded documents for AI analysis.`}
+                  rows={6}
+                  disabled={aiProcessing}
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none text-sm disabled:opacity-50"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={processAiInput}
+                  disabled={(!aiInputText.trim() && uploadedFiles.length === 0) || aiProcessing || !getCurrentApiKey()}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {aiProcessing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {aiProgress || 'Processing...'}
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-5 h-5" />
+                      Extract with AI
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => {
+                    setAiInputText('');
+                    clearAllFiles();
+                    setAiExtractedData(null);
+                    setAiError(null);
+                  }}
+                  disabled={aiProcessing || (!aiInputText.trim() && uploadedFiles.length === 0)}
+                  className="px-4 py-3 text-[var(--text-muted)] hover:text-[var(--text)] transition-colors disabled:opacity-50"
+                >
+                  Clear All
+                </button>
+              </div>
+
+              {/* No API key warning */}
+              {!getCurrentApiKey() && (
+                <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-300">
+                    No API key configured for {selectedProvider}. Configure it in Settings to use AI extraction,
+                    or skip this step to build the measure manually.
+                  </div>
+                </div>
+              )}
+
+              {/* Error display */}
+              {aiError && (
+                <div className="flex items-start gap-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-rose-300">{aiError}</div>
+                </div>
+              )}
+
+              {/* Extraction results preview */}
+              {aiExtractedData && (
+                <div className="space-y-4 pt-4 border-t border-[var(--border)]">
+                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                    <Check className="w-5 h-5" />
+                    AI Extraction Complete
+                  </div>
+
+                  {/* Metadata preview */}
+                  {aiExtractedData.metadata && (
+                    <div className="p-4 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
+                      <div className="text-xs uppercase tracking-wider text-[var(--text-dim)] mb-2">Extracted Metadata</div>
+                      <div className="space-y-1 text-sm">
+                        {aiExtractedData.metadata.measureId && (
+                          <div><span className="text-[var(--text-muted)]">Measure ID:</span> <span className="text-[var(--text)]">{aiExtractedData.metadata.measureId}</span></div>
+                        )}
+                        {aiExtractedData.metadata.title && (
+                          <div><span className="text-[var(--text-muted)]">Title:</span> <span className="text-[var(--text)]">{aiExtractedData.metadata.title}</span></div>
+                        )}
+                        {aiExtractedData.metadata.ageRange && (
+                          <div><span className="text-[var(--text-muted)]">Age Range:</span> <span className="text-[var(--text)]">{aiExtractedData.metadata.ageRange.min} - {aiExtractedData.metadata.ageRange.max} years</span></div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Populations preview */}
+                  {aiExtractedData.populations && aiExtractedData.populations.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="text-xs uppercase tracking-wider text-[var(--text-dim)]">Extracted Populations</div>
+                      {aiExtractedData.populations.map((pop, idx) => (
+                        <div key={idx} className={`p-4 rounded-lg border ${
+                          pop.type === 'initial_population' ? 'bg-blue-500/10 border-blue-500/20' :
+                          pop.type === 'denominator' ? 'bg-purple-500/10 border-purple-500/20' :
+                          pop.type === 'numerator' ? 'bg-emerald-500/10 border-emerald-500/20' :
+                          'bg-amber-500/10 border-amber-500/20'
+                        }`}>
+                          <div className={`text-sm font-medium mb-2 ${
+                            pop.type === 'initial_population' ? 'text-blue-400' :
+                            pop.type === 'denominator' ? 'text-purple-400' :
+                            pop.type === 'numerator' ? 'text-emerald-400' :
+                            'text-amber-400'
+                          }`}>
+                            {pop.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                          </div>
+                          <p className="text-sm text-[var(--text-muted)] mb-2">{pop.description}</p>
+                          <div className="text-xs text-[var(--text-dim)]">
+                            {pop.criteria.length} criteria extracted
+                            {pop.criteria.some(c => c.valueSetMatch?.existingValueSet) && (
+                              <span className="ml-2 text-emerald-400">
+                                ({pop.criteria.filter(c => c.valueSetMatch?.existingValueSet).length} value sets matched)
+                              </span>
+                            )}
+                            {pop.criteria.some(c => c.valueSetMatch?.isPlaceholder) && (
+                              <span className="ml-2 text-amber-400">
+                                ({pop.criteria.filter(c => c.valueSetMatch?.isPlaceholder).length} placeholders created)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="text-sm text-[var(--text-muted)] italic">
+                    Continue to the next step to review and refine the extracted data.
+                  </div>
+                </div>
+              )}
+
+              {/* Skip option */}
+              {!aiExtractedData && !aiProcessing && (
+                <div className="text-center text-sm text-[var(--text-dim)]">
+                  Or <button onClick={goNext} className="text-cyan-400 hover:text-cyan-300 underline">skip this step</button> to build the measure manually.
                 </div>
               )}
             </div>
@@ -1181,7 +1960,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
                 </div>
 
                 {/* Populations (for guided mode) */}
-                {mode === 'guided' && (
+                {mode === 'ai_guided' && (
                   <>
                     {(initialPopCriteria.description || (initialPopCriteria.valueSets?.size || 0) > 0) && (
                       <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
