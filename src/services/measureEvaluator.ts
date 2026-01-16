@@ -752,12 +752,15 @@ function evaluateProcedure(
   for (const proc of patient.procedures) {
     let codeMatches = matchCode(proc.code, proc.system, codesToMatch);
 
-    // Fallback: if no specific codes matched, try common screening codes
-    if (!codeMatches && codesToMatch.length === 0) {
-      if (isCervicalScreening) {
-        codeMatches = CERVICAL_CYTOLOGY_CODES.includes(proc.code);
-      } else if (isColorectalScreening) {
-        codeMatches = COLORECTAL_SCREENING_CODES.includes(proc.code);
+    // Fallback: if no match found via defined codes, try common screening codes
+    // This handles cases where the value set is incomplete or uses different code systems
+    if (!codeMatches) {
+      if (isCervicalScreening && CERVICAL_CYTOLOGY_CODES.includes(proc.code)) {
+        codeMatches = true;
+        console.log(`Cervical screening fallback match: ${proc.code} - ${proc.display}`);
+      } else if (isColorectalScreening && COLORECTAL_SCREENING_CODES.includes(proc.code)) {
+        codeMatches = true;
+        console.log(`Colorectal screening fallback match: ${proc.code} - ${proc.display}`);
       }
     }
 
