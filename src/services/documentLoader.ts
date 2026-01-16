@@ -13,28 +13,13 @@ import * as pdfjsLib from 'pdfjs-dist';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 
-// Configure PDF.js worker - try multiple sources for reliability
-// Flag to track if we've already tried fallback
-let workerConfigured = false;
-let useFallbackWorker = false;
+// Import the worker using Vite's ?url suffix to get the URL
+// This ensures the worker is properly bundled
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-const configurePdfWorker = () => {
-  if (workerConfigured) return;
-
-  // Primary: Use unpkg CDN with matching version
-  if (!useFallbackWorker) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-  } else {
-    // Fallback: Use cdnjs with a known stable version
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs`;
-  }
-
-  console.log(`PDF.js worker configured: ${pdfjsLib.GlobalWorkerOptions.workerSrc}`);
-  workerConfigured = true;
-};
-
-// Initialize worker on module load
-configurePdfWorker();
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+console.log('PDF.js worker configured with bundled worker');
 
 export interface ExtractedDocument {
   filename: string;
@@ -139,7 +124,7 @@ function getFileType(filename: string): string {
 /**
  * Extract text from PDF using pdf.js
  */
-async function extractFromPDF(file: File, retryWithFallback = true): Promise<ExtractedDocument> {
+async function extractFromPDF(file: File): Promise<ExtractedDocument> {
   const metadata: Record<string, string> = {};
 
   try {
@@ -147,11 +132,12 @@ async function extractFromPDF(file: File, retryWithFallback = true): Promise<Ext
     const arrayBuffer = await file.arrayBuffer();
     console.log(`ArrayBuffer size: ${arrayBuffer.byteLength} bytes`);
 
-    // Create loading task with more options for better compatibility
+    // Create loading task with options for better compatibility
     const loadingTask = pdfjsLib.getDocument({
       data: arrayBuffer,
       useSystemFonts: true,
       disableFontFace: false,
+      verbosity: 0, // Reduce console noise
     });
 
     const pdf = await loadingTask.promise;
@@ -195,15 +181,6 @@ async function extractFromPDF(file: File, retryWithFallback = true): Promise<Ext
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
     console.error(`PDF extraction failed for ${file.name}:`, err);
-
-    // If primary worker failed, try fallback worker
-    if (retryWithFallback && !useFallbackWorker) {
-      console.log('Retrying with fallback PDF.js worker...');
-      useFallbackWorker = true;
-      workerConfigured = false;
-      configurePdfWorker();
-      return extractFromPDF(file, false);
-    }
 
     return {
       filename: file.name,
