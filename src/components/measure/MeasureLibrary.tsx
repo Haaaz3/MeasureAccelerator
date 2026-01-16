@@ -162,7 +162,7 @@ export function MeasureLibrary() {
       metadata: {
         ...cloned.metadata,
         measureId: `${cloned.metadata.measureId}-COPY`,
-        title: `Copy of ${cloned.metadata.title}`,
+        title: `${cloned.metadata.title} (Copy)`,
         version: '1.0',
         lastUpdated: now,
         url: `urn:uuid:${newId}`, // New FHIR URL
