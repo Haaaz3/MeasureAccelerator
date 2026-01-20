@@ -16,17 +16,17 @@
   --bg-elevated: #FFFFFF;
 
   /* Header - Distinct visual hierarchy */
-  --header-bg: #1D2B3A;
+  --header-bg: #00536F;
   --header-text: #FFFFFF;
-  --header-text-muted: #B4C2D1;
+  --header-text-muted: #B8D4E0;
 
-  /* Sidebar - Oracle-inspired dark sidebar */
-  --sidebar-bg: #1D2B3A;
-  --sidebar-bg-hover: #2A3F52;
-  --sidebar-bg-active: #3A5068;
-  --sidebar-text: #E8ECF1;
-  --sidebar-text-muted: #9AA8B8;
-  --sidebar-border: rgba(255, 255, 255, 0.08);
+  /* Sidebar - Matching header color */
+  --sidebar-bg: #00536F;
+  --sidebar-bg-hover: #006687;
+  --sidebar-bg-active: #007A9F;
+  --sidebar-text: #FFFFFF;
+  --sidebar-text-muted: #B8D4E0;
+  --sidebar-border: rgba(255, 255, 255, 0.12);
 
   /* Text - Strong contrast, professional hierarchy */
   --text: #1A1F26;
