@@ -194,20 +194,20 @@ export function MeasureLibrary() {
 
   return (
     <div className="flex-1 overflow-auto">
-      {/* Page Header - Differentiated dark header */}
-      <div className="bg-[var(--header-bg)] px-6 py-5">
+      {/* Page Header */}
+      <div className="bg-[var(--bg-secondary)] border-b border-[var(--border)] px-6 py-5">
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-white">Measure Library</h1>
-              <p className="text-sm text-white/70 mt-0.5">
+              <h1 className="text-xl font-semibold text-[var(--text)]">Measure Library</h1>
+              <p className="text-sm text-[var(--text-muted)] mt-0.5">
                 Upload measure specifications for AI-powered extraction and UMS generation
               </p>
             </div>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowCreator(true)}
-                className="h-10 px-4 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
+                className="h-10 px-4 bg-[var(--primary)] text-black rounded-lg font-semibold hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 New Measure
@@ -227,12 +227,12 @@ export function MeasureLibrary() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           className={`
-            relative border-2 border-dashed rounded-xl p-10 text-center transition-all mb-6 bg-[var(--bg-secondary)]
+            relative border-2 border-dashed rounded-xl p-10 text-center transition-all mb-6 bg-[var(--bg-tertiary)]
             ${isProcessing
-              ? 'border-[var(--accent)]/50 bg-[var(--accent-light)]'
+              ? 'border-[var(--primary)]/50 bg-[var(--primary-light)]'
               : dragActive
-                ? 'border-[var(--accent)] bg-[var(--accent-light)]'
-                : 'border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]'
+                ? 'border-[var(--primary)] bg-[var(--primary-light)]'
+                : 'border-[var(--border)] hover:border-[var(--primary)]/50 hover:bg-[var(--bg-elevated)]'
             }
           `}
         >
@@ -458,12 +458,12 @@ function MeasureCard({
 
   return (
     <div
-      className={`bg-[var(--bg-elevated)] border rounded-xl p-5 transition-all cursor-pointer group shadow-sm hover:shadow-md overflow-visible ${
+      className={`bg-[var(--bg-elevated)] border rounded-xl p-5 transition-all cursor-pointer group overflow-visible ${
         isPublished
-          ? 'border-[var(--success)]/40 bg-[var(--success-light)]/30'
+          ? 'border-[var(--success)]/40'
           : isLocked
-            ? 'border-[var(--success)]/50 bg-[var(--success-light)]/50'
-            : 'border-[var(--border)] hover:border-[var(--accent)]'
+            ? 'border-[var(--success)]/50'
+            : 'border-[var(--border)] hover:border-[var(--primary)]/50'
       }`}
       onClick={onSelect}
     >

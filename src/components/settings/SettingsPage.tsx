@@ -49,10 +49,10 @@ export function SettingsPage() {
   return (
     <div className="flex-1 overflow-auto">
       {/* Page Header */}
-      <div className="bg-[var(--header-bg)] px-6 py-5">
+      <div className="bg-[var(--bg-secondary)] border-b border-[var(--border)] px-6 py-5">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-xl font-semibold text-white">Settings</h1>
-          <p className="text-sm text-white/70 mt-0.5">
+          <h1 className="text-xl font-semibold text-[var(--text)]">Settings</h1>
+          <p className="text-sm text-[var(--text-muted)] mt-0.5">
             Configure AI extraction and API keys
           </p>
         </div>
@@ -62,7 +62,7 @@ export function SettingsPage() {
       <div className="p-6">
         <div className="max-w-3xl mx-auto space-y-6">
           {/* Extraction Mode */}
-          <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
+          <div className="p-5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <Brain className="w-5 h-5 text-[var(--accent)]" />
               <h3 className="font-semibold text-[var(--text)]">Extraction Mode</h3>
@@ -100,7 +100,7 @@ export function SettingsPage() {
           </div>
 
           {/* LLM Provider Selection */}
-          <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
+          <div className="p-5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Brain className="w-5 h-5 text-[var(--accent)]" />
               <h3 className="font-semibold text-[var(--text)]">LLM Provider</h3>
@@ -231,7 +231,7 @@ export function SettingsPage() {
 
           {/* API Key Configuration - only for non-custom providers */}
           {selectedProvider !== 'custom' && (
-            <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
+            <div className="p-5 bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl shadow-sm">
               <div className="flex items-center gap-2 mb-3">
                 <Key className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="font-semibold text-[var(--text)]">
