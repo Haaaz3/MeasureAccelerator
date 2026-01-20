@@ -199,8 +199,8 @@ export function MeasureLibrary() {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-[var(--header-text)]">Measure Library</h1>
-              <p className="text-sm text-[var(--header-text-muted)] mt-0.5">
+              <h1 className="text-xl font-semibold text-white">Measure Library</h1>
+              <p className="text-sm text-white/70 mt-0.5">
                 Upload measure specifications for AI-powered extraction and UMS generation
               </p>
             </div>

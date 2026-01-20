@@ -51,8 +51,8 @@ export function SettingsPage() {
       {/* Page Header */}
       <div className="bg-[var(--header-bg)] px-6 py-5">
         <div className="max-w-3xl mx-auto">
-          <h1 className="text-xl font-semibold text-[var(--header-text)]">Settings</h1>
-          <p className="text-sm text-[var(--header-text-muted)] mt-0.5">
+          <h1 className="text-xl font-semibold text-white">Settings</h1>
+          <p className="text-sm text-white/70 mt-0.5">
             Configure AI extraction and API keys
           </p>
         </div>
