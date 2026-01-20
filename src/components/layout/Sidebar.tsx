@@ -1,4 +1,4 @@
-import { FileText, CheckCircle, Code, Library, Sparkles, Database, Settings, X, ChevronRight } from 'lucide-react';
+import { FileText, CheckCircle, Code, Library, Activity, Database, Settings, X, ChevronRight } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 
 export function Sidebar() {
@@ -29,16 +29,16 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-64 bg-[var(--bg-secondary)] border-r border-[var(--border)] flex flex-col">
-      {/* Logo */}
-      <div className="p-4 border-b border-[var(--border)]">
+    <aside className="w-64 bg-[var(--sidebar-bg)] flex flex-col shadow-lg">
+      {/* Logo - Oracle Health inspired branding */}
+      <div className="p-4 border-b border-[var(--sidebar-border)]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div className="w-10 h-10 rounded-lg bg-[var(--primary)] flex items-center justify-center shadow-md">
+            <Activity className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="font-bold text-[var(--text)]">Measure</h1>
-            <h1 className="font-bold text-cyan-400 -mt-1">Accelerator</h1>
+            <h1 className="font-semibold text-[var(--sidebar-text)] text-base tracking-tight">Measure</h1>
+            <h1 className="font-semibold text-[var(--primary)] text-base tracking-tight -mt-0.5" style={{ color: '#C74634' }}>Accelerator</h1>
           </div>
         </div>
       </div>
@@ -53,17 +53,18 @@ export function Sidebar() {
               key={item.id}
               onClick={() => setActiveTab(item.id)}
               className={`
-                w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
+                w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all
                 ${isActive
-                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                  : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text)]'
+                  ? 'bg-[var(--sidebar-bg-active)] text-white border-l-3 border-[var(--primary)]'
+                  : 'text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-text)]'
                 }
               `}
+              style={isActive ? { borderLeft: '3px solid var(--primary)' } : {}}
             >
               <item.icon className="w-4 h-4" />
               <span className="flex-1 text-left">{item.label}</span>
               {item.badge && (
-                <span className="px-1.5 py-0.5 text-[10px] font-medium bg-[var(--bg-tertiary)] rounded">
+                <span className="px-2 py-0.5 text-[10px] font-semibold bg-[var(--accent)] text-white rounded-full">
                   {item.badge}
                 </span>
               )}
@@ -74,25 +75,25 @@ export function Sidebar() {
 
       {/* Active Measure Context */}
       {activeMeasure && (
-        <div className="flex-1 flex flex-col border-t border-[var(--border)]">
+        <div className="flex-1 flex flex-col border-t border-[var(--sidebar-border)]">
           {/* Measure Header */}
           <div className="p-3">
-            <div className="p-3 rounded-lg bg-gradient-to-br from-cyan-500/10 to-blue-500/10 border border-cyan-500/20">
+            <div className="p-3 rounded-lg bg-[var(--sidebar-bg-hover)] border border-[var(--sidebar-border)]">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] text-cyan-400 uppercase tracking-wider font-medium mb-1">
+                  <div className="text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: '#C74634' }}>
                     Active Measure
                   </div>
-                  <div className="text-sm font-medium text-[var(--text)] truncate">
+                  <div className="text-sm font-semibold text-[var(--sidebar-text)] truncate">
                     {activeMeasure.metadata.measureId}
                   </div>
-                  <div className="text-xs text-[var(--text-muted)] mt-0.5 truncate">
+                  <div className="text-xs text-[var(--sidebar-text-muted)] mt-0.5 truncate">
                     {activeMeasure.metadata.title}
                   </div>
                 </div>
                 <button
                   onClick={handleCloseMeasure}
-                  className="p-1 text-[var(--text-dim)] hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
+                  className="p-1.5 text-[var(--sidebar-text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 rounded transition-colors"
                   title="Close measure"
                 >
                   <X className="w-4 h-4" />
@@ -111,14 +112,15 @@ export function Sidebar() {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={`
-                    w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+                    w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all
                     ${isActive
-                      ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                      : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text)]'
+                      ? 'bg-[var(--sidebar-bg-active)] text-white'
+                      : 'text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-text)]'
                     }
                   `}
+                  style={isActive ? { borderLeft: '3px solid var(--primary)' } : { paddingLeft: '15px' }}
                 >
-                  <ChevronRight className="w-3 h-3 text-[var(--text-dim)]" />
+                  <ChevronRight className={`w-3 h-3 ${isActive ? 'text-white' : 'text-[var(--sidebar-text-muted)]'}`} />
                   <item.icon className="w-4 h-4" />
                   <span className="flex-1 text-left">{item.label}</span>
                 </button>
@@ -131,9 +133,9 @@ export function Sidebar() {
       {/* No Measure Selected Hint */}
       {!activeMeasure && measures.length > 0 && (
         <div className="flex-1 flex flex-col justify-center px-3">
-          <div className="p-4 rounded-lg border border-dashed border-[var(--border)] text-center">
-            <FileText className="w-8 h-8 mx-auto mb-2 text-[var(--text-dim)]" />
-            <p className="text-xs text-[var(--text-muted)]">
+          <div className="p-4 rounded-lg border border-dashed border-[var(--sidebar-border)] text-center bg-[var(--sidebar-bg-hover)]/30">
+            <FileText className="w-8 h-8 mx-auto mb-2 text-[var(--sidebar-text-muted)]" />
+            <p className="text-xs text-[var(--sidebar-text-muted)]">
               Select a measure from the library to edit, validate, or generate code
             </p>
           </div>
@@ -141,8 +143,8 @@ export function Sidebar() {
       )}
 
       {/* Footer */}
-      <div className="p-3 border-t border-[var(--border)]">
-        <div className="text-xs text-[var(--text-dim)] text-center">
+      <div className="p-3 border-t border-[var(--sidebar-border)]">
+        <div className="text-xs text-[var(--sidebar-text-muted)] text-center">
           {measures.length} measure{measures.length !== 1 ? 's' : ''} in library
         </div>
       </div>

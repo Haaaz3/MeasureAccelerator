@@ -47,7 +47,7 @@ export function SettingsPage() {
   const activeApiKey = apiKeys[selectedProvider] || '';
 
   return (
-    <div className="flex-1 p-6 overflow-auto">
+    <div className="flex-1 p-6 overflow-auto bg-[var(--bg)]">
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -59,9 +59,9 @@ export function SettingsPage() {
 
         <div className="space-y-6">
           {/* Extraction Mode */}
-          <div className="p-5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl">
+          <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
             <div className="flex items-center gap-2 mb-3">
-              <Brain className="w-5 h-5 text-cyan-400" />
+              <Brain className="w-5 h-5 text-[var(--accent)]" />
               <h3 className="font-semibold text-[var(--text)]">Extraction Mode</h3>
             </div>
             <div className="flex items-center gap-3">
@@ -70,7 +70,7 @@ export function SettingsPage() {
                   onClick={() => setUseAIExtraction(true)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
                     useAIExtraction
-                      ? 'bg-cyan-500 text-white'
+                      ? 'bg-[var(--accent)] text-white shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
@@ -81,7 +81,7 @@ export function SettingsPage() {
                   onClick={() => setUseAIExtraction(false)}
                   className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
                     !useAIExtraction
-                      ? 'bg-emerald-500 text-white'
+                      ? 'bg-[var(--success)] text-white shadow-sm'
                       : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
@@ -97,9 +97,9 @@ export function SettingsPage() {
           </div>
 
           {/* LLM Provider Selection */}
-          <div className="p-5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl">
+          <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
             <div className="flex items-center gap-2 mb-4">
-              <Brain className="w-5 h-5 text-cyan-400" />
+              <Brain className="w-5 h-5 text-[var(--accent)]" />
               <h3 className="font-semibold text-[var(--text)]">LLM Provider</h3>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
@@ -109,21 +109,21 @@ export function SettingsPage() {
                   onClick={() => handleProviderChange(provider.id)}
                   className={`p-4 rounded-lg border text-left transition-all ${
                     selectedProvider === provider.id
-                      ? 'border-cyan-500 bg-cyan-500/10'
-                      : 'border-[var(--border)] hover:border-[var(--text-dim)]'
+                      ? 'border-[var(--accent)] bg-[var(--accent-light)] shadow-sm'
+                      : 'border-[var(--border)] hover:border-[var(--accent)] bg-white'
                   }`}
                 >
                   <div className="flex items-center gap-2 mb-1">
                     {provider.id === 'custom' ? (
-                      <Server className="w-4 h-4 text-purple-400" />
+                      <Server className="w-4 h-4 text-[var(--info)]" />
                     ) : (
-                      <Brain className="w-4 h-4 text-cyan-400" />
+                      <Brain className="w-4 h-4 text-[var(--accent)]" />
                     )}
                     <span className="font-medium text-sm text-[var(--text)]">{provider.name}</span>
                   </div>
                   <div className="text-xs text-[var(--text-dim)] mt-1 line-clamp-2">{provider.description}</div>
                   {apiKeys[provider.id] && (
-                    <div className="flex items-center gap-1 text-xs text-emerald-400 mt-2">
+                    <div className="flex items-center gap-1 text-xs text-[var(--success)] mt-2">
                       <CheckCircle className="w-3 h-3" />
                       Configured
                     </div>
@@ -140,7 +140,7 @@ export function SettingsPage() {
                   <select
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] appearance-none cursor-pointer focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] appearance-none cursor-pointer focus:outline-none focus:border-[var(--accent)]"
                   >
                     {LLM_PROVIDERS.find(p => p.id === selectedProvider)?.models.map((model) => (
                       <option key={model.id} value={model.id}>{model.name}</option>
@@ -154,9 +154,9 @@ export function SettingsPage() {
 
           {/* Custom LLM Configuration - only shown when custom is selected */}
           {selectedProvider === 'custom' && (
-            <div className="p-5 bg-[var(--bg-secondary)] border border-purple-500/30 rounded-xl">
+            <div className="p-5 bg-white border border-[var(--info)]/30 rounded-xl shadow-sm">
               <div className="flex items-center gap-2 mb-4">
-                <Server className="w-5 h-5 text-purple-400" />
+                <Server className="w-5 h-5 text-[var(--info)]" />
                 <h3 className="font-semibold text-[var(--text)]">Custom LLM Configuration</h3>
               </div>
               <p className="text-sm text-[var(--text-muted)] mb-4">
@@ -175,7 +175,7 @@ export function SettingsPage() {
                     value={baseUrlInput}
                     onChange={(e) => setBaseUrlInput(e.target.value)}
                     placeholder="http://localhost:11434/v1"
-                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500"
+                    className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--info)]"
                   />
                   <p className="text-xs text-[var(--text-dim)] mt-1">
                     Common endpoints: Ollama (localhost:11434/v1), LM Studio (localhost:1234/v1), vLLM, LocalAI
@@ -190,7 +190,7 @@ export function SettingsPage() {
                     value={modelNameInput}
                     onChange={(e) => setModelNameInput(e.target.value)}
                     placeholder="llama2, mistral, codellama, etc."
-                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500"
+                    className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--info)]"
                   />
                 </div>
 
@@ -204,20 +204,20 @@ export function SettingsPage() {
                     value={apiKeyInput}
                     onChange={(e) => setApiKeyInput(e.target.value)}
                     placeholder="Leave empty for local servers without auth"
-                    className="w-full px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-purple-500"
+                    className="w-full px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--info)]"
                   />
                 </div>
 
                 {/* Save Button */}
                 <button
                   onClick={saveCustomConfig}
-                  className="w-full px-5 py-2.5 bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 transition-colors"
+                  className="w-full px-5 py-2.5 bg-[var(--info)] text-white rounded-lg font-medium hover:opacity-90 transition-opacity shadow-sm"
                 >
                   Save Custom Configuration
                 </button>
 
                 {customLlmBaseUrl && (
-                  <p className="text-sm text-emerald-400 flex items-center gap-1">
+                  <p className="text-sm text-[var(--success)] flex items-center gap-1">
                     <CheckCircle className="w-4 h-4" />
                     Custom LLM configured: {customLlmBaseUrl}
                   </p>
@@ -228,9 +228,9 @@ export function SettingsPage() {
 
           {/* API Key Configuration - only for non-custom providers */}
           {selectedProvider !== 'custom' && (
-            <div className="p-5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl">
+            <div className="p-5 bg-white border border-[var(--border)] rounded-xl shadow-sm">
               <div className="flex items-center gap-2 mb-3">
-                <Key className="w-5 h-5 text-cyan-400" />
+                <Key className="w-5 h-5 text-[var(--accent)]" />
                 <h3 className="font-semibold text-[var(--text)]">
                   {LLM_PROVIDERS.find(p => p.id === selectedProvider)?.name} API Key
                 </h3>
@@ -248,23 +248,23 @@ export function SettingsPage() {
                     selectedProvider === 'openai' ? 'sk-...' :
                     'API key...'
                   }
-                  className="flex-1 px-4 py-2.5 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                  className="flex-1 px-4 py-2.5 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                 />
                 <button
                   onClick={saveApiKey}
-                  className="px-5 py-2.5 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors"
+                  className="px-5 py-2.5 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors shadow-sm"
                 >
                   Save
                 </button>
               </div>
               {activeApiKey && (
-                <p className="text-sm text-emerald-400 mt-3 flex items-center gap-1">
+                <p className="text-sm text-[var(--success)] mt-3 flex items-center gap-1">
                   <CheckCircle className="w-4 h-4" />
                   API key configured and saved
                 </p>
               )}
               {useAIExtraction && !activeApiKey && (
-                <p className="text-sm text-amber-400 mt-3 flex items-center gap-1">
+                <p className="text-sm text-[var(--warning)] mt-3 flex items-center gap-1">
                   <AlertTriangle className="w-4 h-4" />
                   API key required for AI extraction
                 </p>
@@ -273,8 +273,8 @@ export function SettingsPage() {
           )}
 
           {/* Info Card */}
-          <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
-            <p className="text-sm text-cyan-300">
+          <div className="p-4 bg-[var(--accent-light)] border border-[var(--accent)]/30 rounded-xl">
+            <p className="text-sm text-[var(--accent)]">
               <strong>Privacy Note:</strong> API keys are stored locally in your browser and never sent to our servers.
               All AI extraction calls are made directly from your browser to the LLM provider.
             </p>

@@ -122,9 +122,9 @@ export function MeasureLibrary() {
 
   const getConfidenceColor = (confidence: string) => {
     switch (confidence) {
-      case 'high': return 'text-emerald-400';
-      case 'medium': return 'text-amber-400';
-      case 'low': return 'text-red-400';
+      case 'high': return 'text-[var(--success)]';
+      case 'medium': return 'text-[var(--warning)]';
+      case 'low': return 'text-[var(--danger)]';
       default: return 'text-[var(--text-muted)]';
     }
   };
@@ -205,7 +205,7 @@ export function MeasureLibrary() {
           </div>
           <button
             onClick={() => setShowCreator(true)}
-            className="px-4 py-2.5 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors flex items-center gap-2"
+            className="px-4 py-2.5 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2 shadow-sm"
           >
             <Plus className="w-4 h-4" />
             New Measure
@@ -218,12 +218,12 @@ export function MeasureLibrary() {
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
           className={`
-            relative border-2 border-dashed rounded-xl p-10 text-center transition-all mb-6
+            relative border-2 border-dashed rounded-xl p-10 text-center transition-all mb-6 bg-[var(--bg-secondary)]
             ${isProcessing
-              ? 'border-cyan-500/50 bg-cyan-500/5'
+              ? 'border-[var(--accent)]/50 bg-[var(--accent-light)]'
               : dragActive
-                ? 'border-cyan-500 bg-cyan-500/10'
-                : 'border-[var(--border)] hover:border-[var(--text-dim)] hover:bg-[var(--bg-secondary)]'
+                ? 'border-[var(--accent)] bg-[var(--accent-light)]'
+                : 'border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--bg-tertiary)]'
             }
           `}
         >
@@ -240,15 +240,15 @@ export function MeasureLibrary() {
             <div className="space-y-4">
               <div className="flex justify-center">
                 <div className="relative">
-                  <Brain className="w-12 h-12 text-cyan-400" />
-                  <Zap className="w-5 h-5 text-amber-400 absolute -right-1 -bottom-1 animate-pulse" />
+                  <Brain className="w-12 h-12 text-[var(--accent)]" />
+                  <Zap className="w-5 h-5 text-[var(--warning)] absolute -right-1 -bottom-1 animate-pulse" />
                 </div>
               </div>
               <div>
                 <p className="text-[var(--text)] font-medium mb-2">{progress.message}</p>
-                <div className="w-80 mx-auto h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+                <div className="w-80 mx-auto h-2 bg-[var(--border)] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
+                    className="h-full bg-[var(--accent)] transition-all duration-500"
                     style={{ width: `${progress.progress}%` }}
                   />
                 </div>
@@ -259,12 +259,12 @@ export function MeasureLibrary() {
             </div>
           ) : progress?.stage === 'complete' ? (
             <div className="space-y-4">
-              <CheckCircle className="w-12 h-12 mx-auto text-emerald-400" />
-              <p className="text-emerald-400 font-medium">{progress.message}</p>
+              <CheckCircle className="w-12 h-12 mx-auto text-[var(--success)]" />
+              <p className="text-[var(--success)] font-medium">{progress.message}</p>
             </div>
           ) : (
             <>
-              <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-cyan-400' : 'text-[var(--text-dim)]'}`} />
+              <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-[var(--accent)]' : 'text-[var(--text-dim)]'}`} />
               <p className="text-[var(--text)] font-medium mb-1">
                 Drop measure specification files here
               </p>
@@ -277,15 +277,15 @@ export function MeasureLibrary() {
 
         {/* Error display */}
         {error && (
-          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="mb-6 p-4 bg-[var(--danger-light)] border border-[var(--danger)]/30 rounded-lg flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-[var(--danger)] flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="text-red-400 font-medium">Extraction Error</p>
-              <p className="text-sm text-red-300/80 mt-1 whitespace-pre-wrap">{error}</p>
+              <p className="text-[var(--danger)] font-medium">Extraction Error</p>
+              <p className="text-sm text-[var(--text-muted)] mt-1 whitespace-pre-wrap">{error}</p>
               {error.includes('Settings') && (
                 <button
                   onClick={() => setActiveTab('settings')}
-                  className="mt-2 text-sm text-cyan-400 hover:text-cyan-300 underline"
+                  className="mt-2 text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] underline"
                 >
                   Go to Settings
                 </button>
@@ -293,7 +293,7 @@ export function MeasureLibrary() {
             </div>
             <button
               onClick={() => setError(null)}
-              className="text-red-400 hover:text-red-300"
+              className="text-[var(--danger)] hover:text-[var(--danger)]/80"
             >
               &times;
             </button>
@@ -344,7 +344,7 @@ export function MeasureLibrary() {
               <select
                 value={programFilter}
                 onChange={(e) => setProgramFilter(e.target.value as ProgramFilter)}
-                className="px-4 py-2 pr-8 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] appearance-none cursor-pointer focus:outline-none focus:border-cyan-500"
+                className="px-4 py-2 pr-8 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] appearance-none cursor-pointer focus:outline-none focus:border-[var(--accent)]"
               >
                 <option value="all">All Programs</option>
                 {availablePrograms.map(program => (
@@ -389,7 +389,7 @@ export function MeasureLibrary() {
             <p>No measures match the current filter</p>
             <button
               onClick={() => { setStatusTab('all'); setProgramFilter('all'); }}
-              className="mt-2 text-sm text-cyan-400 hover:text-cyan-300"
+              className="mt-2 text-sm text-[var(--accent)] hover:text-[var(--accent-hover)]"
             >
               Clear filters
             </button>
@@ -401,7 +401,7 @@ export function MeasureLibrary() {
             <p className="text-sm mt-1">Upload specification files or create a new measure to get started</p>
             <button
               onClick={() => setShowCreator(true)}
-              className="mt-4 px-4 py-2 bg-cyan-500/15 text-cyan-400 rounded-lg text-sm font-medium hover:bg-cyan-500/25 transition-colors inline-flex items-center gap-2"
+              className="mt-4 px-4 py-2 bg-[var(--primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2 shadow-sm"
             >
               <Plus className="w-4 h-4" />
               Create New Measure
@@ -448,12 +448,12 @@ function MeasureCard({
 
   return (
     <div
-      className={`bg-[var(--bg-secondary)] border rounded-xl p-5 transition-colors cursor-pointer group ${
+      className={`bg-white border rounded-xl p-5 transition-all cursor-pointer group shadow-sm hover:shadow-md ${
         isPublished
-          ? 'border-emerald-500/30'
+          ? 'border-[var(--success)]/30'
           : isLocked
-            ? 'border-emerald-500/50 bg-emerald-500/5'
-            : 'border-[var(--border)] hover:border-cyan-500/50'
+            ? 'border-[var(--success)]/50 bg-[var(--success-light)]'
+            : 'border-[var(--border)] hover:border-[var(--accent)]'
       }`}
       onClick={onSelect}
     >
@@ -462,12 +462,12 @@ function MeasureCard({
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             {/* Status Badge */}
             {isPublished ? (
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-emerald-500/15 text-emerald-400 flex items-center gap-1">
+              <span className="px-2 py-0.5 text-xs font-medium rounded bg-[var(--success-light)] text-[var(--success)] flex items-center gap-1">
                 <Send className="w-3 h-3" />
                 Published
               </span>
             ) : (
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-amber-500/15 text-amber-400 flex items-center gap-1">
+              <span className="px-2 py-0.5 text-xs font-medium rounded bg-[var(--warning-light)] text-[var(--warning)] flex items-center gap-1">
                 <Edit3 className="w-3 h-3" />
                 In Progress
               </span>
@@ -475,21 +475,21 @@ function MeasureCard({
             <span className="px-2 py-0.5 text-xs font-medium bg-[var(--bg-tertiary)] rounded border border-[var(--border)]">
               {measure.metadata.measureId}
             </span>
-            <span className="px-2 py-0.5 text-xs font-medium bg-cyan-500/15 text-cyan-400 rounded">
+            <span className="px-2 py-0.5 text-xs font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded">
               {measure.metadata.program.replace('_', ' ')}
             </span>
             <span className={`px-2 py-0.5 text-xs font-medium rounded ${getConfidenceColor(measure.overallConfidence)} bg-current/10`}>
               {measure.overallConfidence} confidence
             </span>
             {isLocked && (
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-emerald-500/15 text-emerald-400 flex items-center gap-1">
+              <span className="px-2 py-0.5 text-xs font-medium rounded bg-[var(--success-light)] text-[var(--success)] flex items-center gap-1">
                 <Shield className="w-3 h-3" />
                 Locked
               </span>
             )}
           </div>
 
-          <h3 className="text-[var(--text)] font-semibold mb-1 truncate group-hover:text-cyan-400 transition-colors">
+          <h3 className="text-[var(--text)] font-semibold mb-1 truncate group-hover:text-[var(--accent)] transition-colors">
             {measure.metadata.title}
           </h3>
           <p className="text-sm text-[var(--text-muted)] line-clamp-2">
@@ -501,12 +501,12 @@ function MeasureCard({
               <Clock className="w-3.5 h-3.5" />
               {isLocked ? `Locked ${new Date(measure.lockedAt!).toLocaleDateString()}` : `Updated ${new Date(measure.updatedAt).toLocaleDateString()}`}
             </span>
-            <span className={`flex items-center gap-1.5 ${progress === 100 ? 'text-emerald-400' : ''}`}>
+            <span className={`flex items-center gap-1.5 ${progress === 100 ? 'text-[var(--success)]' : ''}`}>
               <CheckCircle className="w-3.5 h-3.5" />
               {approved}/{total} reviewed
             </span>
             {flagged > 0 && (
-              <span className="flex items-center gap-1.5 text-amber-400">
+              <span className="flex items-center gap-1.5 text-[var(--warning)]">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 {flagged} flagged
               </span>
@@ -519,7 +519,7 @@ function MeasureCard({
             {/* Copy */}
             <button
               onClick={(e) => { e.stopPropagation(); onCopy(); }}
-              className="p-2 text-[var(--text-dim)] hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+              className="p-2 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)] rounded-lg transition-colors"
               title="Duplicate measure"
             >
               <Copy className="w-4 h-4" />
@@ -528,7 +528,7 @@ function MeasureCard({
             {!isPublished && progress === 100 && (
               <button
                 onClick={(e) => { e.stopPropagation(); onPublish(); }}
-                className="p-2 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+                className="p-2 text-[var(--success)] hover:bg-[var(--success-light)] rounded-lg transition-colors"
                 title="Publish measure"
               >
                 <Send className="w-4 h-4" />
@@ -537,7 +537,7 @@ function MeasureCard({
             {isPublished && (
               <button
                 onClick={(e) => { e.stopPropagation(); onUnpublish(); }}
-                className="p-2 text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
+                className="p-2 text-[var(--warning)] hover:bg-[var(--warning-light)] rounded-lg transition-colors"
                 title="Unpublish (move back to In Progress)"
               >
                 <Edit3 className="w-4 h-4" />
@@ -546,7 +546,7 @@ function MeasureCard({
             {canLock && !isPublished && (
               <button
                 onClick={(e) => { e.stopPropagation(); onLock(); }}
-                className="p-2 text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+                className="p-2 text-[var(--accent)] hover:bg-[var(--accent-light)] rounded-lg transition-colors"
                 title="Lock for publish"
               >
                 <Lock className="w-4 h-4" />
@@ -555,7 +555,7 @@ function MeasureCard({
             {isLocked && (
               <button
                 onClick={(e) => { e.stopPropagation(); onUnlock(); }}
-                className="p-2 text-amber-400 hover:bg-amber-500/10 rounded-lg transition-colors"
+                className="p-2 text-[var(--warning)] hover:bg-[var(--warning-light)] rounded-lg transition-colors"
                 title="Unlock for editing"
               >
                 <Unlock className="w-4 h-4" />
@@ -564,7 +564,7 @@ function MeasureCard({
             {!isLocked && !isPublished && (
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="p-2 text-[var(--text-dim)] hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                className="p-2 text-[var(--text-dim)] hover:text-[var(--danger)] hover:bg-[var(--danger-light)] rounded-lg transition-colors"
                 title="Delete measure"
               >
                 <Trash2 className="w-4 h-4" />
@@ -577,19 +577,19 @@ function MeasureCard({
               <circle
                 cx="24" cy="24" r="20"
                 fill="none"
-                stroke="var(--bg-tertiary)"
+                stroke="var(--border)"
                 strokeWidth="4"
               />
               <circle
                 cx="24" cy="24" r="20"
                 fill="none"
-                stroke={isPublished ? '#34d399' : isLocked ? '#34d399' : progress === 100 ? '#34d399' : '#7dd3fc'}
+                stroke={isPublished ? 'var(--success)' : isLocked ? 'var(--success)' : progress === 100 ? 'var(--success)' : 'var(--accent)'}
                 strokeWidth="4"
                 strokeDasharray={`${progress * 1.256} 126`}
                 strokeLinecap="round"
               />
             </svg>
-            <span className={`absolute inset-0 flex items-center justify-center text-xs font-medium ${isPublished || isLocked ? 'text-emerald-400' : ''}`}>
+            <span className={`absolute inset-0 flex items-center justify-center text-xs font-medium ${isPublished || isLocked ? 'text-[var(--success)]' : ''}`}>
               {isPublished ? <Send className="w-4 h-4" /> : isLocked ? <Lock className="w-4 h-4" /> : `${progress}%`}
             </span>
           </div>
