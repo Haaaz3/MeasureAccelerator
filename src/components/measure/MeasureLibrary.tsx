@@ -318,7 +318,7 @@ export function MeasureLibrary() {
               onClick={() => setStatusTab('in_progress')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
                 statusTab === 'in_progress'
-                  ? 'bg-amber-500/15 text-amber-400'
+                  ? 'bg-[var(--warning-light)] text-[var(--warning)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
               }`}
             >
@@ -329,7 +329,7 @@ export function MeasureLibrary() {
               onClick={() => setStatusTab('published')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
                 statusTab === 'published'
-                  ? 'bg-emerald-500/15 text-emerald-400'
+                  ? 'bg-[var(--success-light)] text-[var(--success)]'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
               }`}
             >

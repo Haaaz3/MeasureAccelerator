@@ -23,7 +23,7 @@ export function CodeGeneration() {
           </p>
           <button
             onClick={() => setActiveTab('library')}
-            className="px-6 py-3 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors inline-flex items-center gap-2"
+            className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2"
           >
             <Library className="w-4 h-4" />
             Go to Measure Library
@@ -56,7 +56,7 @@ export function CodeGeneration() {
         <nav className="flex items-center gap-2 text-sm mb-4">
           <button
             onClick={() => setActiveTab('library')}
-            className="text-[var(--text-muted)] hover:text-cyan-400 transition-colors"
+            className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
           >
             Measure Library
           </button>
@@ -76,18 +76,18 @@ export function CodeGeneration() {
 
         {/* Approval status */}
         {!canGenerate && (
-          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+          <div className="mb-6 p-4 bg-[var(--warning-light)] border border-[var(--warning)]/30 rounded-xl">
             <div className="flex items-start gap-3">
-              <Sparkles className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <Sparkles className="w-5 h-5 text-[var(--warning)] flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="font-medium text-amber-400">Review Required</h3>
-                <p className="text-sm text-amber-300/80 mt-1">
+                <h3 className="font-medium text-[var(--warning)]">Review Required</h3>
+                <p className="text-sm text-[var(--warning)] opacity-80 mt-1">
                   All measure components must be approved before generating production code.
                   Currently {approvalPercent}% approved ({reviewProgress.approved}/{reviewProgress.total} components).
                 </p>
                 <button
                   onClick={() => useMeasureStore.getState().setActiveTab('editor')}
-                  className="mt-3 px-3 py-1.5 bg-amber-500/20 text-amber-400 rounded-lg text-sm font-medium hover:bg-amber-500/30 transition-colors"
+                  className="mt-3 px-3 py-1.5 bg-[var(--warning-light)] text-[var(--warning)] rounded-lg text-sm font-medium hover:opacity-80 transition-all border border-[var(--warning)]/20"
                 >
                   Continue Review
                 </button>
@@ -110,7 +110,7 @@ export function CodeGeneration() {
                 onClick={() => setFormat(f.id)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
                   format === f.id
-                    ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
+                    ? 'bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/30'
                     : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)]'
                 }`}
               >
@@ -144,10 +144,10 @@ export function CodeGeneration() {
                 onClick={handleCopy}
                 className="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg flex items-center gap-2 hover:bg-[var(--bg)] transition-colors"
               >
-                {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? <Check className="w-4 h-4 text-[var(--success)]" /> : <Copy className="w-4 h-4" />}
                 {copied ? 'Copied!' : 'Copy'}
               </button>
-              <button className="px-3 py-1.5 text-sm bg-cyan-500/15 text-cyan-400 rounded-lg flex items-center gap-2 hover:bg-cyan-500/25 transition-colors">
+              <button className="px-3 py-1.5 text-sm bg-[var(--accent-light)] text-[var(--accent)] rounded-lg flex items-center gap-2 hover:bg-[var(--accent)]/20 transition-colors">
                 <Download className="w-4 h-4" />
                 Download
               </button>
@@ -158,7 +158,7 @@ export function CodeGeneration() {
           <div className="relative">
             {isGenerating && (
               <div className="absolute inset-0 bg-[var(--bg-secondary)]/80 flex items-center justify-center z-10">
-                <div className="flex items-center gap-3 text-cyan-400">
+                <div className="flex items-center gap-3 text-[var(--accent)]">
                   <RefreshCw className="w-5 h-5 animate-spin" />
                   <span>Generating {format.toUpperCase()}...</span>
                 </div>
@@ -177,19 +177,19 @@ export function CodeGeneration() {
           <h3 className="text-sm font-medium text-[var(--text)] mb-2">Generation Notes</h3>
           <ul className="space-y-1 text-sm text-[var(--text-muted)]">
             <li className="flex items-start gap-2">
-              <span className="text-cyan-400 mt-0.5">•</span>
+              <span className="text-[var(--accent)] mt-0.5">•</span>
               Code generated from UMS version {measure.metadata.version}
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-cyan-400 mt-0.5">•</span>
+              <span className="text-[var(--accent)] mt-0.5">•</span>
               {measure.populations.length} population definitions included
             </li>
             <li className="flex items-start gap-2">
-              <span className="text-cyan-400 mt-0.5">•</span>
+              <span className="text-[var(--accent)] mt-0.5">•</span>
               {measure.valueSets.length} value set references linked
             </li>
             {!canGenerate && (
-              <li className="flex items-start gap-2 text-amber-400">
+              <li className="flex items-start gap-2 text-[var(--warning)]">
                 <span className="mt-0.5">⚠</span>
                 Preview only - complete review to generate production code
               </li>

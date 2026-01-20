@@ -468,7 +468,7 @@ function TimingSelector({
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <Calendar className="w-3 h-3 text-cyan-400" />
+        <Calendar className="w-3 h-3 text-[var(--accent)]" />
         <span className="text-xs font-medium text-[var(--text-muted)]">Timing</span>
       </div>
 
@@ -576,7 +576,7 @@ function ValueSetSelector({
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg border text-left text-sm transition-all ${
           selectedVs
-            ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-400'
+            ? 'border-[var(--accent)]/40 bg-[var(--accent-light)] text-[var(--accent)]'
             : 'border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-muted)]'
         }`}
       >
@@ -621,7 +621,7 @@ function ValueSetSelector({
                     setIsOpen(false);
                   }}
                   className={`w-full px-3 py-2 text-left hover:bg-[var(--bg-secondary)] transition-colors ${
-                    value === (valueSet.oid || valueSet.id) ? 'bg-cyan-500/10' : ''
+                    value === (valueSet.oid || valueSet.id) ? 'bg-[var(--accent-light)]' : ''
                   }`}
                 >
                   <div className="text-sm text-[var(--text)] truncate">{valueSet.name}</div>
@@ -699,10 +699,10 @@ function CriteriaBlockItem({
       <div
         className={`border rounded-lg transition-all ${
           block.operator === 'AND'
-            ? 'border-blue-500/30 bg-blue-500/5'
+            ? 'border-[var(--accent)]/30 bg-[var(--accent-light)]'
             : block.operator === 'OR'
-            ? 'border-amber-500/30 bg-amber-500/5'
-            : 'border-rose-500/30 bg-rose-500/5'
+            ? 'border-[var(--warning)]/30 bg-[var(--warning-light)]'
+            : 'border-[var(--danger)]/30 bg-[var(--danger-light)]'
         }`}
         style={{ marginLeft: depth > 0 ? '1rem' : 0 }}
       >
@@ -725,10 +725,10 @@ function CriteriaBlockItem({
             onChange={(e) => onUpdate({ ...block, operator: e.target.value as LogicOperator })}
             className={`px-2 py-1 rounded text-xs font-bold ${
               block.operator === 'AND'
-                ? 'bg-blue-500/20 text-blue-400'
+                ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                 : block.operator === 'OR'
-                ? 'bg-amber-500/20 text-amber-400'
-                : 'bg-rose-500/20 text-rose-400'
+                ? 'bg-[var(--warning-light)] text-[var(--warning)]'
+                : 'bg-[var(--danger-light)] text-[var(--danger)]'
             }`}
           >
             <option value="AND">ALL of (AND)</option>
@@ -780,7 +780,7 @@ function CriteriaBlockItem({
               <button
                 type="button"
                 onClick={() => handleAddChild('criterion')}
-                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-cyan-400 hover:bg-cyan-500/10 border border-cyan-500/30 rounded-lg transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[var(--accent)] hover:bg-[var(--accent-light)] border border-[var(--accent)]/30 rounded-lg transition-colors"
               >
                 <Plus className="w-3 h-3" />
                 Add Criterion
@@ -974,7 +974,7 @@ export function CriteriaBlockBuilder({
           onClick={() => setCqlVisible(!cqlVisible)}
           className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
             cqlVisible
-              ? 'bg-emerald-500/20 text-emerald-400'
+              ? 'bg-[var(--success-light)] text-[var(--success)]'
               : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
           }`}
         >
@@ -1008,7 +1008,7 @@ export function CriteriaBlockBuilder({
           <button
             type="button"
             onClick={() => handleAddRoot('criterion')}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-cyan-400 hover:bg-cyan-500/10 border border-cyan-500/30 rounded-lg transition-colors"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-[var(--accent)] hover:bg-[var(--accent-light)] border border-[var(--accent)]/30 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4" />
             Add Criterion
@@ -1028,8 +1028,8 @@ export function CriteriaBlockBuilder({
       {cqlVisible && cqlPreview && (
         <div className="mt-4 p-4 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border)]">
           <div className="flex items-center gap-2 mb-2">
-            <Code className="w-4 h-4 text-emerald-400" />
-            <span className="text-xs font-medium text-emerald-400">CQL Preview</span>
+            <Code className="w-4 h-4 text-[var(--success)]" />
+            <span className="text-xs font-medium text-[var(--success)]">CQL Preview</span>
           </div>
           <pre className="text-xs text-[var(--text-muted)] font-mono whitespace-pre-wrap overflow-x-auto">
             {cqlPreview}

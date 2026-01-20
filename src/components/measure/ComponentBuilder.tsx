@@ -181,7 +181,7 @@ export function ComponentBuilder({
                   onClick={() => setComponentType(type.value)}
                   className={`p-3 rounded-lg border text-left transition-all ${
                     componentType === type.value
-                      ? 'bg-cyan-500/15 border-cyan-500/50 text-cyan-400'
+                      ? 'bg-[var(--accent-light)] border-[var(--accent)]/50 text-[var(--accent)]'
                       : 'bg-[var(--bg-tertiary)] border-[var(--border)] text-[var(--text)] hover:border-[var(--text-dim)]'
                   }`}
                 >
@@ -202,7 +202,7 @@ export function ComponentBuilder({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g., Patient has a diagnosis of diabetes during the measurement period"
-              className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50 resize-none"
+              className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50 resize-none"
               rows={2}
             />
           </div>
@@ -215,7 +215,7 @@ export function ComponentBuilder({
                 onClick={() => setValueSetMode('existing')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   valueSetMode === 'existing'
-                    ? 'bg-cyan-500/15 text-cyan-400'
+                    ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                     : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
@@ -225,7 +225,7 @@ export function ComponentBuilder({
                 onClick={() => setValueSetMode('new')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   valueSetMode === 'new'
-                    ? 'bg-cyan-500/15 text-cyan-400'
+                    ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                     : 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}
               >
@@ -237,7 +237,7 @@ export function ComponentBuilder({
               <select
                 value={selectedValueSetId}
                 onChange={(e) => setSelectedValueSetId(e.target.value)}
-                className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
+                className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50"
               >
                 <option value="">-- Select a value set --</option>
                 {existingValueSets.map((vs) => (
@@ -253,7 +253,7 @@ export function ComponentBuilder({
                   value={newValueSetName}
                   onChange={(e) => setNewValueSetName(e.target.value)}
                   placeholder="Value Set Name (e.g., Diabetes Diagnosis)"
-                  className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50"
+                  className="w-full px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50"
                 />
                 <div className="grid grid-cols-2 gap-3">
                   <input
@@ -261,12 +261,12 @@ export function ComponentBuilder({
                     value={newValueSetOid}
                     onChange={(e) => setNewValueSetOid(e.target.value)}
                     placeholder="OID (optional, e.g., 2.16.840.1...)"
-                    className="px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50"
+                    className="px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50"
                   />
                   <select
                     value={newValueSetCodeSystem}
                     onChange={(e) => setNewValueSetCodeSystem(e.target.value as CodeSystem)}
-                    className="px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
+                    className="px-4 py-3 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50"
                   >
                     {CODE_SYSTEMS.map((cs) => (
                       <option key={cs.value} value={cs.value}>{cs.label}</option>
@@ -290,7 +290,7 @@ export function ComponentBuilder({
                   onClick={() => setTimingPreset(preset.value)}
                   className={`p-3 rounded-lg border text-left transition-all ${
                     timingPreset === preset.value
-                      ? 'bg-blue-500/15 border-blue-500/50 text-blue-400'
+                      ? 'bg-blue-500/15 border-blue-500/50 text-[var(--accent)]'
                       : 'bg-[var(--bg-tertiary)] border-[var(--border)] text-[var(--text)] hover:border-[var(--text-dim)]'
                   }`}
                 >
@@ -343,7 +343,7 @@ export function ComponentBuilder({
                   <span className="flex-1 text-sm text-[var(--text)]">{req}</span>
                   <button
                     onClick={() => handleRemoveRequirement(idx)}
-                    className="p-1 text-red-400 hover:bg-red-500/20 rounded"
+                    className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -356,7 +356,7 @@ export function ComponentBuilder({
                   onChange={(e) => setNewRequirement(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddRequirement()}
                   placeholder="e.g., Age >= 18, HbA1c > 9%, most recent result"
-                  className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50"
+                  className="flex-1 px-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50"
                 />
                 <button
                   onClick={handleAddRequirement}
@@ -379,7 +379,7 @@ export function ComponentBuilder({
           </button>
           <button
             onClick={handleSave}
-            className="px-6 py-2 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors flex items-center gap-2"
+            className="px-6 py-2 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
             Add Component

@@ -187,7 +187,7 @@ export function ValueSetManager() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-[var(--text)] flex items-center gap-3">
-                  <Database className="w-7 h-7 text-cyan-400" />
+                  <Database className="w-7 h-7 text-[var(--accent)]" />
                   Value Set Manager
                 </h1>
                 <p className="text-sm text-[var(--text-muted)] mt-1">
@@ -196,7 +196,7 @@ export function ValueSetManager() {
                     href="https://vsac.nlm.nih.gov/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-cyan-400 hover:underline"
+                    className="text-[var(--accent)] hover:underline"
                   >
                     VSAC best practices
                   </a>
@@ -206,7 +206,7 @@ export function ValueSetManager() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="px-4 py-2 bg-cyan-500 text-white rounded-lg text-sm font-medium hover:bg-cyan-600 transition-colors flex items-center gap-2"
+                  className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
                   New Value Set
@@ -258,7 +258,7 @@ export function ValueSetManager() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search by name, OID, or code..."
-                  className="w-full pl-10 pr-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50"
+                  className="w-full pl-10 pr-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50"
                 />
               </div>
 
@@ -268,7 +268,7 @@ export function ValueSetManager() {
                 <select
                   value={selectedCodeSystem}
                   onChange={(e) => setSelectedCodeSystem(e.target.value as CodeSystem | 'all')}
-                  className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
+                  className="px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50"
                 >
                   <option value="all">All Code Systems</option>
                   {codeSystems.map(sys => (
@@ -302,13 +302,13 @@ export function ValueSetManager() {
               <div className="flex items-center border border-[var(--border)] rounded-lg overflow-hidden">
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-2 ${viewMode === 'list' ? 'bg-cyan-500/15 text-cyan-400' : 'bg-[var(--bg-tertiary)] text-[var(--text-dim)]'}`}
+                  className={`p-2 ${viewMode === 'list' ? 'bg-[var(--accent-light)] text-[var(--accent)]' : 'bg-[var(--bg-tertiary)] text-[var(--text-dim)]'}`}
                 >
                   <Eye className="w-4 h-4" />
                 </button>
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-2 ${viewMode === 'grid' ? 'bg-cyan-500/15 text-cyan-400' : 'bg-[var(--bg-tertiary)] text-[var(--text-dim)]'}`}
+                  className={`p-2 ${viewMode === 'grid' ? 'bg-[var(--accent-light)] text-[var(--accent)]' : 'bg-[var(--bg-tertiary)] text-[var(--text-dim)]'}`}
                 >
                   <Database className="w-4 h-4" />
                 </button>
@@ -383,9 +383,9 @@ function StatCard({
   color?: 'cyan' | 'emerald' | 'amber';
 }) {
   const colorClasses = {
-    cyan: 'text-cyan-400 bg-cyan-500/15',
-    emerald: 'text-emerald-400 bg-emerald-500/15',
-    amber: 'text-amber-400 bg-amber-500/15',
+    cyan: 'text-[var(--accent)] bg-[var(--accent-light)]',
+    emerald: 'text-[var(--success)] bg-[var(--success-light)]',
+    amber: 'text-[var(--warning)] bg-[var(--warning-light)]',
   };
 
   return (
@@ -416,17 +416,17 @@ function ValueSetListItem({
 }) {
   return (
     <div
-      className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] hover:border-cyan-500/50 transition-colors cursor-pointer group"
+      className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors cursor-pointer group"
       onClick={onSelect}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <h3 className="font-semibold text-[var(--text)] group-hover:text-cyan-400 transition-colors">
+            <h3 className="font-semibold text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
               {valueSet.name}
             </h3>
             {valueSet.verified && (
-              <span className="px-2 py-0.5 text-xs bg-emerald-500/15 text-emerald-400 rounded flex items-center gap-1">
+              <span className="px-2 py-0.5 text-xs bg-[var(--success-light)] text-[var(--success)] rounded flex items-center gap-1">
                 <Shield className="w-3 h-3" />
                 VSAC Verified
               </span>
@@ -461,14 +461,14 @@ function ValueSetListItem({
         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={(e) => { e.stopPropagation(); onExportJSON(); }}
-            className="p-2 text-[var(--text-dim)] hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg transition-colors"
+            className="p-2 text-[var(--text-dim)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)] rounded-lg transition-colors"
             title="Export as FHIR JSON"
           >
             <FileJson className="w-4 h-4" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onExportCSV(); }}
-            className="p-2 text-[var(--text-dim)] hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+            className="p-2 text-[var(--text-dim)] hover:text-[var(--success)] hover:bg-[var(--success-light)] rounded-lg transition-colors"
             title="Export as CSV"
           >
             <FileSpreadsheet className="w-4 h-4" />
@@ -489,7 +489,7 @@ function ValueSetGridItem({
 }) {
   return (
     <div
-      className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] hover:border-cyan-500/50 transition-colors cursor-pointer"
+      className="p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] hover:border-[var(--accent)]/50 transition-colors cursor-pointer"
       onClick={onSelect}
     >
       <div className="flex items-start justify-between mb-3">
@@ -497,7 +497,7 @@ function ValueSetGridItem({
           <Code className="w-5 h-5" />
         </div>
         {valueSet.verified && (
-          <Shield className="w-4 h-4 text-emerald-400" />
+          <Shield className="w-4 h-4 text-[var(--success)]" />
         )}
       </div>
 
@@ -558,7 +558,7 @@ function ValueSetDetailPanel({
           <div className="flex items-center gap-2 mb-1">
             <h2 className="font-bold text-[var(--text)]">{valueSet.name}</h2>
             {valueSet.verified && (
-              <Shield className="w-4 h-4 text-emerald-400" />
+              <Shield className="w-4 h-4 text-[var(--success)]" />
             )}
           </div>
           {valueSet.oid && (
@@ -613,14 +613,14 @@ function ValueSetDetailPanel({
         <div className="flex gap-2 pt-2">
           <button
             onClick={onExportJSON}
-            className="flex-1 py-2 text-sm bg-cyan-500/15 text-cyan-400 rounded-lg hover:bg-cyan-500/25 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-2 text-sm bg-[var(--accent-light)] text-[var(--accent)] rounded-lg hover:bg-[var(--accent)]/20 transition-colors flex items-center justify-center gap-2"
           >
             <FileJson className="w-4 h-4" />
             FHIR JSON
           </button>
           <button
             onClick={onExportCSV}
-            className="flex-1 py-2 text-sm bg-emerald-500/15 text-emerald-400 rounded-lg hover:bg-emerald-500/25 transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-2 text-sm bg-[var(--success-light)] text-[var(--success)] rounded-lg hover:opacity-80 transition-all flex items-center justify-center gap-2"
           >
             <FileSpreadsheet className="w-4 h-4" />
             CSV
@@ -638,12 +638,12 @@ function ValueSetDetailPanel({
               value={codeSearch}
               onChange={(e) => setCodeSearch(e.target.value)}
               placeholder="Search codes..."
-              className="w-full pl-10 pr-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-cyan-500/50"
+              className="w-full pl-10 pr-4 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] placeholder:text-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]/50"
             />
           </div>
           <button
             onClick={() => setShowAddCode(!showAddCode)}
-            className="px-3 py-2 bg-cyan-500/15 text-cyan-400 rounded-lg hover:bg-cyan-500/25 transition-colors"
+            className="px-3 py-2 bg-[var(--accent-light)] text-[var(--accent)] rounded-lg hover:bg-[var(--accent)]/20 transition-colors"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -687,7 +687,7 @@ function ValueSetDetailPanel({
                   setNewCode({ code: '', display: '', system: 'ICD10' });
                   setShowAddCode(false);
                 }}
-                className="px-3 py-1.5 bg-cyan-500 text-white rounded text-sm hover:bg-cyan-600"
+                className="px-3 py-1.5 bg-[var(--primary)] text-white rounded text-sm hover:bg-[var(--primary-hover)]"
               >
                 Add
               </button>
@@ -713,7 +713,7 @@ function ValueSetDetailPanel({
                   className="flex items-center justify-between p-2 bg-[var(--bg-tertiary)] rounded group hover:bg-[var(--bg)]"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <code className="text-xs text-cyan-400 font-mono shrink-0">{code.code}</code>
+                    <code className="text-xs text-[var(--accent)] font-mono shrink-0">{code.code}</code>
                     <span className="text-sm text-[var(--text)] truncate">{code.display}</span>
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
@@ -768,7 +768,7 @@ function CreateValueSetModal({ onClose }: { onClose: () => void }) {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., Diabetes Mellitus Diagnoses"
-              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
+              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50"
             />
           </div>
 
@@ -779,7 +779,7 @@ function CreateValueSetModal({ onClose }: { onClose: () => void }) {
               value={oid}
               onChange={(e) => setOid(e.target.value)}
               placeholder="e.g., 2.16.840.1.113883.3.464.1003.103.12.1001"
-              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500/50"
+              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50"
             />
           </div>
 
@@ -790,12 +790,12 @@ function CreateValueSetModal({ onClose }: { onClose: () => void }) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe the clinical concept this value set represents..."
               rows={3}
-              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500/50 resize-none"
+              className="w-full px-3 py-2 bg-[var(--bg-tertiary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]/50 resize-none"
             />
           </div>
 
-          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <p className="text-sm text-blue-400">
+          <div className="p-3 bg-[var(--accent-light)] border border-blue-500/20 rounded-lg">
+            <p className="text-sm text-[var(--accent)]">
               <strong>Tip:</strong> Following VSAC best practices, ensure your value set name clearly
               describes the clinical concept and avoid creating duplicates of existing value sets.
             </p>
@@ -815,7 +815,7 @@ function CreateValueSetModal({ onClose }: { onClose: () => void }) {
               onClose();
             }}
             disabled={!name.trim()}
-            className="px-4 py-2 bg-cyan-500 text-white rounded-lg text-sm font-medium hover:bg-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-[var(--primary)] text-white rounded-lg text-sm font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Create Value Set
           </button>
@@ -828,20 +828,20 @@ function CreateValueSetModal({ onClose }: { onClose: () => void }) {
 // Helper functions
 function getConfidenceColor(confidence: string): string {
   switch (confidence) {
-    case 'high': return 'bg-emerald-500/15 text-emerald-400';
-    case 'medium': return 'bg-amber-500/15 text-amber-400';
-    case 'low': return 'bg-red-500/15 text-red-400';
+    case 'high': return 'bg-[var(--success-light)] text-[var(--success)]';
+    case 'medium': return 'bg-[var(--warning-light)] text-[var(--warning)]';
+    case 'low': return 'bg-[var(--danger-light)] text-[var(--danger)]';
     default: return 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]';
   }
 }
 
 function getSystemBgColor(system: string): string {
   switch (system) {
-    case 'ICD10': return 'bg-blue-500/15 text-blue-400';
+    case 'ICD10': return 'bg-blue-500/15 text-[var(--accent)]';
     case 'SNOMED': return 'bg-purple-500/15 text-purple-400';
-    case 'CPT': return 'bg-emerald-500/15 text-emerald-400';
-    case 'HCPCS': return 'bg-cyan-500/15 text-cyan-400';
-    case 'LOINC': return 'bg-amber-500/15 text-amber-400';
+    case 'CPT': return 'bg-[var(--success-light)] text-[var(--success)]';
+    case 'HCPCS': return 'bg-[var(--accent-light)] text-[var(--accent)]';
+    case 'LOINC': return 'bg-[var(--warning-light)] text-[var(--warning)]';
     case 'RxNorm': return 'bg-pink-500/15 text-pink-400';
     case 'CVX': return 'bg-indigo-500/15 text-indigo-400';
     default: return 'bg-[var(--bg-tertiary)] text-[var(--text-muted)]';

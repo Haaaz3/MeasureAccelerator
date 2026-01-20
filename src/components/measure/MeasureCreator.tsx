@@ -1185,8 +1185,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
           <div className="absolute inset-0 bg-black/40" onClick={handleCancelClose} />
           <div className="relative bg-[var(--bg)] border border-[var(--border)] rounded-xl shadow-2xl p-6 max-w-md mx-4">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-full bg-amber-500/15 flex items-center justify-center flex-shrink-0">
-                <Save className="w-6 h-6 text-amber-400" />
+              <div className="w-12 h-12 rounded-full bg-[var(--warning-light)] flex items-center justify-center flex-shrink-0">
+                <Save className="w-6 h-6 text-[var(--warning)]" />
               </div>
               <div className="flex-1">
                 <h3 className="text-lg font-semibold text-[var(--text)] mb-2">Unsaved Changes</h3>
@@ -1249,9 +1249,9 @@ Return ONLY valid JSON, no markdown or explanation.`;
                       disabled={!isComplete}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all ${
                         isCurrent
-                          ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/40'
+                          ? 'bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/40'
                           : isComplete
-                          ? 'text-emerald-400 hover:bg-emerald-500/10 cursor-pointer'
+                          ? 'text-[var(--success)] hover:bg-[var(--success-light)] cursor-pointer'
                           : 'text-[var(--text-dim)]'
                       }`}
                     >
@@ -1282,18 +1282,18 @@ Return ONLY valid JSON, no markdown or explanation.`;
               <div className="grid grid-cols-3 gap-4 max-w-3xl mx-auto">
                 <button
                   onClick={() => setMode('ai_guided')}
-                  className={`p-6 rounded-xl border-2 text-left transition-all hover:border-cyan-500/50 ${
-                    mode === 'ai_guided' ? 'border-cyan-500 bg-cyan-500/10' : 'border-[var(--border)]'
+                  className={`p-6 rounded-xl border-2 text-left transition-all hover:border-[var(--accent)]/50 ${
+                    mode === 'ai_guided' ? 'border-[var(--accent)] bg-[var(--accent-light)]' : 'border-[var(--border)]'
                   }`}
                 >
-                  <div className="w-14 h-14 rounded-xl bg-cyan-500/15 flex items-center justify-center mb-4">
-                    <Brain className="w-7 h-7 text-cyan-400" />
+                  <div className="w-14 h-14 rounded-xl bg-[var(--accent-light)] flex items-center justify-center mb-4">
+                    <Brain className="w-7 h-7 text-[var(--accent)]" />
                   </div>
                   <h3 className="font-semibold text-[var(--text)] mb-2">AI-Guided Builder</h3>
                   <p className="text-sm text-[var(--text-muted)]">
                     Paste measure specs and let AI extract populations, criteria, and value sets
                   </p>
-                  <div className="mt-4 flex items-center gap-1 text-xs text-cyan-400">
+                  <div className="mt-4 flex items-center gap-1 text-xs text-[var(--accent)]">
                     <Wand2 className="w-3 h-3" />
                     <span>Recommended</span>
                   </div>
@@ -1316,13 +1316,13 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
                 <button
                   onClick={() => setMode('copy')}
-                  className={`p-6 rounded-xl border-2 text-left transition-all hover:border-emerald-500/50 ${
-                    mode === 'copy' ? 'border-emerald-500 bg-emerald-500/10' : 'border-[var(--border)]'
+                  className={`p-6 rounded-xl border-2 text-left transition-all hover:border-[var(--success)]/50 ${
+                    mode === 'copy' ? 'border-[var(--success)] bg-[var(--success-light)]' : 'border-[var(--border)]'
                   }`}
                   disabled={measures.length === 0}
                 >
-                  <div className="w-14 h-14 rounded-xl bg-emerald-500/15 flex items-center justify-center mb-4">
-                    <Copy className="w-7 h-7 text-emerald-400" />
+                  <div className="w-14 h-14 rounded-xl bg-[var(--success-light)] flex items-center justify-center mb-4">
+                    <Copy className="w-7 h-7 text-[var(--success)]" />
                   </div>
                   <h3 className="font-semibold text-[var(--text)] mb-2">Copy Existing</h3>
                   <p className="text-sm text-[var(--text-muted)]">
@@ -1349,7 +1349,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                         onClick={() => setSourceMeasureId(m.id)}
                         className={`p-4 rounded-lg border text-left transition-all ${
                           sourceMeasureId === m.id
-                            ? 'border-emerald-500 bg-emerald-500/10'
+                            ? 'border-[var(--success)] bg-[var(--success-light)]'
                             : 'border-[var(--border)] hover:border-[var(--text-dim)]'
                         }`}
                       >
@@ -1358,7 +1358,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                             <span className="text-xs font-mono text-[var(--text-muted)]">{m.metadata.measureId}</span>
                             <div className="text-sm font-medium text-[var(--text)]">{m.metadata.title}</div>
                           </div>
-                          {sourceMeasureId === m.id && <Check className="w-5 h-5 text-emerald-400" />}
+                          {sourceMeasureId === m.id && <Check className="w-5 h-5 text-[var(--success)]" />}
                         </div>
                       </button>
                     ))}
@@ -1372,8 +1372,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
           {currentStep === 'ai_input' && (
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-cyan-500/15 flex items-center justify-center">
-                  <Brain className="w-8 h-8 text-cyan-400" />
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--accent-light)] flex items-center justify-center">
+                  <Brain className="w-8 h-8 text-[var(--accent)]" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">AI-Guided Extraction</h3>
                 <p className="text-[var(--text-muted)]">
@@ -1382,8 +1382,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
               </div>
 
               {/* Info box */}
-              <div className="flex items-start gap-3 p-4 bg-cyan-500/10 border border-cyan-500/20 rounded-lg">
-                <Info className="w-5 h-5 text-cyan-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-4 bg-[var(--accent-light)] border border-[var(--accent)]/20 rounded-lg">
+                <Info className="w-5 h-5 text-[var(--accent)] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   <strong>Supported inputs:</strong> PDF specifications, HTML documents, Excel/CSV files, ZIP packages, or plain text.
                   The AI will extract populations, criteria, timing constraints, and match value sets automatically.
@@ -1398,8 +1398,8 @@ Return ONLY valid JSON, no markdown or explanation.`;
                 onClick={() => fileInputRef.current?.click()}
                 className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
                   isDragging
-                    ? 'border-cyan-500 bg-cyan-500/10'
-                    : 'border-[var(--border)] hover:border-cyan-500/50 hover:bg-cyan-500/5'
+                    ? 'border-[var(--accent)] bg-[var(--accent-light)]'
+                    : 'border-[var(--border)] hover:border-[var(--accent)]/50 hover:bg-[var(--accent)]/5'
                 } ${aiProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
               >
                 <input
@@ -1411,7 +1411,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                   className="hidden"
                   disabled={aiProcessing}
                 />
-                <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-cyan-400' : 'text-[var(--text-dim)]'}`} />
+                <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-[var(--accent)]' : 'text-[var(--text-dim)]'}`} />
                 <p className="text-[var(--text)] font-medium mb-1">
                   {isDragging ? 'Drop files here' : 'Drag & drop files or click to browse'}
                 </p>
@@ -1447,7 +1447,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
-                            <File className={`w-4 h-4 flex-shrink-0 ${hasError ? 'text-rose-400' : 'text-cyan-400'}`} />
+                            <File className={`w-4 h-4 flex-shrink-0 ${hasError ? 'text-rose-400' : 'text-[var(--accent)]'}`} />
                             <div className="min-w-0">
                               <div className="text-sm text-[var(--text)] truncate">{file.name}</div>
                               <div className="text-xs text-[var(--text-muted)]">
@@ -1455,7 +1455,7 @@ Return ONLY valid JSON, no markdown or explanation.`;
                                   hasError ? (
                                     <span className="text-rose-400">{doc.error}</span>
                                   ) : (
-                                    <span className="text-emerald-400">{doc.content.length.toLocaleString()} chars extracted</span>
+                                    <span className="text-[var(--success)]">{doc.content.length.toLocaleString()} chars extracted</span>
                                   )
                                 ) : (
                                   <span className="text-[var(--text-dim)]">Extracting...</span>
@@ -1505,7 +1505,7 @@ For example:
 This text will be combined with any uploaded documents for AI analysis.`}
                   rows={6}
                   disabled={aiProcessing}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none text-sm disabled:opacity-50"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)] resize-none text-sm disabled:opacity-50"
                 />
               </div>
 
@@ -1514,7 +1514,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                 <button
                   onClick={processAiInput}
                   disabled={(!aiInputText.trim() && uploadedFiles.length === 0) || aiProcessing || !getCurrentApiKey()}
-                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {aiProcessing ? (
                     <>
@@ -1544,9 +1544,9 @@ This text will be combined with any uploaded documents for AI analysis.`}
 
               {/* No API key warning */}
               {!getCurrentApiKey() && (
-                <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                  <AlertCircle className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div className="text-sm text-amber-300">
+                <div className="flex items-start gap-3 p-4 bg-[var(--warning-light)] border border-[var(--warning)]/20 rounded-lg">
+                  <AlertCircle className="w-5 h-5 text-[var(--warning)] flex-shrink-0 mt-0.5" />
+                  <div className="text-sm text-[var(--warning)]">
                     No API key configured for {selectedProvider}. Configure it in Settings to use AI extraction,
                     or skip this step to build the measure manually.
                   </div>
@@ -1564,7 +1564,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
               {/* Extraction results preview */}
               {aiExtractedData && (
                 <div className="space-y-4 pt-4 border-t border-[var(--border)]">
-                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                  <div className="flex items-center gap-2 text-[var(--success)] font-medium">
                     <Check className="w-5 h-5" />
                     AI Extraction Complete
                   </div>
@@ -1593,16 +1593,16 @@ This text will be combined with any uploaded documents for AI analysis.`}
                       <div className="text-xs uppercase tracking-wider text-[var(--text-dim)]">Extracted Populations</div>
                       {aiExtractedData.populations.map((pop, idx) => (
                         <div key={idx} className={`p-4 rounded-lg border ${
-                          pop.type === 'initial_population' ? 'bg-blue-500/10 border-blue-500/20' :
+                          pop.type === 'initial_population' ? 'bg-[var(--accent-light)] border-blue-500/20' :
                           pop.type === 'denominator' ? 'bg-purple-500/10 border-purple-500/20' :
-                          pop.type === 'numerator' ? 'bg-emerald-500/10 border-emerald-500/20' :
-                          'bg-amber-500/10 border-amber-500/20'
+                          pop.type === 'numerator' ? 'bg-[var(--success-light)] border-[var(--success)]/20' :
+                          'bg-[var(--warning-light)] border-[var(--warning)]/20'
                         }`}>
                           <div className={`text-sm font-medium mb-2 ${
-                            pop.type === 'initial_population' ? 'text-blue-400' :
+                            pop.type === 'initial_population' ? 'text-[var(--accent)]' :
                             pop.type === 'denominator' ? 'text-purple-400' :
-                            pop.type === 'numerator' ? 'text-emerald-400' :
-                            'text-amber-400'
+                            pop.type === 'numerator' ? 'text-[var(--success)]' :
+                            'text-[var(--warning)]'
                           }`}>
                             {pop.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
                           </div>
@@ -1610,12 +1610,12 @@ This text will be combined with any uploaded documents for AI analysis.`}
                           <div className="text-xs text-[var(--text-dim)]">
                             {pop.criteria.length} criteria extracted
                             {pop.criteria.some(c => c.valueSetMatch?.existingValueSet) && (
-                              <span className="ml-2 text-emerald-400">
+                              <span className="ml-2 text-[var(--success)]">
                                 ({pop.criteria.filter(c => c.valueSetMatch?.existingValueSet).length} value sets matched)
                               </span>
                             )}
                             {pop.criteria.some(c => c.valueSetMatch?.isPlaceholder) && (
-                              <span className="ml-2 text-amber-400">
+                              <span className="ml-2 text-[var(--warning)]">
                                 ({pop.criteria.filter(c => c.valueSetMatch?.isPlaceholder).length} placeholders created)
                               </span>
                             )}
@@ -1634,7 +1634,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
               {/* Skip option */}
               {!aiExtractedData && !aiProcessing && (
                 <div className="text-center text-sm text-[var(--text-dim)]">
-                  Or <button onClick={goNext} className="text-cyan-400 hover:text-cyan-300 underline">skip this step</button> to build the measure manually.
+                  Or <button onClick={goNext} className="text-[var(--accent)] hover:text-[var(--accent)] underline">skip this step</button> to build the measure manually.
                 </div>
               )}
             </div>
@@ -1651,25 +1651,25 @@ This text will be combined with any uploaded documents for AI analysis.`}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                    Measure ID <span className="text-red-400">*</span>
+                    Measure ID <span className="text-[var(--danger)]">*</span>
                   </label>
                   <input
                     type="text"
                     value={measureId}
                     onChange={(e) => setMeasureId(e.target.value)}
                     placeholder="e.g., CMS123v1"
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                    Program <span className="text-red-400">*</span>
+                    Program <span className="text-[var(--danger)]">*</span>
                   </label>
                   <select
                     value={program}
                     onChange={(e) => setProgram(e.target.value as MeasureProgram)}
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
                   >
                     <option value="MIPS_CQM">MIPS CQM</option>
                     <option value="eCQM">eCQM</option>
@@ -1683,14 +1683,14 @@ This text will be combined with any uploaded documents for AI analysis.`}
 
               <div>
                 <label className="block text-sm font-medium text-[var(--text)] mb-2">
-                  Title <span className="text-red-400">*</span>
+                  Title <span className="text-[var(--danger)]">*</span>
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g., Diabetes: Hemoglobin A1c Control"
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
@@ -1703,7 +1703,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe the clinical purpose and importance of this measure..."
                   rows={3}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)] resize-none"
                 />
               </div>
 
@@ -1715,7 +1715,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   <select
                     value={measureType}
                     onChange={(e) => setMeasureType(e.target.value as MeasureType)}
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
                   >
                     <option value="process">Process</option>
                     <option value="outcome">Outcome</option>
@@ -1731,7 +1731,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   <select
                     value={scoringType}
                     onChange={(e) => setScoringType(e.target.value as ScoringType)}
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
                   >
                     <option value="proportion">Proportion</option>
                     <option value="ratio">Ratio</option>
@@ -1748,7 +1748,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                     value={steward}
                     onChange={(e) => setSteward(e.target.value)}
                     placeholder="e.g., CMS, NCQA"
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
@@ -1760,7 +1760,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-500/15 flex items-center justify-center">
-                  <Users className="w-8 h-8 text-blue-400" />
+                  <Users className="w-8 h-8 text-[var(--accent)]" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Initial Population</h3>
                 <p className="text-[var(--text-muted)]">
@@ -1769,8 +1769,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
               </div>
 
               {/* Info box */}
-              <div className="flex items-start gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-4 bg-[var(--accent-light)] border border-blue-500/20 rounded-lg">
+                <Info className="w-5 h-5 text-[var(--accent)] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   The Initial Population identifies all patients who share common characteristics.
                   Build your criteria using the logic builder below - add diagnoses, encounters, procedures, etc. with timing and quantity requirements.
@@ -1786,7 +1786,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   onChange={(e) => setInitialPopCriteria({ ...initialPopCriteria, description: e.target.value })}
                   placeholder="e.g., Patients 18-85 years of age with a diagnosis of essential hypertension and at least one outpatient visit during the measurement period"
                   rows={2}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500 resize-none"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)] resize-none"
                 />
               </div>
 
@@ -1806,7 +1806,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                     placeholder="e.g., 18"
                     min={0}
                     max={150}
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
                 <div>
@@ -1823,7 +1823,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                     placeholder="e.g., 85"
                     min={0}
                     max={150}
-                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-cyan-500"
+                    className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
@@ -1892,8 +1892,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
           {currentStep === 'numerator' && (
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-500/15 flex items-center justify-center">
-                  <Check className="w-8 h-8 text-emerald-400" />
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--success-light)] flex items-center justify-center">
+                  <Check className="w-8 h-8 text-[var(--success)]" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Numerator</h3>
                 <p className="text-[var(--text-muted)]">
@@ -1901,8 +1901,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
                 </p>
               </div>
 
-              <div className="flex items-start gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                <Info className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-4 bg-[var(--success-light)] border border-[var(--success)]/20 rounded-lg">
+                <Info className="w-5 h-5 text-[var(--success)] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   The Numerator defines patients who received the expected care or achieved the desired outcome.
                   Build complex criteria like immunizations (e.g., "4 DTaP vaccines by age 2") using the logic builder below.
@@ -1918,7 +1918,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   onChange={(e) => setNumeratorCriteria({ ...numeratorCriteria, description: e.target.value })}
                   placeholder="e.g., Patients who received all recommended immunizations by their second birthday"
                   rows={2}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-emerald-500 resize-none"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--success)] resize-none"
                 />
               </div>
 
@@ -1939,8 +1939,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
           {currentStep === 'exclusions' && (
             <div className="max-w-3xl mx-auto space-y-6">
               <div className="text-center mb-6">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-amber-500/15 flex items-center justify-center">
-                  <AlertTriangle className="w-8 h-8 text-amber-400" />
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--warning-light)] flex items-center justify-center">
+                  <AlertTriangle className="w-8 h-8 text-[var(--warning)]" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Exclusions & Exceptions</h3>
                 <p className="text-[var(--text-muted)]">
@@ -1948,8 +1948,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
                 </p>
               </div>
 
-              <div className="flex items-start gap-3 p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                <Info className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="flex items-start gap-3 p-4 bg-[var(--warning-light)] border border-[var(--warning)]/20 rounded-lg">
+                <Info className="w-5 h-5 text-[var(--warning)] flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-[var(--text-muted)]">
                   <strong>Exclusions</strong> remove patients based on clinical appropriateness (e.g., hospice care, ESRD).
                   <strong className="ml-2">Exceptions</strong> allow for valid clinical reasons why the numerator action wasn't performed.
@@ -1965,7 +1965,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                   onChange={(e) => setExclusionCriteria({ ...exclusionCriteria, description: e.target.value })}
                   placeholder="e.g., Patients in hospice care, patients with ESRD, patients who are pregnant"
                   rows={2}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-amber-500 resize-none"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--warning)] resize-none"
                 />
               </div>
 
@@ -1990,8 +1990,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
           {currentStep === 'review' && (
             <div className="max-w-2xl mx-auto space-y-6">
               <div className="text-center mb-6">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-emerald-500/15 flex items-center justify-center">
-                  <Sparkles className="w-8 h-8 text-emerald-400" />
+                <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[var(--success-light)] flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-[var(--success)]" />
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">Review Your Measure</h3>
                 <p className="text-[var(--text-muted)]">
@@ -2027,8 +2027,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
                 {mode === 'ai_guided' && (
                   <>
                     {(initialPopCriteria.description || (initialPopCriteria.valueSets?.size || 0) > 0) && (
-                      <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
-                        <div className="flex items-center gap-2 text-blue-400 text-sm font-medium mb-2">
+                      <div className="p-4 bg-[var(--accent-light)] rounded-lg border border-blue-500/20">
+                        <div className="flex items-center gap-2 text-[var(--accent)] text-sm font-medium mb-2">
                           <Users className="w-4 h-4" />
                           Initial Population
                         </div>
@@ -2080,8 +2080,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
                     )}
 
                     {(numeratorCriteria.description || (numeratorCriteria.valueSets?.size || 0) > 0) && (
-                      <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                        <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
+                      <div className="p-4 bg-[var(--success-light)] rounded-lg border border-[var(--success)]/20">
+                        <div className="flex items-center gap-2 text-[var(--success)] text-sm font-medium mb-2">
                           <Check className="w-4 h-4" />
                           Numerator
                         </div>
@@ -2093,7 +2093,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                             {Array.from(numeratorCriteria.valueSets || []).map(vsId => {
                               const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
                               return vs ? (
-                                <span key={vsId} className="text-xs px-2 py-0.5 bg-emerald-500/20 text-emerald-300 rounded">
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-[var(--success-light)] text-[var(--success)] rounded">
                                   {vs.valueSet.name}
                                 </span>
                               ) : null;
@@ -2104,8 +2104,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
                     )}
 
                     {(exclusionCriteria.description || (exclusionCriteria.valueSets?.size || 0) > 0) && (
-                      <div className="p-4 bg-amber-500/10 rounded-lg border border-amber-500/20">
-                        <div className="flex items-center gap-2 text-amber-400 text-sm font-medium mb-2">
+                      <div className="p-4 bg-[var(--warning-light)] rounded-lg border border-[var(--warning)]/20">
+                        <div className="flex items-center gap-2 text-[var(--warning)] text-sm font-medium mb-2">
                           <AlertTriangle className="w-4 h-4" />
                           Exclusions
                         </div>
@@ -2117,7 +2117,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
                             {Array.from(exclusionCriteria.valueSets || []).map(vsId => {
                               const vs = availableValueSets.find(v => (v.valueSet.oid || v.valueSet.id) === vsId);
                               return vs ? (
-                                <span key={vsId} className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded">
+                                <span key={vsId} className="text-xs px-2 py-0.5 bg-[var(--warning-light)] text-[var(--warning)] rounded">
                                   {vs.valueSet.name}
                                 </span>
                               ) : null;
@@ -2131,8 +2131,8 @@ This text will be combined with any uploaded documents for AI analysis.`}
 
                 {/* Copy mode info */}
                 {mode === 'copy' && sourceMeasureId && (
-                  <div className="p-4 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
-                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-medium mb-2">
+                  <div className="p-4 bg-[var(--success-light)] rounded-lg border border-[var(--success)]/20">
+                    <div className="flex items-center gap-2 text-[var(--success)] text-sm font-medium mb-2">
                       <Copy className="w-4 h-4" />
                       Copying From
                     </div>
@@ -2185,7 +2185,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
             {currentStep === 'review' ? (
               <button
                 onClick={handleCreate}
-                className="px-6 py-2.5 bg-emerald-500 text-white rounded-lg font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                className="px-6 py-2.5 bg-[var(--success)] text-white rounded-lg font-medium hover:opacity-90 transition-all flex items-center gap-2"
               >
                 <Plus className="w-4 h-4" />
                 Create Measure
@@ -2194,7 +2194,7 @@ This text will be combined with any uploaded documents for AI analysis.`}
               <button
                 onClick={goNext}
                 disabled={!canGoNext()}
-                className="px-6 py-2.5 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                className="px-6 py-2.5 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
                 Continue
                 <ArrowRight className="w-4 h-4" />

@@ -7,8 +7,8 @@ import { evaluatePatient, type TestPatient } from '../../services/measureEvaluat
 
 const CODE_FORMAT_INFO: Record<CodeOutputFormat, { label: string; icon: typeof Code; color: string }> = {
   cql: { label: 'CQL (Clinical Quality Language)', icon: FileCode, color: 'text-purple-400' },
-  synapse: { label: 'Azure Synapse SQL', icon: Database, color: 'text-blue-400' },
-  sql: { label: 'Standard SQL', icon: Code, color: 'text-emerald-400' },
+  synapse: { label: 'Azure Synapse SQL', icon: Database, color: 'text-[var(--accent)]' },
+  sql: { label: 'Standard SQL', icon: Code, color: 'text-[var(--success)]' },
 };
 
 // Test patients with complex EMR data - named after Dune & Hyperion characters
@@ -1537,7 +1537,7 @@ export function ValidationTraceViewer() {
           </p>
           <button
             onClick={() => useMeasureStore.getState().setActiveTab('library')}
-            className="px-6 py-3 bg-cyan-500 text-white rounded-lg font-medium hover:bg-cyan-600 transition-colors inline-flex items-center gap-2"
+            className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2"
           >
             <Library className="w-4 h-4" />
             Go to Measure Library
@@ -1565,7 +1565,7 @@ export function ValidationTraceViewer() {
           <nav className="flex items-center gap-2 text-sm mb-4">
             <button
               onClick={() => setActiveTab('library')}
-              className="text-[var(--text-muted)] hover:text-cyan-400 transition-colors"
+              className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
             >
               Measure Library
             </button>
@@ -1581,8 +1581,8 @@ export function ValidationTraceViewer() {
             <div className="flex-1">
               <div className="text-xs uppercase tracking-wider text-[var(--text-dim)] mb-1">Validating Measure</div>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
-                  <Cpu className="w-5 h-5 text-cyan-400" />
+                <div className="w-10 h-10 rounded-lg bg-[var(--accent-light)] flex items-center justify-center flex-shrink-0">
+                  <Cpu className="w-5 h-5 text-[var(--accent)]" />
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-[var(--text)]">{measure.metadata.title}</h1>
@@ -1602,11 +1602,11 @@ export function ValidationTraceViewer() {
               <div className="text-xs uppercase tracking-wider text-[var(--text-dim)] mb-1">Generated Code</div>
               <button
                 onClick={() => setActiveTab('codegen')}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border)] hover:border-cyan-500/30 transition-colors group"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border)] hover:border-[var(--accent)]/30 transition-colors group"
               >
                 <CodeIcon className={`w-5 h-5 ${codeInfo.color}`} />
                 <span className={`font-medium ${codeInfo.color}`}>{codeInfo.label}</span>
-                <span className="text-xs text-[var(--text-dim)] group-hover:text-cyan-400 transition-colors">← Change</span>
+                <span className="text-xs text-[var(--text-dim)] group-hover:text-[var(--accent)] transition-colors">← Change</span>
               </button>
             </div>
           </div>
@@ -1622,36 +1622,36 @@ export function ValidationTraceViewer() {
               onClick={() => handleFilterClick('in_numerator')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
                 populationFilter === 'in_numerator'
-                  ? 'bg-emerald-500/25 border-2 border-emerald-500/60 ring-2 ring-emerald-500/20'
-                  : 'bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/15'
+                  ? 'bg-[var(--success-light)] border-2 border-[var(--success)]/60 ring-2 ring-[var(--success)]/20'
+                  : 'bg-[var(--success-light)] border border-[var(--success)]/20 hover:opacity-80'
               }`}
             >
-              <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">{stats.inNumerator}</span>
+              <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+              <span className="text-[var(--success)] font-medium">{stats.inNumerator}</span>
               <span className="text-[var(--text-muted)]">In Numerator</span>
             </button>
             <button
               onClick={() => handleFilterClick('not_in_numerator')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
                 populationFilter === 'not_in_numerator'
-                  ? 'bg-red-500/25 border-2 border-red-500/60 ring-2 ring-red-500/20'
-                  : 'bg-red-500/10 border border-red-500/20 hover:bg-red-500/15'
+                  ? 'bg-[var(--danger-light)] border-2 border-[var(--danger)]/60 ring-2 ring-[var(--danger)]/20'
+                  : 'bg-[var(--danger-light)] border border-[var(--danger)]/20 hover:opacity-80'
               }`}
             >
-              <XCircle className="w-4 h-4 text-red-400" />
-              <span className="text-red-400 font-medium">{stats.notControlled}</span>
+              <XCircle className="w-4 h-4 text-[var(--danger)]" />
+              <span className="text-[var(--danger)] font-medium">{stats.notControlled}</span>
               <span className="text-[var(--text-muted)]">In Denominator</span>
             </button>
             <button
               onClick={() => handleFilterClick('excluded')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all ${
                 populationFilter === 'excluded'
-                  ? 'bg-amber-500/25 border-2 border-amber-500/60 ring-2 ring-amber-500/20'
-                  : 'bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/15'
+                  ? 'bg-[var(--warning-light)] border-2 border-[var(--warning)]/60 ring-2 ring-[var(--warning)]/20'
+                  : 'bg-[var(--warning-light)] border border-[var(--warning)]/20 hover:opacity-80'
               }`}
             >
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <span className="text-amber-400 font-medium">{stats.excluded}</span>
+              <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />
+              <span className="text-[var(--warning)] font-medium">{stats.excluded}</span>
               <span className="text-[var(--text-muted)]">Excluded</span>
             </button>
             <button
@@ -1668,7 +1668,7 @@ export function ValidationTraceViewer() {
             {populationFilter !== 'all' && (
               <button
                 onClick={() => setPopulationFilter('all')}
-                className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--text-muted)] hover:text-cyan-400 transition-colors"
+                className="flex items-center gap-1 px-2 py-1 text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
               >
                 <X className="w-3 h-3" />
                 Clear filter
@@ -1690,7 +1690,7 @@ export function ValidationTraceViewer() {
                   onClick={() => setShowFilters(!showFilters)}
                   className={`p-1.5 rounded-lg transition-colors ${
                     showFilters || genderFilter !== 'all' || ageRange.min !== null || ageRange.max !== null
-                      ? 'bg-cyan-500/20 text-cyan-400'
+                      ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                       : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                   title="Filter patients"
@@ -1714,7 +1714,7 @@ export function ValidationTraceViewer() {
                   onClick={() => handleSortChange(field)}
                   className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
                     sortField === field
-                      ? 'bg-cyan-500/20 text-cyan-400'
+                      ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                       : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
@@ -1739,7 +1739,7 @@ export function ValidationTraceViewer() {
                         onClick={() => setGenderFilter(g)}
                         className={`px-2 py-1 rounded text-xs transition-colors ${
                           genderFilter === g
-                            ? 'bg-cyan-500/20 text-cyan-400'
+                            ? 'bg-[var(--accent-light)] text-[var(--accent)]'
                             : 'text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)]'
                         }`}
                       >
@@ -1775,7 +1775,7 @@ export function ValidationTraceViewer() {
                 {(genderFilter !== 'all' || ageRange.min !== null || ageRange.max !== null) && (
                   <button
                     onClick={clearFilters}
-                    className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                    className="text-xs text-[var(--accent)] hover:text-[var(--accent)] flex items-center gap-1"
                   >
                     <X className="w-3 h-3" />
                     Clear filters
@@ -1810,7 +1810,7 @@ export function ValidationTraceViewer() {
                   onClick={() => handleSelectPatient(trace, index)}
                   className={`w-full p-3 rounded-lg text-left transition-colors mb-1 ${
                     selectedTrace?.patientId === trace.patientId
-                      ? 'bg-cyan-500/15 border border-cyan-500/30'
+                      ? 'bg-[var(--accent-light)] border border-[var(--accent)]/30'
                       : 'hover:bg-[var(--bg-tertiary)]'
                   }`}
                 >
@@ -1819,7 +1819,7 @@ export function ValidationTraceViewer() {
                       gender === 'male' ? 'bg-blue-500/15' : gender === 'female' ? 'bg-pink-500/15' : 'bg-[var(--bg-tertiary)]'
                     }`}>
                       <User className={`w-4 h-4 ${
-                        gender === 'male' ? 'text-blue-400' : gender === 'female' ? 'text-pink-400' : 'text-[var(--text-muted)]'
+                        gender === 'male' ? 'text-[var(--accent)]' : gender === 'female' ? 'text-pink-400' : 'text-[var(--text-muted)]'
                       }`} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1875,7 +1875,7 @@ export function ValidationTraceViewer() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => startEditingPatient(selectedPatient)}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/20 transition-colors text-sm"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--accent-light)] border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors text-sm"
                       >
                         <Edit3 className="w-4 h-4" />
                         Edit Patient
@@ -1953,15 +1953,15 @@ export function ValidationTraceViewer() {
                                 {selectedPatient.diagnoses.map((dx, i) => (
                                   <tr key={i} className="text-[var(--text)] hover:bg-[var(--bg-tertiary)]/50">
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
-                                      <code className="text-red-400 bg-red-500/10 px-1.5 py-0.5 rounded font-mono">{dx.code}</code>
+                                      <code className="text-[var(--danger)] bg-[var(--danger-light)] px-1.5 py-0.5 rounded font-mono">{dx.code}</code>
                                     </td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">{dx.display}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{dx.system}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{dx.onsetDate}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
                                       <span className={`px-2 py-0.5 rounded text-xs ${
-                                        dx.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' :
-                                        dx.status === 'resolved' ? 'bg-blue-500/15 text-blue-400' :
+                                        dx.status === 'active' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                                        dx.status === 'resolved' ? 'bg-blue-500/15 text-[var(--accent)]' :
                                         'bg-gray-500/15 text-gray-400'
                                       }`}>
                                         {dx.status}
@@ -1997,13 +1997,13 @@ export function ValidationTraceViewer() {
                                 {selectedPatient.encounters.map((enc, i) => (
                                   <tr key={i} className="text-[var(--text)] hover:bg-[var(--bg-tertiary)]/50">
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
-                                      <code className="text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded font-mono">{enc.code}</code>
+                                      <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.5 rounded font-mono">{enc.code}</code>
                                     </td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">{enc.display}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{enc.system}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{enc.date}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
-                                      <span className="px-2 py-0.5 rounded text-xs bg-cyan-500/15 text-cyan-400">
+                                      <span className="px-2 py-0.5 rounded text-xs bg-[var(--accent-light)] text-[var(--accent)]">
                                         {enc.type}
                                       </span>
                                     </td>
@@ -2036,7 +2036,7 @@ export function ValidationTraceViewer() {
                                 {selectedPatient.procedures.map((proc, i) => (
                                   <tr key={i} className="text-[var(--text)] hover:bg-[var(--bg-tertiary)]/50">
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
-                                      <code className="text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded font-mono">{proc.code}</code>
+                                      <code className="text-[var(--warning)] bg-[var(--warning-light)] px-1.5 py-0.5 rounded font-mono">{proc.code}</code>
                                     </td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">{proc.display}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{proc.system}</td>
@@ -2114,9 +2114,9 @@ export function ValidationTraceViewer() {
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{med.endDate || '—'}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
                                       <span className={`px-2 py-0.5 rounded text-xs ${
-                                        med.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' :
-                                        med.status === 'completed' ? 'bg-blue-500/15 text-blue-400' :
-                                        'bg-red-500/15 text-red-400'
+                                        med.status === 'active' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                                        med.status === 'completed' ? 'bg-blue-500/15 text-[var(--accent)]' :
+                                        'bg-[var(--danger-light)] text-[var(--danger)]'
                                       }`}>
                                         {med.status}
                                       </span>
@@ -2158,8 +2158,8 @@ export function ValidationTraceViewer() {
                                     <td className="border-b border-[var(--border)]/50 p-2.5 text-[var(--text-muted)]">{imm.date}</td>
                                     <td className="border-b border-[var(--border)]/50 p-2.5">
                                       <span className={`px-2 py-0.5 rounded text-xs ${
-                                        imm.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' :
-                                        'bg-red-500/15 text-red-400'
+                                        imm.status === 'completed' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                                        'bg-[var(--danger-light)] text-[var(--danger)]'
                                       }`}>
                                         {imm.status}
                                       </span>
@@ -2190,15 +2190,15 @@ export function ValidationTraceViewer() {
 
               {/* How close section */}
               {selectedTrace.howClose && selectedTrace.howClose.length > 0 && (
-                <div className="mb-6 p-4 bg-cyan-500/5 border border-cyan-500/20 rounded-xl">
-                  <h3 className="text-sm font-medium text-cyan-400 mb-2 flex items-center gap-2">
+                <div className="mb-6 p-4 bg-[var(--accent-light)] border border-[var(--accent)]/20 rounded-xl">
+                  <h3 className="text-sm font-medium text-[var(--accent)] mb-2 flex items-center gap-2">
                     <Info className="w-4 h-4" />
                     Gap Analysis
                   </h3>
                   <ul className="space-y-1 text-sm text-[var(--text-muted)]">
                     {selectedTrace.howClose.map((item, i) => (
                       <li key={i} className="flex items-start gap-2">
-                        <span className="text-cyan-400 mt-1">•</span>
+                        <span className="text-[var(--accent)] mt-1">•</span>
                         {item}
                       </li>
                     ))}
@@ -2334,7 +2334,7 @@ function ValidationSection({
             <ValidationNodeCard node={node} onClick={() => onInspect(node)} />
             {i < nodes.length - 1 && (
               <span className={`self-center text-xs font-semibold tracking-wider ${
-                operator === 'AND' ? 'text-emerald-400' : 'text-amber-400'
+                operator === 'AND' ? 'text-[var(--success)]' : 'text-[var(--warning)]'
               }`}>
                 {operator}
               </span>
@@ -2344,8 +2344,8 @@ function ValidationSection({
 
         <div className={`self-center px-4 py-2 rounded-full text-xs font-medium whitespace-nowrap ${
           resultPositive
-            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-            : 'bg-red-500/15 text-red-400 border border-red-500/30'
+            ? 'bg-[var(--success-light)] text-[var(--success)] border border-[var(--success)]/30'
+            : 'bg-[var(--danger-light)] text-[var(--danger)] border border-[var(--danger)]/30'
         }`}>
           {resultChip}
         </div>
@@ -2358,16 +2358,16 @@ function ValidationNodeCard({ node, onClick }: { node: ValidationNode; onClick: 
   return (
     <div
       onClick={onClick}
-      className="w-72 flex-shrink-0 bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/[0.14] rounded-xl p-4 cursor-pointer hover:border-cyan-500/50 transition-colors relative"
+      className="w-72 flex-shrink-0 bg-gradient-to-b from-white/[0.06] to-white/[0.03] border border-white/[0.14] rounded-xl p-4 cursor-pointer hover:border-[var(--accent)]/50 transition-colors relative"
     >
       {/* Status icon */}
       <div className="absolute top-3 right-3">
         {node.status === 'pass' ? (
-          <CheckCircle className="w-5 h-5 text-emerald-400" />
+          <CheckCircle className="w-5 h-5 text-[var(--success)]" />
         ) : node.status === 'not_applicable' ? (
           <div className="w-5 h-5 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs text-[var(--text-muted)]">—</div>
         ) : (
-          <XCircle className="w-5 h-5 text-red-400" />
+          <XCircle className="w-5 h-5 text-[var(--danger)]" />
         )}
       </div>
 
@@ -2385,7 +2385,7 @@ function ValidationNodeCard({ node, onClick }: { node: ValidationNode; onClick: 
           {node.facts.slice(0, 3).map((fact, i) => (
             <li key={i} className="flex items-start gap-2">
               {fact.code && fact.code !== '—' && (
-                <code className="text-cyan-400 bg-cyan-500/10 px-1 rounded text-[10px] font-mono flex-shrink-0">{fact.code}</code>
+                <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1 rounded text-[10px] font-mono flex-shrink-0">{fact.code}</code>
               )}
               <span className="truncate">
                 {fact.display}
@@ -2421,11 +2421,11 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
         <div className="flex items-center justify-between p-4 border-b border-white/[0.12] sticky top-0 bg-[var(--bg-secondary)]">
           <div className="flex items-center gap-3">
             {node.status === 'pass' ? (
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
+              <CheckCircle className="w-5 h-5 text-[var(--success)]" />
             ) : node.status === 'not_applicable' ? (
               <div className="w-5 h-5 rounded-full bg-[var(--bg-tertiary)] flex items-center justify-center text-xs text-[var(--text-muted)]">—</div>
             ) : (
-              <XCircle className="w-5 h-5 text-red-400" />
+              <XCircle className="w-5 h-5 text-[var(--danger)]" />
             )}
             <h3 className="font-bold text-[var(--text)]">{node.title}</h3>
           </div>
@@ -2446,10 +2446,10 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
             </span>
             <span className={`px-2.5 py-1 rounded-full border text-xs ${
               node.status === 'pass'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                ? 'border-[var(--success)]/30 bg-[var(--success-light)] text-[var(--success)]'
                 : node.status === 'not_applicable'
                 ? 'border-[var(--border)] bg-[var(--bg-tertiary)] text-[var(--text-muted)]'
-                : 'border-red-500/30 bg-red-500/10 text-red-400'
+                : 'border-[var(--danger)]/30 bg-[var(--danger-light)] text-[var(--danger)]'
             }`}>
               Status: {node.status === 'pass' ? 'Criteria Met' : node.status === 'not_applicable' ? 'Not Evaluated' : 'Criteria Not Met'}
             </span>
@@ -2464,7 +2464,7 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
                 <Code className="w-3.5 h-3.5" />
                 Generated CQL Logic
               </h4>
-              <pre className="p-3 bg-[#0b1a34] border border-white/[0.12] rounded-lg text-xs text-cyan-300 overflow-auto whitespace-pre font-mono">
+              <pre className="p-3 bg-[#0b1a34] border border-white/[0.12] rounded-lg text-xs text-[var(--accent)] overflow-auto whitespace-pre font-mono">
                 {node.cqlSnippet}
               </pre>
             </div>
@@ -2493,7 +2493,7 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
                       <tr key={i} className="text-[var(--text)] hover:bg-white/[0.02]">
                         <td className="border-b border-white/[0.08] p-2.5">
                           {fact.code && fact.code !== '—' ? (
-                            <code className="text-cyan-400 bg-cyan-500/10 px-1.5 py-0.5 rounded font-mono">{fact.code}</code>
+                            <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.5 rounded font-mono">{fact.code}</code>
                           ) : (
                             <span className="text-[var(--text-dim)]">—</span>
                           )}
@@ -2528,16 +2528,16 @@ function SummaryPill({ label, value, positive }: { label: string; value: string;
   return (
     <div className="flex items-center gap-2 px-3 py-2 rounded-full border border-white/[0.18] bg-white/[0.06] text-sm">
       <span className="text-[var(--text-muted)]">{label}</span>
-      <span className={`font-bold ${positive ? 'text-emerald-400' : 'text-red-400'}`}>{value}</span>
+      <span className={`font-bold ${positive ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>{value}</span>
     </div>
   );
 }
 
 function OutcomeBadge({ outcome }: { outcome: PatientValidationTrace['finalOutcome'] }) {
   const styles = {
-    in_numerator: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30',
-    not_in_numerator: 'bg-red-500/15 text-red-400 border-red-500/30',
-    excluded: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
+    in_numerator: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]/30',
+    not_in_numerator: 'bg-[var(--danger-light)] text-[var(--danger)] border-[var(--danger)]/30',
+    excluded: 'bg-[var(--warning-light)] text-[var(--warning)] border-[var(--warning)]/30',
     not_in_population: 'bg-[var(--bg-tertiary)] text-[var(--text-muted)] border-[var(--border)]',
   };
 
@@ -2701,8 +2701,8 @@ function PatientEditModal({
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-white/[0.12]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-cyan-500/15 flex items-center justify-center">
-              <Edit3 className="w-5 h-5 text-cyan-400" />
+            <div className="w-10 h-10 rounded-lg bg-[var(--accent-light)] flex items-center justify-center">
+              <Edit3 className="w-5 h-5 text-[var(--accent)]" />
             </div>
             <div>
               <h3 className="font-bold text-[var(--text)]">Edit Patient</h3>
@@ -2718,7 +2718,7 @@ function PatientEditModal({
             </button>
             <button
               onClick={onSave}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:bg-[var(--primary-hover)] transition-colors"
             >
               <Save className="w-4 h-4" />
               Save Changes
@@ -2736,7 +2736,7 @@ function PatientEditModal({
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-4 py-3 text-sm whitespace-nowrap transition-colors ${
                   activeTab === tab.id
-                    ? 'text-cyan-400 border-b-2 border-cyan-400 bg-cyan-500/5'
+                    ? 'text-[var(--accent)] border-b-2 border-[var(--accent)] bg-[var(--accent-light)]'
                     : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-white/[0.02]'
                 }`}
               >
@@ -2757,7 +2757,7 @@ function PatientEditModal({
                   type="text"
                   value={patient.name}
                   onChange={(e) => updateName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-cyan-500/50 focus:outline-none"
+                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-[var(--accent)]/50 focus:outline-none"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -2767,7 +2767,7 @@ function PatientEditModal({
                     type="date"
                     value={patient.demographics.birthDate}
                     onChange={(e) => updateDemographics('birthDate', e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-cyan-500/50 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-[var(--accent)]/50 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -2775,7 +2775,7 @@ function PatientEditModal({
                   <select
                     value={patient.demographics.gender}
                     onChange={(e) => updateDemographics('gender', e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-cyan-500/50 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-[var(--accent)]/50 focus:outline-none"
                   >
                     <option value="male">Male</option>
                     <option value="female">Female</option>
@@ -2788,7 +2788,7 @@ function PatientEditModal({
                     type="text"
                     value={patient.demographics.race || ''}
                     onChange={(e) => updateDemographics('race', e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-cyan-500/50 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-[var(--accent)]/50 focus:outline-none"
                     placeholder="e.g., White, Black, Asian"
                   />
                 </div>
@@ -2798,7 +2798,7 @@ function PatientEditModal({
                     type="text"
                     value={patient.demographics.ethnicity || ''}
                     onChange={(e) => updateDemographics('ethnicity', e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-cyan-500/50 focus:outline-none"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.15] text-[var(--text)] focus:border-[var(--accent)]/50 focus:outline-none"
                     placeholder="e.g., Hispanic or Latino"
                   />
                 </div>
@@ -2810,7 +2810,7 @@ function PatientEditModal({
             <div className="space-y-3">
               <button
                 onClick={addDiagnosis}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 transition-colors text-sm"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--success-light)] border border-[var(--success)]/30 text-[var(--success)] hover:opacity-80 transition-all text-sm"
               >
                 <Plus className="w-4 h-4" />
                 Add Diagnosis
@@ -2819,15 +2819,15 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Diagnosis {index + 1}</span>
-                    <button onClick={() => removeDiagnosis(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeDiagnosis(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" value={dx.code} onChange={(e) => updateDiagnosis(index, 'code', e.target.value)} placeholder="Code (e.g., I10)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={dx.display} onChange={(e) => updateDiagnosis(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="date" value={dx.onsetDate} onChange={(e) => updateDiagnosis(index, 'onsetDate', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <select value={dx.status} onChange={(e) => updateDiagnosis(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none">
+                    <input type="text" value={dx.code} onChange={(e) => updateDiagnosis(index, 'code', e.target.value)} placeholder="Code (e.g., I10)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={dx.display} onChange={(e) => updateDiagnosis(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="date" value={dx.onsetDate} onChange={(e) => updateDiagnosis(index, 'onsetDate', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <select value={dx.status} onChange={(e) => updateDiagnosis(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none">
                       <option value="active">Active</option>
                       <option value="resolved">Resolved</option>
                       <option value="inactive">Inactive</option>
@@ -2841,7 +2841,7 @@ function PatientEditModal({
 
           {activeTab === 'encounters' && (
             <div className="space-y-3">
-              <button onClick={addEncounter} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 transition-colors text-sm">
+              <button onClick={addEncounter} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--accent-light)] border border-blue-500/30 text-[var(--accent)] hover:bg-blue-500/20 transition-colors text-sm">
                 <Plus className="w-4 h-4" />
                 Add Encounter
               </button>
@@ -2849,15 +2849,15 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Encounter {index + 1}</span>
-                    <button onClick={() => removeEncounter(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeEncounter(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" value={enc.code} onChange={(e) => updateEncounter(index, 'code', e.target.value)} placeholder="Code (e.g., 99213)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={enc.display} onChange={(e) => updateEncounter(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="date" value={enc.date} onChange={(e) => updateEncounter(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <select value={enc.type} onChange={(e) => updateEncounter(index, 'type', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none">
+                    <input type="text" value={enc.code} onChange={(e) => updateEncounter(index, 'code', e.target.value)} placeholder="Code (e.g., 99213)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={enc.display} onChange={(e) => updateEncounter(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="date" value={enc.date} onChange={(e) => updateEncounter(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <select value={enc.type} onChange={(e) => updateEncounter(index, 'type', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none">
                       <option value="outpatient">Outpatient</option>
                       <option value="inpatient">Inpatient</option>
                       <option value="emergency">Emergency</option>
@@ -2886,7 +2886,7 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Procedure {index + 1}</span>
-                    <button onClick={() => removeProcedure(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeProcedure(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
@@ -2898,7 +2898,7 @@ function PatientEditModal({
                         value={proc.code}
                         onChange={(e) => updateProcedure(index, 'code', e.target.value)}
                         placeholder="e.g., 45378"
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none"
                       />
                     </div>
                     <div className="md:col-span-2">
@@ -2908,7 +2908,7 @@ function PatientEditModal({
                         value={proc.display}
                         onChange={(e) => updateProcedure(index, 'display', e.target.value)}
                         placeholder="e.g., Colonoscopy, flexible, diagnostic"
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none"
                       />
                     </div>
                     <div>
@@ -2917,7 +2917,7 @@ function PatientEditModal({
                         type="date"
                         value={proc.date}
                         onChange={(e) => updateProcedure(index, 'date', e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none"
+                        className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none"
                       />
                     </div>
                   </div>
@@ -2947,16 +2947,16 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Observation {index + 1}</span>
-                    <button onClick={() => removeObservation(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeObservation(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                    <input type="text" value={obs.code} onChange={(e) => updateObservation(index, 'code', e.target.value)} placeholder="Code (e.g., 8480-6)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={obs.display} onChange={(e) => updateObservation(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="number" value={obs.value ?? ''} onChange={(e) => updateObservation(index, 'value', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Value" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={obs.unit || ''} onChange={(e) => updateObservation(index, 'unit', e.target.value)} placeholder="Unit (e.g., mm[Hg])" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="date" value={obs.date} onChange={(e) => updateObservation(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
+                    <input type="text" value={obs.code} onChange={(e) => updateObservation(index, 'code', e.target.value)} placeholder="Code (e.g., 8480-6)" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={obs.display} onChange={(e) => updateObservation(index, 'display', e.target.value)} placeholder="Description" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="number" value={obs.value ?? ''} onChange={(e) => updateObservation(index, 'value', e.target.value ? parseFloat(e.target.value) : undefined)} placeholder="Value" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={obs.unit || ''} onChange={(e) => updateObservation(index, 'unit', e.target.value)} placeholder="Unit (e.g., mm[Hg])" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="date" value={obs.date} onChange={(e) => updateObservation(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
                   </div>
                 </div>
               ))}
@@ -2974,15 +2974,15 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Medication {index + 1}</span>
-                    <button onClick={() => removeMedication(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeMedication(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" value={med.code} onChange={(e) => updateMedication(index, 'code', e.target.value)} placeholder="Code" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={med.display} onChange={(e) => updateMedication(index, 'display', e.target.value)} placeholder="Medication name" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="date" value={med.startDate} onChange={(e) => updateMedication(index, 'startDate', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <select value={med.status} onChange={(e) => updateMedication(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none">
+                    <input type="text" value={med.code} onChange={(e) => updateMedication(index, 'code', e.target.value)} placeholder="Code" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={med.display} onChange={(e) => updateMedication(index, 'display', e.target.value)} placeholder="Medication name" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="date" value={med.startDate} onChange={(e) => updateMedication(index, 'startDate', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <select value={med.status} onChange={(e) => updateMedication(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none">
                       <option value="active">Active</option>
                       <option value="completed">Completed</option>
                       <option value="stopped">Stopped</option>
@@ -3004,15 +3004,15 @@ function PatientEditModal({
                 <div key={index} className="p-4 rounded-lg bg-[var(--bg-tertiary)] border border-white/[0.1] space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-[var(--text)]">Immunization {index + 1}</span>
-                    <button onClick={() => removeImmunization(index)} className="p-1 text-red-400 hover:bg-red-500/20 rounded transition-colors">
+                    <button onClick={() => removeImmunization(index)} className="p-1 text-[var(--danger)] hover:bg-[var(--danger-light)] rounded transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <input type="text" value={imm.code} onChange={(e) => updateImmunization(index, 'code', e.target.value)} placeholder="CVX Code" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="text" value={imm.display} onChange={(e) => updateImmunization(index, 'display', e.target.value)} placeholder="Vaccine name" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <input type="date" value={imm.date} onChange={(e) => updateImmunization(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none" />
-                    <select value={imm.status} onChange={(e) => updateImmunization(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-cyan-500/50 focus:outline-none">
+                    <input type="text" value={imm.code} onChange={(e) => updateImmunization(index, 'code', e.target.value)} placeholder="CVX Code" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="text" value={imm.display} onChange={(e) => updateImmunization(index, 'display', e.target.value)} placeholder="Vaccine name" className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <input type="date" value={imm.date} onChange={(e) => updateImmunization(index, 'date', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none" />
+                    <select value={imm.status} onChange={(e) => updateImmunization(index, 'status', e.target.value)} className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-white/[0.15] text-[var(--text)] text-sm focus:border-[var(--accent)]/50 focus:outline-none">
                       <option value="completed">Completed</option>
                       <option value="not-done">Not Done</option>
                     </select>
