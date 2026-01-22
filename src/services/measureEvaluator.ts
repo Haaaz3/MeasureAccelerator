@@ -115,6 +115,182 @@ function isCervicalCancerMeasure(measure: UniversalMeasureSpec): boolean {
 }
 
 /**
+ * Detect if a measure is for childhood immunizations based on title/ID
+ */
+function isChildhoodImmunizationMeasure(measure: UniversalMeasureSpec): boolean {
+  const title = measure.metadata.title?.toLowerCase() || '';
+  const measureId = measure.metadata.measureId?.toUpperCase() || '';
+
+  return title.includes('childhood immun') ||
+         title.includes('childhood vaccin') ||
+         title.includes('immunization status') ||
+         title.includes('child immun') ||
+         (title.includes('immun') && title.includes('child')) ||
+         measureId.includes('CMS117') || // Childhood Immunization Status
+         measureId.includes('CIS');
+}
+
+/**
+ * Detect if a measure is for colorectal cancer screening
+ */
+function isColorectalCancerMeasure(measure: UniversalMeasureSpec): boolean {
+  const title = measure.metadata.title?.toLowerCase() || '';
+  const measureId = measure.metadata.measureId?.toUpperCase() || '';
+
+  return title.includes('colorectal') ||
+         title.includes('colon cancer') ||
+         title.includes('crc screening') ||
+         measureId.includes('CMS130') ||
+         measureId.includes('COL');
+}
+
+/**
+ * Get the required age range for a measure based on its type
+ * Returns null if no specific age requirement can be determined
+ */
+function getMeasureAgeRequirements(measure: UniversalMeasureSpec): {
+  minAge: number;
+  maxAge: number;
+  description: string;
+  checkType: 'turns' | 'range' | 'at_start' | 'at_end';
+} | null {
+  // Check explicit global constraints first
+  if (measure.globalConstraints?.ageRange) {
+    return {
+      minAge: measure.globalConstraints.ageRange.min,
+      maxAge: measure.globalConstraints.ageRange.max,
+      description: `Age ${measure.globalConstraints.ageRange.min}-${measure.globalConstraints.ageRange.max}`,
+      checkType: measure.globalConstraints.ageCalculation === 'turns_during' ? 'turns' : 'range'
+    };
+  }
+
+  // Auto-detect based on measure type
+  if (isChildhoodImmunizationMeasure(measure)) {
+    // CMS117: Children who turn 2 years old during the measurement period
+    return {
+      minAge: 1,
+      maxAge: 2,
+      description: 'Children who turn 2 years old during the measurement period',
+      checkType: 'turns'
+    };
+  }
+
+  if (isCervicalCancerMeasure(measure)) {
+    // CMS124: Women 21-64 years of age
+    return {
+      minAge: 21,
+      maxAge: 64,
+      description: 'Women 21-64 years of age',
+      checkType: 'range'
+    };
+  }
+
+  if (isColorectalCancerMeasure(measure)) {
+    // CMS130: Adults 45-75 years of age
+    return {
+      minAge: 45,
+      maxAge: 75,
+      description: 'Adults 45-75 years of age',
+      checkType: 'range'
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Calculate patient's age at a given date
+ */
+function calculateAge(birthDate: Date, atDate: Date): number {
+  let age = atDate.getFullYear() - birthDate.getFullYear();
+  const monthDiff = atDate.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && atDate.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+/**
+ * Check if patient turns a specific age during a date range
+ */
+function turnsAgeDuring(birthDate: Date, targetAge: number, rangeStart: Date, rangeEnd: Date): boolean {
+  const targetBirthday = new Date(birthDate);
+  targetBirthday.setFullYear(birthDate.getFullYear() + targetAge);
+  return targetBirthday >= rangeStart && targetBirthday <= rangeEnd;
+}
+
+/**
+ * Check if patient meets age requirement for the measure
+ * This is a PRE-CHECK before any population evaluation
+ */
+function checkAgeRequirement(
+  patient: TestPatient,
+  measure: UniversalMeasureSpec,
+  mpStart: string,
+  mpEnd: string
+): { met: boolean; reason?: string; ageInfo?: string } {
+  const birthDate = new Date(patient.demographics.birthDate);
+  const mpStartDate = new Date(mpStart);
+  const mpEndDate = new Date(mpEnd);
+
+  const ageAtStart = calculateAge(birthDate, mpStartDate);
+  const ageAtEnd = calculateAge(birthDate, mpEndDate);
+  const ageInfo = `Age ${ageAtStart} at MP start, ${ageAtEnd} at MP end`;
+
+  const ageReqs = getMeasureAgeRequirements(measure);
+
+  if (!ageReqs) {
+    // No specific age requirements detected, allow through
+    return { met: true, ageInfo };
+  }
+
+  // For "turns X" type measures (childhood immunizations)
+  if (ageReqs.checkType === 'turns') {
+    // Check if patient turns the target age (maxAge) during the measurement period
+    const turnsTargetAge = turnsAgeDuring(birthDate, ageReqs.maxAge, mpStartDate, mpEndDate);
+
+    if (!turnsTargetAge) {
+      // Also check if they're within the valid range to be considered
+      // For childhood imms: must be age 1-2 during the measurement period
+      const withinRange = ageAtEnd >= ageReqs.minAge && ageAtStart <= ageReqs.maxAge;
+
+      if (!withinRange) {
+        return {
+          met: false,
+          reason: `Patient age (${ageAtStart}-${ageAtEnd}) is outside the required range. ${ageReqs.description}`,
+          ageInfo
+        };
+      }
+    }
+
+    return { met: true, ageInfo };
+  }
+
+  // For range-based age requirements (adult measures)
+  // Patient must be within the age range at some point during the measurement period
+  const meetsMinAge = ageAtEnd >= ageReqs.minAge;
+  const meetsMaxAge = ageAtStart <= ageReqs.maxAge;
+
+  if (!meetsMinAge) {
+    return {
+      met: false,
+      reason: `Patient is too young (age ${ageAtEnd}). ${ageReqs.description}`,
+      ageInfo
+    };
+  }
+
+  if (!meetsMaxAge) {
+    return {
+      met: false,
+      reason: `Patient is too old (age ${ageAtStart}). ${ageReqs.description}`,
+      ageInfo
+    };
+  }
+
+  return { met: true, ageInfo };
+}
+
+/**
  * Check if patient meets gender requirement for the measure
  */
 function checkGenderRequirement(
@@ -187,6 +363,38 @@ export function evaluatePatient(
       },
       finalOutcome: 'not_in_population',
       howClose: [genderCheck.reason || 'Gender requirement not met'],
+    };
+  }
+
+  // SECOND: Check age requirement before any other evaluation
+  const ageCheck = checkAgeRequirement(patient, measure, mpStart, mpEnd);
+  if (!ageCheck.met) {
+    return {
+      patientId: patient.id,
+      patientName: patient.name,
+      narrative: `${patient.name} is not eligible for ${measure.metadata.title}. ${ageCheck.reason}`,
+      populations: {
+        initialPopulation: {
+          met: false,
+          nodes: [{
+            id: 'age-check',
+            title: 'Age Requirement',
+            type: 'decision',
+            description: ageCheck.reason || 'Age requirement not met',
+            status: 'fail',
+            facts: [{
+              code: 'AGE',
+              display: ageCheck.ageInfo || `Patient age does not meet requirements`,
+              source: 'Demographics',
+            }],
+          }]
+        },
+        denominator: { met: false, nodes: [] },
+        exclusions: { met: false, nodes: [] },
+        numerator: { met: false, nodes: [] },
+      },
+      finalOutcome: 'not_in_population',
+      howClose: [ageCheck.reason || 'Age requirement not met'],
     };
   }
 
@@ -583,17 +791,22 @@ function evaluateAgeRequirement(
   if (thresholds) {
     const targetAge = thresholds.ageMin;
 
-    // For pediatric measures (small age values), check if child "turns X" during the year
+    // For pediatric measures (small age values), use strict age checking
     // This is the standard definition for measures like CMS117 (Childhood Immunization)
     if (targetAge !== undefined && targetAge <= 18) {
-      // Check if the child turns the target age during the measurement period
+      // For childhood measures, we need STRICT age checking
+      // The patient must either:
+      // 1. Turn the target age during the measurement period, OR
+      // 2. Be within a very tight age range (e.g., 1-2 years old for childhood imms)
+
       const turnsTargetAge = turnsAgeDuring(targetAge);
+      const maxAge = thresholds.ageMax ?? targetAge; // Default max to target age if not specified
 
-      // Also check the range: age at end should be >= min and age at start should be <= max
-      const meetsMinAtEnd = thresholds.ageMin === undefined || ageAtEnd >= thresholds.ageMin;
-      const meetsMaxAtStart = thresholds.ageMax === undefined || ageAtStart <= thresholds.ageMax;
+      // STRICT check: patient's age at start must not exceed maxAge
+      // and patient's age at end must be at least close to minAge
+      const isWithinStrictRange = ageAtStart <= maxAge && ageAtEnd <= maxAge + 1;
 
-      if (turnsTargetAge || (meetsMinAtEnd && meetsMaxAtStart)) {
+      if (turnsTargetAge && isWithinStrictRange) {
         met = true;
         const birthdayInYear = getBirthdayInMeasurementYear();
         facts.push({
@@ -601,11 +814,31 @@ function evaluateAgeRequirement(
           display: `Turns ${targetAge} on ${birthdayInYear.toLocaleDateString()} (within MP)`,
           source: 'Age Evaluation',
         });
+      } else if (isWithinStrictRange && thresholds.ageMax !== undefined) {
+        // If there's an explicit range defined (e.g., 1-2), check if within that range
+        const meetsMinAtEnd = ageAtEnd >= thresholds.ageMin!;
+        const meetsMaxAtStart = ageAtStart <= thresholds.ageMax;
+
+        if (meetsMinAtEnd && meetsMaxAtStart) {
+          met = true;
+          facts.push({
+            code: 'AGE_RANGE',
+            display: `Age ${ageAtStart}-${ageAtEnd} within range ${thresholds.ageMin}-${thresholds.ageMax}`,
+            source: 'Age Evaluation',
+          });
+        } else {
+          met = false;
+          facts.push({
+            code: 'AGE_RANGE_FAIL',
+            display: `Age ${ageAtStart}-${ageAtEnd} outside pediatric range ${thresholds.ageMin}-${thresholds.ageMax}`,
+            source: 'Age Evaluation',
+          });
+        }
       } else {
         met = false;
         facts.push({
           code: 'AGE_MIN_FAIL',
-          display: `Does not turn ${targetAge} during measurement period`,
+          display: `Patient age (${ageAtStart}-${ageAtEnd}) does not meet pediatric requirement (turns ${targetAge})`,
           source: 'Age Evaluation',
         });
       }
