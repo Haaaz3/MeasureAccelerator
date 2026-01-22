@@ -63,7 +63,6 @@ The central hub where users manage all their quality measures.
 |--------|-------------|----------------|
 | **Upload Documents** | Drag-and-drop PDF, HTML, Excel, or ZIP files | Start measure creation in seconds |
 | **AI Extraction** | Automatically parse uploaded documents | Eliminates manual data entry |
-| **Quick Parse** | Offline mode without AI (basic extraction) | Works without API keys |
 | **Filter & Search** | Find measures by status, program, or text | Manage large measure libraries |
 | **Duplicate** | Copy existing measure as template | Faster creation of similar measures |
 | **Lock & Publish** | Prevent edits and mark as production-ready | Version control and governance |
