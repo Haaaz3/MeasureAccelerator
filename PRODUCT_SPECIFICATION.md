@@ -38,7 +38,7 @@ MeasureAccelerator uses AI to automate this process:
 
 | Role | What They Do | How They Use MeasureAccelerator |
 |------|--------------|--------------------------------|
-| **Clinical Informaticist** | Translates clinical requirements into technical specs | Reviews AI extraction for clinical accuracy, validates patient logic |
+| **Internal Clinical Informaticist** | Translates clinical requirements into technical specs | Reviews AI extraction for clinical accuracy, validates patient logic |
 | **Quality Analyst** | Ensures measures meet reporting requirements | Uploads measure specs, tracks review progress, exports for reporting |
 | **eCQM Developer** | Writes CQL/SQL code for measure calculation | Uses generated code as starting point, validates with test patients |
 
@@ -46,7 +46,7 @@ MeasureAccelerator uses AI to automate this process:
 
 | Role | How They Use It |
 |------|-----------------|
-| **Health IT Director** | Monitors measure library, ensures compliance |
+| **Health IT Director** | Customizes measures, algorythms to suite the needs of the practice. Validate the onboarding of a new measure to confirm the measure is calculating against their population as expected |
 | **Clinical Leadership** | Reviews measure definitions for clinical appropriateness |
 
 ---
