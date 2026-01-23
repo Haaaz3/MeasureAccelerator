@@ -1275,6 +1275,31 @@ function calculateAge(birthDate: string): number {
   return age;
 }
 
+// Helper to detect screening measures that use OR logic for numerator
+function isScreeningMeasure(measureTitle: string, measureId: string): boolean {
+  const title = measureTitle.toLowerCase();
+  const id = measureId?.toUpperCase() || '';
+
+  // CRC screening
+  if (title.includes('colorectal') || title.includes('colon') || id.includes('CMS130')) {
+    return true;
+  }
+
+  // Cervical cancer screening
+  if (title.includes('cervical') || title.includes('cervix') ||
+      title.includes('pap smear') || title.includes('pap test') ||
+      id.includes('CMS124')) {
+    return true;
+  }
+
+  // Breast cancer screening
+  if (title.includes('breast') && title.includes('screen') || id.includes('CMS125')) {
+    return true;
+  }
+
+  return false;
+}
+
 export function ValidationTraceViewer() {
   const { getActiveMeasure, selectedCodeFormat, setActiveTab } = useMeasureStore();
   const measure = getActiveMeasure();
@@ -2269,9 +2294,11 @@ export function ValidationTraceViewer() {
               {selectedTrace.populations.numerator.nodes.length > 0 && !selectedTrace.populations.exclusions.met && (
                 <ValidationSection
                   title="Numerator"
-                  subtitle="Quality action / outcome criteria"
+                  subtitle={isScreeningMeasure(measure.metadata.title, measure.metadata.measureId || '')
+                    ? "ANY ONE screening test qualifies"
+                    : "Quality action / outcome criteria"}
                   nodes={selectedTrace.populations.numerator.nodes}
-                  operator="AND"
+                  operator={isScreeningMeasure(measure.metadata.title, measure.metadata.measureId || '') ? "OR" : "AND"}
                   resultChip={selectedTrace.populations.numerator.met ? 'MET' : 'NOT MET'}
                   resultPositive={selectedTrace.populations.numerator.met}
                   onInspect={setInspectNode}
@@ -2372,8 +2399,16 @@ function ValidationNodeCard({ node, onClick }: { node: ValidationNode; onClick: 
       </div>
 
       {/* Badge */}
-      <span className="inline-block text-[10px] text-[var(--text-muted)] px-2 py-0.5 rounded-full border border-white/[0.18] bg-[#0c1324]/75 mb-2">
-        {node.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+      <span className={`inline-block text-[10px] px-2 py-0.5 rounded-full border mb-2 ${
+        node.type === 'decision'
+          ? node.status === 'pass'
+            ? 'text-[var(--success)] border-[var(--success)]/30 bg-[var(--success-light)]'
+            : 'text-[var(--danger)] border-[var(--danger)]/30 bg-[var(--danger-light)]'
+          : 'text-[var(--text-muted)] border-white/[0.18] bg-[#0c1324]/75'
+      }`}>
+        {node.type === 'decision'
+          ? (node.status === 'pass' ? 'Met' : 'Not Met')
+          : node.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
       </span>
 
       <h4 className="font-medium text-[var(--text)] text-sm mb-1 pr-6">{node.title}</h4>
@@ -2441,8 +2476,16 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
         <div className="p-4 space-y-4">
           {/* Meta pills */}
           <div className="flex flex-wrap gap-2">
-            <span className="px-2.5 py-1 rounded-full border border-white/[0.18] bg-white/[0.06] text-xs text-[var(--text)]">
-              Population: {node.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+            <span className={`px-2.5 py-1 rounded-full border text-xs ${
+              node.type === 'decision'
+                ? node.status === 'pass'
+                  ? 'border-[var(--success)]/30 bg-[var(--success-light)] text-[var(--success)]'
+                  : 'border-[var(--danger)]/30 bg-[var(--danger-light)] text-[var(--danger)]'
+                : 'border-white/[0.18] bg-white/[0.06] text-[var(--text)]'
+            }`}>
+              {node.type === 'decision'
+                ? (node.status === 'pass' ? 'Met' : 'Not Met')
+                : `Population: ${node.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`}
             </span>
             <span className={`px-2.5 py-1 rounded-full border text-xs ${
               node.status === 'pass'
