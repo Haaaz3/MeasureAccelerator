@@ -296,7 +296,7 @@ function checkAgeRequirement(
 function checkGenderRequirement(
   patient: TestPatient,
   measure: UniversalMeasureSpec
-): { met: boolean; reason?: string } {
+): { met: boolean; reason?: string; hasGenderRequirement: boolean } {
   // Check explicit global constraint
   const requiredGender = measure.globalConstraints?.gender;
 
@@ -304,9 +304,15 @@ function checkGenderRequirement(
     if (patient.demographics.gender !== requiredGender) {
       return {
         met: false,
-        reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`
+        reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`,
+        hasGenderRequirement: true
       };
     }
+    return {
+      met: true,
+      reason: `Patient gender (${patient.demographics.gender}) meets requirement (${requiredGender})`,
+      hasGenderRequirement: true
+    };
   }
 
   // Auto-detect cervical cancer measures - these MUST be female only
@@ -314,12 +320,18 @@ function checkGenderRequirement(
     if (patient.demographics.gender !== 'female') {
       return {
         met: false,
-        reason: `Cervical cancer screening is only applicable to female patients (patient is ${patient.demographics.gender})`
+        reason: `Cervical cancer screening is only applicable to female patients (patient is ${patient.demographics.gender})`,
+        hasGenderRequirement: true
       };
     }
+    return {
+      met: true,
+      reason: `Patient gender (${patient.demographics.gender}) meets requirement (female only)`,
+      hasGenderRequirement: true
+    };
   }
 
-  return { met: true };
+  return { met: true, hasGenderRequirement: false };
 }
 
 /**
@@ -334,68 +346,57 @@ export function evaluatePatient(
   const mpStart = measurementPeriod?.start || `${new Date().getFullYear()}-01-01`;
   const mpEnd = measurementPeriod?.end || `${new Date().getFullYear()}-12-31`;
 
-  // FIRST: Check gender requirement before any other evaluation
+  // Collect all IP pre-check nodes to show complete picture
+  const ipPreCheckNodes: ValidationNode[] = [];
+  let ipPreChecksPassed = true;
+  const howCloseReasons: string[] = [];
+
+  // Check gender requirement (for gender-specific measures)
   const genderCheck = checkGenderRequirement(patient, measure);
-  if (!genderCheck.met) {
-    return {
-      patientId: patient.id,
-      patientName: patient.name,
-      narrative: `${patient.name} is not eligible for ${measure.metadata.title}. ${genderCheck.reason}`,
-      populations: {
-        initialPopulation: {
-          met: false,
-          nodes: [{
-            id: 'gender-check',
-            title: 'Gender Requirement',
-            type: 'decision',
-            description: genderCheck.reason || 'Gender requirement not met',
-            status: 'fail',
-            facts: [{
-              code: 'GENDER',
-              display: `Patient gender: ${patient.demographics.gender}`,
-              source: 'Demographics',
-            }],
-          }]
-        },
-        denominator: { met: false, nodes: [] },
-        exclusions: { met: false, nodes: [] },
-        numerator: { met: false, nodes: [] },
-      },
-      finalOutcome: 'not_in_population',
-      howClose: [genderCheck.reason || 'Gender requirement not met'],
-    };
+  if (genderCheck.hasGenderRequirement) {
+    // Only add gender node if this measure has gender requirements
+    ipPreCheckNodes.push({
+      id: 'gender-check',
+      title: 'Gender Requirement',
+      type: 'decision',
+      description: genderCheck.reason || (genderCheck.met ? 'Gender requirement met' : 'Gender requirement not met'),
+      status: genderCheck.met ? 'pass' : 'fail',
+      facts: [{
+        code: 'GENDER',
+        display: `Patient gender: ${patient.demographics.gender}`,
+        source: 'Demographics',
+      }],
+    });
+    if (!genderCheck.met) {
+      ipPreChecksPassed = false;
+      howCloseReasons.push(genderCheck.reason || 'Gender requirement not met');
+    }
   }
 
-  // SECOND: Check age requirement before any other evaluation
+  // Check age requirement - always show for measures with age requirements
   const ageCheck = checkAgeRequirement(patient, measure, mpStart, mpEnd);
-  if (!ageCheck.met) {
-    return {
-      patientId: patient.id,
-      patientName: patient.name,
-      narrative: `${patient.name} is not eligible for ${measure.metadata.title}. ${ageCheck.reason}`,
-      populations: {
-        initialPopulation: {
-          met: false,
-          nodes: [{
-            id: 'age-check',
-            title: 'Age Requirement',
-            type: 'decision',
-            description: ageCheck.reason || 'Age requirement not met',
-            status: 'fail',
-            facts: [{
-              code: 'AGE',
-              display: ageCheck.ageInfo || `Patient age does not meet requirements`,
-              source: 'Demographics',
-            }],
-          }]
-        },
-        denominator: { met: false, nodes: [] },
-        exclusions: { met: false, nodes: [] },
-        numerator: { met: false, nodes: [] },
-      },
-      finalOutcome: 'not_in_population',
-      howClose: [ageCheck.reason || 'Age requirement not met'],
-    };
+  const ageReqs = getMeasureAgeRequirements(measure);
+  if (ageReqs || ageCheck.ageInfo) {
+    const ageDescription = ageCheck.met
+      ? `${ageCheck.ageInfo}. Meets requirement: ${ageReqs?.description || 'Age criteria satisfied'}`
+      : (ageCheck.reason || 'Age requirement not met');
+    ipPreCheckNodes.push({
+      id: 'age-check',
+      title: 'Age Requirement',
+      type: 'decision',
+      description: ageDescription,
+      status: ageCheck.met ? 'pass' : 'fail',
+      facts: [{
+        code: 'AGE',
+        display: ageCheck.ageInfo || `Patient age: calculated from DOB`,
+        source: 'Demographics',
+        date: patient.demographics.birthDate,
+      }],
+    });
+    if (!ageCheck.met) {
+      ipPreChecksPassed = false;
+      howCloseReasons.push(ageCheck.reason || 'Age requirement not met');
+    }
   }
 
   // Find each population type
@@ -406,10 +407,16 @@ export function evaluatePatient(
   const numerPop = measure.populations.find(p => p.type === 'numerator');
   const _numerExclPop = measure.populations.find(p => p.type === 'numerator_exclusion');
 
-  // Evaluate each population
-  const ipResult = ipPop
+  // Evaluate measure-defined IP criteria (only if pre-checks passed)
+  const ipMeasureCriteria = (ipPop && ipPreChecksPassed)
     ? evaluatePopulation(patient, ipPop, measure, mpStart, mpEnd)
-    : { met: true, nodes: [] };
+    : { met: ipPreChecksPassed, nodes: [] };
+
+  // Combine pre-check nodes with measure-defined IP criteria nodes
+  const ipResult = {
+    met: ipPreChecksPassed && ipMeasureCriteria.met,
+    nodes: [...ipPreCheckNodes, ...ipMeasureCriteria.nodes],
+  };
 
   const denomResult = denomPop && ipResult.met
     ? evaluatePopulation(patient, denomPop, measure, mpStart, mpEnd)
@@ -467,7 +474,10 @@ export function evaluatePatient(
 
   if (!ipResult.met) {
     finalOutcome = 'not_in_population';
-    howClose = generateHowClose(patient, ipPop, measure, mpStart, mpEnd);
+    // Use pre-check reasons if available, otherwise generate from IP criteria
+    howClose = howCloseReasons.length > 0
+      ? howCloseReasons
+      : generateHowClose(patient, ipPop, measure, mpStart, mpEnd);
   } else if (!denomResult.met) {
     finalOutcome = 'not_in_population';
     howClose = generateHowClose(patient, denomPop, measure, mpStart, mpEnd);
