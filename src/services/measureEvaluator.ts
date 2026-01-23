@@ -2061,15 +2061,52 @@ function generateCqlSnippet(element: DataElement): string {
   const type = element.type;
   const vsName = element.valueSet?.name || 'Value Set';
 
+  // Check for timing requirements to include lookback periods
+  const timing = element.timingRequirements?.[0];
+  let timingClause = 'during "Measurement Period"';
+
+  if (timing?.window) {
+    const { value, unit, direction } = timing.window;
+    if (direction === 'before' || direction === 'within') {
+      timingClause = `${value} ${unit}${value > 1 ? 's' : ''} or less before end of "Measurement Period"`;
+    } else if (direction === 'after') {
+      timingClause = `${value} ${unit}${value > 1 ? 's' : ''} or less after start of "Measurement Period"`;
+    }
+  }
+
+  // Special handling for screening procedures with known lookback periods
+  const descLower = element.description?.toLowerCase() || '';
+  const vsLower = vsName.toLowerCase();
+
+  if (type === 'procedure') {
+    if (vsLower.includes('colonoscopy') || descLower.includes('colonoscopy')) {
+      timingClause = '10 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('sigmoidoscopy') || descLower.includes('sigmoidoscopy')) {
+      timingClause = '5 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('ct colonography') || descLower.includes('ct colonography')) {
+      timingClause = '5 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('fit-dna') || vsLower.includes('stool dna') || descLower.includes('fit-dna')) {
+      timingClause = '3 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('fobt') || vsLower.includes('fit ') || descLower.includes('fobt') || descLower.includes('fecal')) {
+      timingClause = '1 year or less before end of "Measurement Period"';
+    } else if (vsLower.includes('pap') || vsLower.includes('cervical cytology') || descLower.includes('pap')) {
+      timingClause = '3 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('hpv') || descLower.includes('hpv')) {
+      timingClause = '5 years or less before end of "Measurement Period"';
+    } else if (vsLower.includes('mammography') || vsLower.includes('mammogram') || descLower.includes('mammogra')) {
+      timingClause = '2 years or less before end of "Measurement Period"';
+    }
+  }
+
   switch (type) {
     case 'diagnosis':
       return `["Diagnosis": "${vsName}"] D where D.prevalencePeriod overlaps "Measurement Period"`;
     case 'encounter':
       return `["Encounter": "${vsName}"] E where E.period during "Measurement Period"`;
     case 'procedure':
-      return `["Procedure": "${vsName}"] P where P.performed during "Measurement Period"`;
+      return `["Procedure": "${vsName}"] P where P.performed ${timingClause}`;
     case 'observation':
-      return `["Observation": "${vsName}"] O where O.effective during "Measurement Period"`;
+      return `["Observation": "${vsName}"] O where O.effective ${timingClause}`;
     case 'medication':
       return `["MedicationRequest": "${vsName}"] M where M.authoredOn during "Measurement Period"`;
     case 'demographic':
