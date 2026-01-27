@@ -208,29 +208,23 @@ function extractGlobalConstraints(measure: UniversalMeasureSpec): UniversalMeasu
     }
   }
 
-  // Find gender constraints
-  const findGender = (node: any): string | null => {
-    if (!node) return null;
-    const desc = (node.description || '').toLowerCase();
-    if (desc.includes('female') || desc.includes('women')) return 'female';
-    if (desc.includes('male') || desc.includes('men')) return 'male';
-    if (node.children) {
-      for (const child of node.children) {
-        const result = findGender(child);
-        if (result) return result;
-      }
-    }
-    if (node.criteria) return findGender(node.criteria);
-    return null;
-  };
+  // Only extract gender constraint for measures that are explicitly gender-specific
+  // based on measure title/ID, NOT from population descriptions (which often say "men and women")
+  const title = measure.metadata.title?.toLowerCase() || '';
+  const measureId = measure.metadata.measureId?.toUpperCase() || '';
 
-  for (const pop of measure.populations) {
-    const gender = findGender(pop);
-    if (gender) {
-      constraints.gender = gender as 'male' | 'female';
-      break;
-    }
+  // Female-only measures
+  if (title.includes('cervical') || title.includes('cervix') ||
+      title.includes('breast cancer screen') || title.includes('mammogram') ||
+      measureId.includes('CMS124') || measureId.includes('CMS125')) {
+    constraints.gender = 'female';
   }
+  // Male-only measures
+  else if (title.includes('prostate') || measureId.includes('CMS129')) {
+    constraints.gender = 'male';
+  }
+  // Do NOT extract gender from descriptions - colorectal cancer says "men and women"
+  // which would incorrectly trigger a female-only constraint
 
   return Object.keys(constraints).length > 0 ? constraints : undefined;
 }

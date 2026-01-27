@@ -1,6 +1,7 @@
-import { useState } from 'react';
-import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight, CheckCircle, XCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useMeasureStore, type CodeOutputFormat } from '../../stores/measureStore';
+import { generateCQL, validateCQL, isCQLServiceAvailable, type CQLGenerationResult, type CQLValidationResult } from '../../services/cqlGenerator';
 
 export function CodeGeneration() {
   const { getActiveMeasure, selectedCodeFormat, setSelectedCodeFormat, setActiveTab } = useMeasureStore();
@@ -9,6 +10,24 @@ export function CodeGeneration() {
   const setFormat = setSelectedCodeFormat;
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cqlServiceAvailable, setCqlServiceAvailable] = useState<boolean | null>(null);
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationResult, setValidationResult] = useState<CQLValidationResult | null>(null);
+  const [generationResult, setGenerationResult] = useState<CQLGenerationResult | null>(null);
+
+  // Check CQL service availability on mount
+  useEffect(() => {
+    isCQLServiceAvailable().then(setCqlServiceAvailable);
+  }, []);
+
+  // Update generation result when measure changes
+  useEffect(() => {
+    if (measure && format === 'cql') {
+      const result = generateCQL(measure);
+      setGenerationResult(result);
+      setValidationResult(null); // Reset validation when measure changes
+    }
+  }, [measure, format]);
 
   if (!measure) {
     return (
@@ -42,7 +61,30 @@ export function CodeGeneration() {
 
   const handleRegenerate = () => {
     setIsGenerating(true);
-    setTimeout(() => setIsGenerating(false), 1500);
+    if (measure && format === 'cql') {
+      const result = generateCQL(measure);
+      setGenerationResult(result);
+      setValidationResult(null);
+    }
+    setTimeout(() => setIsGenerating(false), 500);
+  };
+
+  const handleValidateCQL = async () => {
+    if (!generationResult?.cql || format !== 'cql') return;
+
+    setIsValidating(true);
+    try {
+      const result = await validateCQL(generationResult.cql);
+      setValidationResult(result);
+    } catch (err) {
+      setValidationResult({
+        valid: false,
+        errors: [{ severity: 'error', message: err instanceof Error ? err.message : 'Validation failed' }],
+        warnings: [],
+      });
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const reviewProgress = measure.reviewProgress;
@@ -140,6 +182,25 @@ export function CodeGeneration() {
                 <RefreshCw className={`w-4 h-4 ${isGenerating ? 'animate-spin' : ''}`} />
                 Regenerate
               </button>
+              {format === 'cql' && (
+                <button
+                  onClick={handleValidateCQL}
+                  disabled={isValidating || !generationResult?.success}
+                  className="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg flex items-center gap-2 hover:bg-[var(--bg)] transition-colors disabled:opacity-50"
+                  title={cqlServiceAvailable === false ? 'CQL Services not available - run Docker container' : 'Validate CQL syntax'}
+                >
+                  {isValidating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : validationResult?.valid ? (
+                    <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+                  ) : validationResult ? (
+                    <XCircle className="w-4 h-4 text-[var(--danger)]" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4" />
+                  )}
+                  {isValidating ? 'Validating...' : validationResult?.valid ? 'Valid' : 'Validate CQL'}
+                </button>
+              )}
               <button
                 onClick={handleCopy}
                 className="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg flex items-center gap-2 hover:bg-[var(--bg)] transition-colors"
@@ -166,11 +227,98 @@ export function CodeGeneration() {
             )}
             <pre className="p-4 text-sm font-mono overflow-auto max-h-[600px] text-[var(--text)]">
               <code className={!canGenerate ? 'opacity-50' : ''}>
-                {getGeneratedCode(measure, format)}
+                {format === 'cql' && generationResult?.cql
+                  ? generationResult.cql
+                  : getGeneratedCode(measure, format)}
               </code>
             </pre>
           </div>
         </div>
+
+        {/* Validation Results */}
+        {format === 'cql' && validationResult && (
+          <div className={`mt-6 p-4 rounded-xl border ${
+            validationResult.valid
+              ? 'bg-[var(--success)]/5 border-[var(--success)]/30'
+              : 'bg-[var(--danger)]/5 border-[var(--danger)]/30'
+          }`}>
+            <div className="flex items-center gap-2 mb-3">
+              {validationResult.valid ? (
+                <>
+                  <CheckCircle className="w-5 h-5 text-[var(--success)]" />
+                  <h3 className="text-sm font-medium text-[var(--success)]">CQL Validation Passed</h3>
+                </>
+              ) : (
+                <>
+                  <XCircle className="w-5 h-5 text-[var(--danger)]" />
+                  <h3 className="text-sm font-medium text-[var(--danger)]">CQL Validation Failed</h3>
+                </>
+              )}
+            </div>
+
+            {validationResult.errors.length > 0 && (
+              <div className="space-y-2 mb-3">
+                <h4 className="text-xs font-medium text-[var(--danger)] uppercase tracking-wider">Errors ({validationResult.errors.length})</h4>
+                {validationResult.errors.map((error, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-[var(--danger)]">
+                    <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span>{error.message}</span>
+                      {error.line && (
+                        <span className="text-[var(--text-dim)] ml-2">
+                          (Line {error.line}{error.column ? `:${error.column}` : ''})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {validationResult.warnings.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-[var(--warning)] uppercase tracking-wider">Warnings ({validationResult.warnings.length})</h4>
+                {validationResult.warnings.map((warning, i) => (
+                  <div key={i} className="flex items-start gap-2 text-sm text-[var(--warning)]">
+                    <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <span>{warning.message}</span>
+                      {warning.line && (
+                        <span className="text-[var(--text-dim)] ml-2">
+                          (Line {warning.line}{warning.column ? `:${warning.column}` : ''})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {validationResult.valid && validationResult.elm && (
+              <p className="text-sm text-[var(--success)]">
+                ELM (Expression Logical Model) compiled successfully. Ready for execution.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* CQL Service Status */}
+        {format === 'cql' && cqlServiceAvailable === false && !validationResult && (
+          <div className="mt-6 p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-[var(--warning)] flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-medium text-[var(--warning)]">CQL Validation Service Not Available</h3>
+                <p className="text-sm text-[var(--text-muted)] mt-1">
+                  To validate CQL syntax, start the CQL Services Docker container:
+                </p>
+                <code className="block mt-2 p-2 bg-[var(--bg-tertiary)] rounded text-xs font-mono text-[var(--text-dim)]">
+                  docker run -p 8080:8080 cqframework/cql-translation-service
+                </code>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Generation notes */}
         <div className="mt-6 p-4 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)]">
@@ -188,6 +336,12 @@ export function CodeGeneration() {
               <span className="text-[var(--accent)] mt-0.5">•</span>
               {measure.valueSets.length} value set references linked
             </li>
+            {format === 'cql' && generationResult && (
+              <li className="flex items-start gap-2">
+                <span className="text-[var(--accent)] mt-0.5">•</span>
+                {generationResult.metadata.definitionCount} CQL definitions generated
+              </li>
+            )}
             {!canGenerate && (
               <li className="flex items-start gap-2 text-[var(--warning)]">
                 <span className="mt-0.5">⚠</span>

@@ -297,22 +297,19 @@ function checkGenderRequirement(
   patient: TestPatient,
   measure: UniversalMeasureSpec
 ): { met: boolean; reason?: string; hasGenderRequirement: boolean } {
-  // Check explicit global constraint
-  const requiredGender = measure.globalConstraints?.gender;
+  // First, determine if this measure is truly gender-specific based on title/ID
+  // This prevents incorrect gender constraints from migration bugs
+  const title = measure.metadata.title?.toLowerCase() || '';
+  const measureId = measure.metadata.measureId?.toUpperCase() || '';
 
-  if (requiredGender && requiredGender !== 'all') {
-    if (patient.demographics.gender !== requiredGender) {
-      return {
-        met: false,
-        reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`,
-        hasGenderRequirement: true
-      };
-    }
-    return {
-      met: true,
-      reason: `Patient gender (${patient.demographics.gender}) meets requirement (${requiredGender})`,
-      hasGenderRequirement: true
-    };
+  // Colorectal cancer screening is NOT gender-specific - ignore any gender constraints
+  if (isColorectalCancerMeasure(measure)) {
+    return { met: true, hasGenderRequirement: false };
+  }
+
+  // Childhood immunization measures are NOT gender-specific
+  if (isChildhoodImmunizationMeasure(measure)) {
+    return { met: true, hasGenderRequirement: false };
   }
 
   // Auto-detect cervical cancer measures - these MUST be female only
@@ -327,6 +324,56 @@ function checkGenderRequirement(
     return {
       met: true,
       reason: `Patient gender (${patient.demographics.gender}) meets requirement (female only)`,
+      hasGenderRequirement: true
+    };
+  }
+
+  // Breast cancer screening (CMS125) - female only
+  if (title.includes('breast') && title.includes('screen') || measureId.includes('CMS125')) {
+    if (patient.demographics.gender !== 'female') {
+      return {
+        met: false,
+        reason: `Breast cancer screening is only applicable to female patients (patient is ${patient.demographics.gender})`,
+        hasGenderRequirement: true
+      };
+    }
+    return {
+      met: true,
+      reason: `Patient gender (${patient.demographics.gender}) meets requirement (female only)`,
+      hasGenderRequirement: true
+    };
+  }
+
+  // Prostate cancer measures - male only
+  if (title.includes('prostate') || measureId.includes('CMS129')) {
+    if (patient.demographics.gender !== 'male') {
+      return {
+        met: false,
+        reason: `Prostate screening is only applicable to male patients (patient is ${patient.demographics.gender})`,
+        hasGenderRequirement: true
+      };
+    }
+    return {
+      met: true,
+      reason: `Patient gender (${patient.demographics.gender}) meets requirement (male only)`,
+      hasGenderRequirement: true
+    };
+  }
+
+  // Only trust globalConstraints.gender if it's not one of the known gender-neutral measures
+  // that might have been incorrectly migrated
+  const requiredGender = measure.globalConstraints?.gender;
+  if (requiredGender && requiredGender !== 'all') {
+    if (patient.demographics.gender !== requiredGender) {
+      return {
+        met: false,
+        reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`,
+        hasGenderRequirement: true
+      };
+    }
+    return {
+      met: true,
+      reason: `Patient gender (${patient.demographics.gender}) meets requirement (${requiredGender})`,
       hasGenderRequirement: true
     };
   }
