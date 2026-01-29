@@ -5,7 +5,7 @@ import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { ComponentBuilder } from './ComponentBuilder';
 import type { PopulationDefinition, LogicalClause, DataElement, ConfidenceLevel, ReviewStatus, ValueSetReference, CodeReference, CodeSystem } from '../../types/ums';
 import type { ComplexityLevel } from '../../types/componentLibrary';
-import { getComplexityColor, getComplexityDots, getComplexityLevel } from '../../services/complexityCalculator';
+import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDataElementComplexity, calculatePopulationComplexity, calculateMeasureComplexity } from '../../services/complexityCalculator';
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 
 export function UMSEditor() {
@@ -142,7 +142,7 @@ export function UMSEditor() {
                   <span className="px-2 py-1 text-sm font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded">
                     {measure.metadata.measureId}
                   </span>
-                  <ComplexityBadge level="medium" />
+                  <ComplexityBadge level={calculateMeasureComplexity(measure.populations)} />
                 </div>
                 <h1 className="text-xl font-bold text-[var(--text)]">{measure.metadata.title}</h1>
                 <p className="text-sm text-[var(--text-muted)] mt-1">{measure.metadata.description}</p>
@@ -492,7 +492,7 @@ function PopulationSection({
         )}
         <span className="text-lg">{icon}</span>
         <span className="font-medium text-[var(--text)]">{label}</span>
-        <ComplexityBadge level={population.confidence === 'high' ? 'low' : population.confidence === 'low' ? 'high' : 'medium'} size="sm" />
+        <ComplexityBadge level={calculatePopulationComplexity(population)} size="sm" />
         <ReviewStatusBadge status={effectiveStatus} size="sm" />
       </button>
 
@@ -692,7 +692,7 @@ function CriteriaNode({
             <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-dim)] uppercase">
               {element.type}
             </span>
-            <ComplexityBadge level={element.confidence === 'high' ? 'low' : element.confidence === 'low' ? 'high' : 'medium'} size="sm" />
+            <ComplexityBadge level={calculateDataElementComplexity(element)} size="sm" />
             <ReviewStatusBadge status={element.reviewStatus} size="sm" />
             {element.libraryComponentId && (
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/30" title="Linked to component library">
@@ -1058,7 +1058,7 @@ function NodeDetailPanel({
           <span className="text-xs px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] uppercase">
             {node.type}
           </span>
-          <ComplexityBadge level={node.confidence === 'high' ? 'low' : node.confidence === 'low' ? 'high' : 'medium'} />
+          <ComplexityBadge level={calculateDataElementComplexity(node)} />
           <ReviewStatusBadge status={node.reviewStatus} />
           {node.libraryComponentId && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/30">
