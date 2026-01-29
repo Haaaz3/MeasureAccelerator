@@ -43,7 +43,13 @@ import {
   generateImmunizationPredicateCTE,
   generateEncounterPredicateCTE,
   generateFullSQL,
+  generateIPSDCTE,
+  generateMedCoverageCTE,
+  generateCumulativeDaysSupplyCTE,
 } from './hdiSqlTemplates';
+
+// Re-export for external use (e.g., building custom measure SQL mappings)
+export { generateIPSDCTE, generateMedCoverageCTE, generateCumulativeDaysSupplyCTE };
 
 // ============================================================================
 // Default Configuration
@@ -99,14 +105,21 @@ export function generateHDISQL(
       }
     });
 
-    // Step 3: Generate population combination logic
+    // Step 3: Auto-configure ONT contexts based on data models actually used
+    const dataModelsUsed = [...new Set(mapping.predicates.map(p => p.type))];
+    const autoContexts = deriveOntologyContexts(dataModelsUsed);
+    if (autoContexts.length > 0) {
+      fullConfig.ontologyContexts = autoContexts;
+    }
+
+    // Step 4: Generate population combination logic
     const populationSQL = generatePopulationLogic(mapping, fullConfig);
 
-    // Step 4: Assemble full SQL
-    const sql = generateFullSQL(predicateCTEs, populationSQL, fullConfig);
-
-    // Collect metadata
-    const dataModelsUsed = [...new Set(mapping.predicates.map(p => p.type))];
+    // Step 5: Assemble full SQL (include index event + auxiliary CTEs)
+    const sql = generateFullSQL(predicateCTEs, populationSQL, fullConfig, {
+      indexEventCTEs: mapping.indexEventCTEs?.map(ie => ie.sql),
+      auxiliaryCTEs: mapping.auxiliaryCTEs,
+    });
 
     return {
       success: errors.length === 0,
@@ -384,19 +397,46 @@ function dataElementToPredicate(
 }
 
 /**
- * Extract timing requirements from a data element
+ * Extract timing requirements from a data element.
+ * Detects both simple lookback timing (from current_date) and index-event-relative
+ * timing (e.g., "within 60 days of IPSD", "105 days prior to index prescription").
  */
 function extractTimingFromElement(element: DataElement): {
   lookbackYears?: number;
   lookbackDays?: number;
+  indexEvent?: import('../types/hdiDataModels').IndexEventTiming;
 } | undefined {
   if (!element.timingRequirements || element.timingRequirements.length === 0) {
     return undefined;
   }
 
-  const timing: { lookbackYears?: number; lookbackDays?: number } = {};
+  const timing: {
+    lookbackYears?: number;
+    lookbackDays?: number;
+    indexEvent?: import('../types/hdiDataModels').IndexEventTiming;
+  } = {};
 
   for (const req of element.timingRequirements) {
+    const lowerDesc = req.description?.toLowerCase() || '';
+
+    // Detect index-event-relative timing (IPSD, index prescription, index event)
+    const isIndexRelative = /\b(ipsd|index\s*(prescription|event|date)|prior\s+to\s+ipsd|of\s+ipsd)\b/i.test(lowerDesc);
+
+    if (isIndexRelative) {
+      const dayMatch = lowerDesc.match(/(\d+)\s*day/);
+      const days = dayMatch ? parseInt(dayMatch[1], 10) : undefined;
+      const isBefore = /\b(prior|before)\b/.test(lowerDesc);
+      const isAfter = /\b(after|following)\b/.test(lowerDesc);
+
+      timing.indexEvent = {
+        cteAlias: 'IPSD',
+        dateColumn: 'index_prescription_start_date',
+        daysBefore: (isBefore && days) ? days : (!isBefore && !isAfter && days) ? days : undefined,
+        daysAfter: (isAfter && days) ? days : (!isBefore && !isAfter && days) ? days : undefined,
+      };
+      continue;
+    }
+
     // Use the structured window if available
     if (req.window) {
       if (req.window.unit === 'years') {
@@ -410,7 +450,6 @@ function extractTimingFromElement(element: DataElement): {
     }
 
     // Fall back to parsing the description string
-    const lowerDesc = req.description?.toLowerCase() || '';
 
     // Detect year-based lookbacks
     const yearMatch = lowerDesc.match(/(\d+)\s*year/);
@@ -487,12 +526,15 @@ function generatePopulationLogic(
     ));
   }
 
+  const hasIP = !!mapping.populations.initialPopulation;
+
   // Denominator (typically same as IP or references IP)
   if (mapping.populations.denominator) {
     sections.push(generatePopulationSection(
       'DENOMINATOR',
       mapping.populations.denominator,
-      'Denominator: Patients eligible for the measure'
+      'Denominator: Patients eligible for the measure',
+      hasIP
     ));
   } else if (mapping.populations.initialPopulation) {
     // Default: denominator = initial population
@@ -538,6 +580,17 @@ DENOMINATOR as (
     ));
   }
 
+  // Additional numerators for multi-rate measures (e.g., AMM acute + continuation)
+  if (mapping.additionalNumerators) {
+    for (const addNum of mapping.additionalNumerators) {
+      sections.push(generatePopulationSection(
+        addNum.alias,
+        addNum.group,
+        `${addNum.label}`
+      ));
+    }
+  }
+
   // Final calculation
   sections.push(generateFinalCalculation(mapping));
 
@@ -550,12 +603,17 @@ DENOMINATOR as (
 function generatePopulationSection(
   alias: string,
   group: PredicateGroup,
-  comment: string
+  comment: string,
+  hasInitialPopulation: boolean = false
 ): string {
   if (group.children.length === 0) {
+    // If this is the DENOMINATOR and we have an INITIAL_POPULATION, reference it
+    const fallbackSource = (alias === 'DENOMINATOR' && hasInitialPopulation)
+      ? 'INITIAL_POPULATION'
+      : 'DEMOG';
     return `-- ${comment}
 ${alias} as (
-  select distinct empi_id from DEMOG
+  select distinct empi_id from ${fallbackSource}
 )`;
   }
 
@@ -565,9 +623,12 @@ ${alias} as (
     .map(childAlias => `  select empi_id from ${childAlias}`);
 
   if (selects.length === 0) {
+    const fallbackSource = (alias === 'DENOMINATOR' && hasInitialPopulation)
+      ? 'INITIAL_POPULATION'
+      : 'DEMOG';
     return `-- ${comment}
 ${alias} as (
-  select distinct empi_id from DEMOG
+  select distinct empi_id from ${fallbackSource}
 )`;
   }
 
@@ -632,6 +693,18 @@ MEASURE_RESULT as (
   from NUMERATOR`;
   }
 
+  // Additional numerators for multi-rate measures
+  if (mapping.additionalNumerators) {
+    for (const addNum of mapping.additionalNumerators) {
+      sql += `
+  union all
+  select
+    '${addNum.label}' as population_type
+    , count(distinct empi_id) as patient_count
+  from ${addNum.alias}`;
+    }
+  }
+
   sql += `
 )
 select * from MEASURE_RESULT`;
@@ -642,6 +715,34 @@ select * from MEASURE_RESULT`;
 // ============================================================================
 // Helper Functions
 // ============================================================================
+
+/**
+ * Derive which ONT contexts are actually needed based on data models used.
+ * Avoids including unused contexts like Procedures or Results when the measure
+ * doesn't reference them.
+ */
+function deriveOntologyContexts(dataModelsUsed: string[]): string[] {
+  const contexts = new Set<string>();
+  // Demographics is always needed (for gender, race, etc.)
+  contexts.add('HEALTHE INTENT Demographics');
+
+  const modelToContext: Record<string, string> = {
+    encounter: 'HEALTHE INTENT Encounters',
+    condition: 'HEALTHE INTENT Conditions',
+    procedure: 'HEALTHE INTENT Procedures',
+    result: 'HEALTHE INTENT Results',
+    medication: 'HEALTHE INTENT Medications',
+    immunization: 'HEALTHE INTENT Immunizations',
+  };
+
+  for (const model of dataModelsUsed) {
+    if (modelToContext[model]) {
+      contexts.add(modelToContext[model]);
+    }
+  }
+
+  return [...contexts];
+}
 
 /**
  * Estimate query complexity based on predicates

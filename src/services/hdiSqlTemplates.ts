@@ -17,7 +17,8 @@ import type {
   MedicationPredicate,
   ImmunizationPredicate,
   EncounterPredicate,
-  PredicateGroup
+  PredicateGroup,
+  CumulativeDaysSupplyConfig,
 } from '../types/hdiDataModels';
 
 // ============================================================================
@@ -84,7 +85,6 @@ DEMOG as (
     on P.gender_coding_system_id = GENDO.code_system_id
     and P.gender_code = GENDO.code_oid
     and GENDO.concept_class_name = 'Gender'
-    and GENDO.concept_name ilike ('%FHIR%')
   left join ONT STATEO
     on P.state_coding_system_id = STATEO.code_system_id
     and P.state_code = STATEO.code_oid
@@ -122,6 +122,102 @@ DEMOG as (
 }
 
 // ============================================================================
+// Index Prescription Start Date (IPSD) CTE Template
+// ============================================================================
+
+/**
+ * Generates an IPSD CTE for medication-based measures that need an index event.
+ * Calculates the first dispensing date per patient within the intake period.
+ */
+export function generateIPSDCTE(
+  valueSetOid: string,
+  config: SQLGenerationConfig
+): string {
+  const intakeStart = config.intakePeriod?.start || "'${INTAKE_PERIOD_START}'";
+  const intakeEnd = config.intakePeriod?.end || "'${INTAKE_PERIOD_END}'";
+  const startQuoted = intakeStart.startsWith("'") ? intakeStart : `'${intakeStart}'`;
+  const endQuoted = intakeEnd.startsWith("'") ? intakeEnd : `'${intakeEnd}'`;
+
+  return `-- Index Prescription Start Date: First qualifying medication dispensing during Intake Period
+IPSD as (
+  select
+    M.population_id
+    , M.empi_id
+    , min(M.effective_date) as index_prescription_start_date
+  from ph_f_medication M
+  where
+    M.population_id = '${config.populationId}'
+    and exists (
+      select 1 from valueset_codes VS
+      where VS.valueset_oid = '${valueSetOid}'
+        and VS.code = M.medication_code
+    )
+    and M.effective_date >= ${startQuoted}
+    and M.effective_date <= ${endQuoted}
+  group by M.population_id, M.empi_id
+)`;
+}
+
+/**
+ * Generates a MED_COVERAGE CTE for cumulative days supply calculation.
+ * Used by AMM-style measures that require continuous treatment windows.
+ */
+export function generateMedCoverageCTE(
+  valueSetOid: string,
+  config: SQLGenerationConfig
+): string {
+  return `-- Medication coverage: all dispensings from IPSD forward with days_supply
+MED_COVERAGE as (
+  select
+    M.population_id
+    , M.empi_id
+    , M.effective_date
+    , M.end_date
+    , coalesce(M.days_supply, datediff(day, M.effective_date, M.end_date)) as days_supply
+    , I.index_prescription_start_date as ipsd
+    , datediff(day, I.index_prescription_start_date, M.effective_date) as days_from_ipsd
+  from ph_f_medication M
+  inner join IPSD I
+    on M.empi_id = I.empi_id
+    and M.population_id = I.population_id
+  where
+    M.population_id = '${config.populationId}'
+    and exists (
+      select 1 from valueset_codes VS
+      where VS.valueset_oid = '${valueSetOid}'
+        and VS.code = M.medication_code
+    )
+    and M.effective_date >= I.index_prescription_start_date
+)`;
+}
+
+/**
+ * Generates a cumulative days supply predicate CTE for a specific rate.
+ */
+export function generateCumulativeDaysSupplyCTE(
+  cdsConfig: CumulativeDaysSupplyConfig,
+  alias: string,
+  _config: SQLGenerationConfig
+): string {
+  return `-- ${cdsConfig.rateLabel}
+${alias} as (
+  select
+    MC.population_id
+    , MC.empi_id
+    , 'Medication' as data_model
+    , null as identifier
+    , MC.ipsd as clinical_start_date
+    , dateadd(day, ${cdsConfig.windowDays}, MC.ipsd) as clinical_end_date
+    , '${cdsConfig.rateLabel.replace(/'/g, "''")}' as description
+  from MED_COVERAGE MC
+  where
+    MC.days_from_ipsd <= ${cdsConfig.windowDays}
+  group by MC.population_id, MC.empi_id, MC.ipsd
+  having sum(MC.days_supply) >= ${cdsConfig.requiredDaysSupply}
+)`;
+}
+
+// ============================================================================
 // Demographics Predicate Template
 // ============================================================================
 
@@ -130,14 +226,35 @@ export function generateDemographicsPredicateCTE(
   config: SQLGenerationConfig
 ): string {
   const conditions: string[] = [];
+  const needsIndexJoin = !!(predicate.age?.indexEvent);
 
   // Age constraints
   if (predicate.age) {
-    if (predicate.age.min !== undefined) {
-      conditions.push(`age_in_years >= ${predicate.age.min}`);
-    }
-    if (predicate.age.max !== undefined) {
-      conditions.push(`age_in_years <= ${predicate.age.max}`);
+    if (predicate.age.indexEvent) {
+      // Age calculated relative to an index event date (e.g., IPSD)
+      const ie = predicate.age.indexEvent;
+      const ageExpr = config.dialect === 'snowflake'
+        ? `datediff(year, D.birth_date, I.${ie.dateColumn})
+      - case
+        when to_char(I.${ie.dateColumn}, 'MMDD') < to_char(D.birth_date, 'MMDD') then 1
+        else 0
+      end`
+        : `DATE_PART('year', AGE(I.${ie.dateColumn}, D.birth_date))`;
+
+      if (predicate.age.min !== undefined) {
+        conditions.push(`${ageExpr} >= ${predicate.age.min}`);
+      }
+      if (predicate.age.max !== undefined) {
+        conditions.push(`${ageExpr} <= ${predicate.age.max}`);
+      }
+    } else {
+      // Standard age from DEMOG CTE's precomputed age_in_years
+      if (predicate.age.min !== undefined) {
+        conditions.push(`age_in_years >= ${predicate.age.min}`);
+      }
+      if (predicate.age.max !== undefined) {
+        conditions.push(`age_in_years <= ${predicate.age.max}`);
+      }
     }
   }
 
@@ -204,16 +321,25 @@ export function generateDemographicsPredicateCTE(
     ? `-- ${predicate.description}\n`
     : '';
 
+  const tableAlias = needsIndexJoin ? 'D' : '';
+  const fromClause = needsIndexJoin
+    ? `DEMOG D
+  inner join ${predicate.age!.indexEvent!.cteAlias} I
+    on D.empi_id = I.empi_id
+    and D.population_id = I.population_id`
+    : 'DEMOG';
+  const colPrefix = needsIndexJoin ? 'D.' : '';
+
   return `${description}${predicate.alias} as (
   select distinct
-    population_id
-    , empi_id
+    ${colPrefix}population_id
+    , ${colPrefix}empi_id
     , 'Demographics' as data_model
     , null as identifier
     , null as clinical_start_date
     , null as clinical_end_date
     , ${predicate.description ? `'${predicate.description.replace(/'/g, "''")}'` : 'null'} as description
-  from DEMOG
+  from ${fromClause}
   where
     ${whereClause}
 )`;
@@ -228,6 +354,8 @@ export function generateConditionPredicateCTE(
   config: SQLGenerationConfig
 ): string {
   const conditions: string[] = [];
+  const needsIndexJoin = !!(predicate.timing?.indexEvent);
+  const ie = predicate.timing?.indexEvent;
 
   // Population filter
   conditions.push(`C.population_id = '${config.populationId}'`);
@@ -263,25 +391,35 @@ export function generateConditionPredicateCTE(
 
   // Timing constraints
   if (predicate.timing) {
-    if (predicate.timing.effectiveDateRange) {
-      if (predicate.timing.effectiveDateRange.start) {
-        conditions.push(`C.effective_date >= '${predicate.timing.effectiveDateRange.start}'`);
+    if (ie) {
+      // Index-event-relative timing (e.g., "within 60 days of IPSD")
+      if (ie.daysBefore) {
+        conditions.push(`C.effective_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
-      if (predicate.timing.effectiveDateRange.end) {
-        conditions.push(`C.effective_date <= '${predicate.timing.effectiveDateRange.end}'`);
+      if (ie.daysAfter) {
+        conditions.push(`C.effective_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
-    }
-    if (predicate.timing.lookbackYears) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackYears} years'`;
-      conditions.push(`C.effective_date >= ${dateFunc}`);
-    }
-    if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`C.effective_date >= ${dateFunc}`);
+    } else {
+      if (predicate.timing.effectiveDateRange) {
+        if (predicate.timing.effectiveDateRange.start) {
+          conditions.push(`C.effective_date >= '${predicate.timing.effectiveDateRange.start}'`);
+        }
+        if (predicate.timing.effectiveDateRange.end) {
+          conditions.push(`C.effective_date <= '${predicate.timing.effectiveDateRange.end}'`);
+        }
+      }
+      if (predicate.timing.lookbackYears) {
+        const dateFunc = config.dialect === 'snowflake'
+          ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
+          : `current_date - interval '${predicate.timing.lookbackYears} years'`;
+        conditions.push(`C.effective_date >= ${dateFunc}`);
+      }
+      if (predicate.timing.lookbackDays) {
+        const dateFunc = config.dialect === 'snowflake'
+          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
+          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
+        conditions.push(`C.effective_date >= ${dateFunc}`);
+      }
     }
   }
 
@@ -295,6 +433,10 @@ export function generateConditionPredicateCTE(
     ? `-- ${predicate.description}\n`
     : '';
 
+  const indexJoin = needsIndexJoin
+    ? `\n  inner join ${ie!.cteAlias} I\n    on C.empi_id = I.empi_id\n    and C.population_id = I.population_id`
+    : '';
+
   return `${description}${predicate.alias} as (
   select distinct
     C.population_id
@@ -304,7 +446,7 @@ export function generateConditionPredicateCTE(
     , C.effective_date as clinical_start_date
     , null as clinical_end_date
     , ${predicate.description ? `'${predicate.description.replace(/'/g, "''")}'` : 'null'} as description
-  from ph_f_condition C
+  from ph_f_condition C${indexJoin}
   where
     ${whereClause}
 )`;
@@ -492,7 +634,18 @@ export function generateMedicationPredicateCTE(
   predicate: MedicationPredicate,
   config: SQLGenerationConfig
 ): string {
+  // If this predicate has a cumulative days supply config, delegate to that template
+  if (predicate.cumulativeDaysSupply) {
+    return generateCumulativeDaysSupplyCTE(
+      predicate.cumulativeDaysSupply,
+      predicate.alias,
+      config
+    );
+  }
+
   const conditions: string[] = [];
+  const needsIndexJoin = !!(predicate.timing?.indexEvent);
+  const ie = predicate.timing?.indexEvent;
 
   // Population filter
   conditions.push(`M.population_id = '${config.populationId}'`);
@@ -518,25 +671,44 @@ export function generateMedicationPredicateCTE(
 
   // Timing constraints
   if (predicate.timing) {
-    if (predicate.timing.effectiveDateRange) {
-      if (predicate.timing.effectiveDateRange.start) {
-        conditions.push(`M.effective_date >= '${predicate.timing.effectiveDateRange.start}'`);
+    if (ie) {
+      // Index-event-relative timing (e.g., "105 days prior to IPSD")
+      if (ie.daysBefore) {
+        conditions.push(`M.effective_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
-      if (predicate.timing.effectiveDateRange.end) {
-        conditions.push(`M.effective_date <= '${predicate.timing.effectiveDateRange.end}'`);
+      if (ie.daysAfter) {
+        conditions.push(`M.effective_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
-    }
-    if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`M.effective_date >= ${dateFunc}`);
+      // For exclusion predicates that need "before index event"
+      // If daysBefore is set but no daysAfter, also cap at the index event date
+      if (ie.daysBefore && !ie.daysAfter) {
+        conditions.push(`M.effective_date < I.${ie.dateColumn}`);
+      }
+    } else {
+      if (predicate.timing.effectiveDateRange) {
+        if (predicate.timing.effectiveDateRange.start) {
+          conditions.push(`M.effective_date >= '${predicate.timing.effectiveDateRange.start}'`);
+        }
+        if (predicate.timing.effectiveDateRange.end) {
+          conditions.push(`M.effective_date <= '${predicate.timing.effectiveDateRange.end}'`);
+        }
+      }
+      if (predicate.timing.lookbackDays) {
+        const dateFunc = config.dialect === 'snowflake'
+          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
+          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
+        conditions.push(`M.effective_date >= ${dateFunc}`);
+      }
     }
   }
 
   const whereClause = conditions.join('\n    and ');
   const description = predicate.description
     ? `-- ${predicate.description}\n`
+    : '';
+
+  const indexJoin = needsIndexJoin
+    ? `\n  inner join ${ie!.cteAlias} I\n    on M.empi_id = I.empi_id\n    and M.population_id = I.population_id`
     : '';
 
   return `${description}${predicate.alias} as (
@@ -548,7 +720,7 @@ export function generateMedicationPredicateCTE(
     , M.effective_date as clinical_start_date
     , M.end_date as clinical_end_date
     , ${predicate.description ? `'${predicate.description.replace(/'/g, "''")}'` : 'null'} as description
-  from ph_f_medication M
+  from ph_f_medication M${indexJoin}
   where
     ${whereClause}
 )`;
@@ -634,6 +806,8 @@ export function generateEncounterPredicateCTE(
   config: SQLGenerationConfig
 ): string {
   const conditions: string[] = [];
+  const needsIndexJoin = !!(predicate.timing?.indexEvent);
+  const ie = predicate.timing?.indexEvent;
 
   // Population filter
   conditions.push(`E.population_id = '${config.populationId}'`);
@@ -661,19 +835,29 @@ export function generateEncounterPredicateCTE(
 
   // Timing constraints
   if (predicate.timing) {
-    if (predicate.timing.serviceDateRange) {
-      if (predicate.timing.serviceDateRange.start) {
-        conditions.push(`E.service_date >= '${predicate.timing.serviceDateRange.start}'`);
+    if (ie) {
+      // Index-event-relative timing
+      if (ie.daysBefore) {
+        conditions.push(`E.service_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
-      if (predicate.timing.serviceDateRange.end) {
-        conditions.push(`E.service_date <= '${predicate.timing.serviceDateRange.end}'`);
+      if (ie.daysAfter) {
+        conditions.push(`E.service_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
-    }
-    if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`E.service_date >= ${dateFunc}`);
+    } else {
+      if (predicate.timing.serviceDateRange) {
+        if (predicate.timing.serviceDateRange.start) {
+          conditions.push(`E.service_date >= '${predicate.timing.serviceDateRange.start}'`);
+        }
+        if (predicate.timing.serviceDateRange.end) {
+          conditions.push(`E.service_date <= '${predicate.timing.serviceDateRange.end}'`);
+        }
+      }
+      if (predicate.timing.lookbackDays) {
+        const dateFunc = config.dialect === 'snowflake'
+          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
+          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
+        conditions.push(`E.service_date >= ${dateFunc}`);
+      }
     }
   }
 
@@ -688,6 +872,10 @@ export function generateEncounterPredicateCTE(
     ? `-- ${predicate.description}\n`
     : '';
 
+  const indexJoin = needsIndexJoin
+    ? `\n  inner join ${ie!.cteAlias} I\n    on E.empi_id = I.empi_id\n    and E.population_id = I.population_id`
+    : '';
+
   return `${description}${predicate.alias} as (
   select distinct
     E.population_id
@@ -697,7 +885,7 @@ export function generateEncounterPredicateCTE(
     , E.service_date as clinical_start_date
     , E.discharge_date as clinical_end_date
     , ${predicate.description ? `'${predicate.description.replace(/'/g, "''")}'` : 'null'} as description
-  from ph_f_encounter E
+  from ph_f_encounter E${indexJoin}
   where
     ${whereClause}
 )`;
@@ -780,7 +968,11 @@ ${exclusionRefs.map(ex => `  except select empi_id from ${ex}`).join('\n')}
 export function generateFullSQL(
   predicateCTEs: string[],
   combination: string,
-  config: SQLGenerationConfig
+  config: SQLGenerationConfig,
+  options?: {
+    indexEventCTEs?: string[];
+    auxiliaryCTEs?: string[];
+  }
 ): string {
   const header = config.includeComments
     ? `-- ============================================================================
@@ -795,12 +987,25 @@ export function generateFullSQL(
   const ontCTE = generateOntologyCTE(config);
   const demogCTE = generateDemographicsCTE(config);
 
+  // Index event CTEs come right after DEMOG, before predicates
+  const indexSection = options?.indexEventCTEs?.length
+    ? `,\n--\n${options.indexEventCTEs.join(',\n--\n')}`
+    : '';
+
   const predicateSection = predicateCTEs.length > 0
-    ? `,\n--\n${predicateCTEs.join(',\n--\n')},`
-    : ',';
+    ? `,\n--\n${predicateCTEs.join(',\n--\n')}`
+    : '';
+
+  // Auxiliary CTEs come after predicates, before populations
+  const auxSection = options?.auxiliaryCTEs?.length
+    ? `,\n--\n${options.auxiliaryCTEs.join(',\n--\n')}`
+    : '';
+
+  const allSections = `${indexSection}${predicateSection}${auxSection}`;
+  const sectionsWithTrailingComma = allSections.length > 0 ? `${allSections},` : ',';
 
   return `${header}with ${ontCTE},
-${demogCTE}${predicateSection}
+${demogCTE}${sectionsWithTrailingComma}
 --
 -- Final population combination
 ${combination}`;

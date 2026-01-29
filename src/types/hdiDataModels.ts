@@ -26,6 +26,11 @@ export interface SQLGenerationConfig {
     start: string; // ISO date
     end: string;   // ISO date
   };
+  /** Intake period (for HEDIS measures like AMM) */
+  intakePeriod?: {
+    start: string; // ISO date
+    end: string;   // ISO date
+  };
 }
 
 // ============================================================================
@@ -65,6 +70,8 @@ export interface DemographicsPredicate {
     max?: number;
     /** Reference date for age calculation (defaults to current_date()) */
     referenceDate?: string;
+    /** Calculate age relative to an index event instead of current_date() */
+    indexEvent?: IndexEventTiming;
   };
 
   /** Gender/sex constraints using FHIR concept names */
@@ -148,6 +155,8 @@ export interface ConditionPredicate {
     /** Lookback period from reference date */
     lookbackDays?: number;
     lookbackYears?: number;
+    /** Timing relative to an index event (replaces current_date() lookbacks) */
+    indexEvent?: IndexEventTiming;
   };
 
   /** Associated encounter constraints */
@@ -204,6 +213,8 @@ export interface ResultPredicate {
     serviceDateRange?: DateRange;
     lookbackDays?: number;
     lookbackYears?: number;
+    /** Timing relative to an index event */
+    indexEvent?: IndexEventTiming;
   };
 }
 
@@ -226,6 +237,8 @@ export interface EncounterPredicate {
   timing?: {
     serviceDateRange?: DateRange;
     lookbackDays?: number;
+    /** Timing relative to an index event */
+    indexEvent?: IndexEventTiming;
   };
 
   /** Facility type constraints */
@@ -253,6 +266,8 @@ export interface ProcedurePredicate {
     performedDateRange?: DateRange;
     lookbackDays?: number;
     lookbackYears?: number;
+    /** Timing relative to an index event */
+    indexEvent?: IndexEventTiming;
   };
 
   /** Associated encounter constraints */
@@ -284,7 +299,12 @@ export interface MedicationPredicate {
   timing?: {
     effectiveDateRange?: DateRange;
     lookbackDays?: number;
+    /** Timing relative to an index event */
+    indexEvent?: IndexEventTiming;
   };
+
+  /** Cumulative days supply calculation (for AMM-style measures) */
+  cumulativeDaysSupply?: CumulativeDaysSupplyConfig;
 }
 
 // ============================================================================
@@ -333,6 +353,45 @@ export interface CodeReference {
 export interface DateRange {
   start?: string; // ISO date
   end?: string;   // ISO date
+}
+
+// ============================================================================
+// Index Event Timing (e.g., IPSD-relative lookbacks)
+// ============================================================================
+
+/**
+ * Describes timing relative to an index event (e.g., IPSD).
+ * Instead of lookback from current_date(), the predicate joins to an
+ * index-event CTE and computes date offsets from that event date.
+ */
+export interface IndexEventTiming {
+  /** CTE alias that provides the index event date (e.g., "IPSD") */
+  cteAlias: string;
+  /** Column name on the CTE that holds the event date */
+  dateColumn: string;
+  /** Offset in days BEFORE the index event (positive number) */
+  daysBefore?: number;
+  /** Offset in days AFTER the index event (positive number) */
+  daysAfter?: number;
+}
+
+/**
+ * For medication measures that require cumulative days-supply calculation
+ * (e.g., AMM acute/continuation phase).
+ */
+export interface CumulativeDaysSupplyConfig {
+  /** Value set OID for the medication */
+  valueSetOid: string;
+  /** Index event CTE alias (e.g., "IPSD") */
+  indexEventCte: string;
+  /** Index event date column */
+  indexEventDateColumn: string;
+  /** Treatment window in days from index event */
+  windowDays: number;
+  /** Minimum cumulative days supply required */
+  requiredDaysSupply: number;
+  /** Human-readable label for this rate */
+  rateLabel: string;
 }
 
 // ============================================================================
@@ -386,6 +445,26 @@ export interface MeasureSQLMapping {
     numerator?: PredicateGroup;
     numeratorExclusion?: PredicateGroup;
   };
+
+  /** Additional named numerators for multi-rate measures (e.g., AMM acute + continuation) */
+  additionalNumerators?: {
+    alias: string;
+    label: string;
+    group: PredicateGroup;
+  }[];
+
+  /** Index event CTEs that must be generated before predicates (e.g., IPSD) */
+  indexEventCTEs?: IndexEventCTEConfig[];
+
+  /** Auxiliary CTEs injected between predicates and populations (e.g., MED_COVERAGE) */
+  auxiliaryCTEs?: string[];
+}
+
+export interface IndexEventCTEConfig {
+  /** CTE alias (e.g., "IPSD") */
+  alias: string;
+  /** The raw SQL for this CTE */
+  sql: string;
 }
 
 // ============================================================================
