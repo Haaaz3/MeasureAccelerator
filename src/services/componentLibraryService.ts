@@ -286,6 +286,13 @@ export function searchComponents(
     );
   }
 
+  // Sort archived components to the bottom
+  result.sort((a, b) => {
+    const aArchived = a.versionInfo.status === 'archived' ? 1 : 0;
+    const bArchived = b.versionInfo.status === 'archived' ? 1 : 0;
+    return aArchived - bArchived;
+  });
+
   return result;
 }
 
