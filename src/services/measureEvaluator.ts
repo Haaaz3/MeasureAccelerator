@@ -21,6 +21,7 @@ import {
   getCRCScreeningExclusionValueSets,
   getCervicalScreeningNumeratorValueSets,
   getCervicalScreeningExclusionValueSets,
+  getBreastCancerScreeningNumeratorValueSets,
   isCodeInValueSets,
 } from '../constants/standardValueSets';
 
@@ -145,6 +146,19 @@ function isColorectalCancerMeasure(measure: UniversalMeasureSpec): boolean {
 }
 
 /**
+ * Detect if a measure is for breast cancer screening
+ */
+function isBreastCancerMeasure(measure: UniversalMeasureSpec): boolean {
+  const title = measure.metadata.title?.toLowerCase() || '';
+  const measureId = measure.metadata.measureId?.toUpperCase() || '';
+
+  return (title.includes('breast') && title.includes('screen')) ||
+         title.includes('mammogra') ||
+         measureId.includes('CMS125') ||
+         measureId.includes('BCS');
+}
+
+/**
  * Get the required age range for a measure based on its type
  * Returns null if no specific age requirement can be determined
  */
@@ -191,6 +205,16 @@ function getMeasureAgeRequirements(measure: UniversalMeasureSpec): {
       minAge: 45,
       maxAge: 75,
       description: 'Adults 45-75 years of age',
+      checkType: 'range'
+    };
+  }
+
+  if (isBreastCancerMeasure(measure)) {
+    // CMS125: Women 50-74 years of age
+    return {
+      minAge: 50,
+      maxAge: 74,
+      description: 'Women 50-74 years of age',
       checkType: 'range'
     };
   }
@@ -511,6 +535,15 @@ export function evaluatePatient(
       if (cervicalNumerator.met) {
         numerResult = cervicalNumerator;
         console.log(`Numerator met via standard cervical cancer screening value sets for ${patient.name}`);
+      }
+    }
+
+    // Check for breast cancer screening measure
+    if (isBreastCancerMeasure(measure)) {
+      const bcsNumerator = checkBreastCancerScreeningNumerator(patient, mpStart, mpEnd);
+      if (bcsNumerator.met) {
+        numerResult = bcsNumerator;
+        console.log(`Numerator met via standard breast cancer screening value sets for ${patient.name}`);
       }
     }
   }
@@ -2038,6 +2071,85 @@ function checkCervicalScreeningExclusions(
   }
 
   return { met: false, nodes: [] };
+}
+
+/**
+ * Check if patient meets breast cancer screening numerator criteria using standard value sets
+ *
+ * CMS125: Women 50-74 years of age who had a mammography within 27 months
+ * (per USPSTF: biennial screening mammography for women aged 50-74)
+ */
+function checkBreastCancerScreeningNumerator(
+  patient: TestPatient,
+  mpStart: string,
+  mpEnd: string
+): { met: boolean; nodes: ValidationNode[] } {
+  const nodes: ValidationNode[] = [];
+  const numeratorValueSets = getBreastCancerScreeningNumeratorValueSets();
+  const mpEndDate = new Date(mpEnd);
+
+  // Mammography is valid within 27 months (biennial with 3-month grace)
+  const validPeriodMonths = 27;
+  const cutoffDate = new Date(mpEndDate);
+  cutoffDate.setMonth(cutoffDate.getMonth() - validPeriodMonths);
+
+  // Check procedures for mammography
+  for (const proc of patient.procedures) {
+    const result = isCodeInValueSets(proc.code, proc.system, numeratorValueSets);
+    if (result.found && result.valueSet) {
+      const procDate = new Date(proc.date);
+      if (procDate >= cutoffDate) {
+        const node: ValidationNode = {
+          id: `numer-proc-${result.valueSet.id}`,
+          title: 'Numerator: Mammography',
+          type: 'decision',
+          description: `Patient has mammography within 27 months (OID: ${result.valueSet.oid})`,
+          status: 'pass',
+          facts: [{
+            code: proc.code,
+            display: proc.display,
+            date: proc.date,
+            source: `Procedures (matched ${result.valueSet.name})`,
+          }],
+          cqlSnippet: `exists ([Procedure: "Mammography"] P where P.performed 27 months or less before end of "Measurement Period")`,
+          source: `Standard Value Set: ${result.valueSet.oid}`,
+        };
+        nodes.push(node);
+        console.log(`Breast cancer screening numerator met via mammography: ${proc.code} on ${proc.date}`);
+        return { met: true, nodes };
+      }
+    }
+  }
+
+  // Check observations for mammography results
+  for (const obs of patient.observations) {
+    const result = isCodeInValueSets(obs.code, obs.system, numeratorValueSets);
+    if (result.found && result.valueSet) {
+      const obsDate = new Date(obs.date);
+      if (obsDate >= cutoffDate) {
+        const node: ValidationNode = {
+          id: `numer-obs-${result.valueSet.id}`,
+          title: 'Numerator: Mammography',
+          type: 'decision',
+          description: `Patient has mammography result within 27 months (OID: ${result.valueSet.oid})`,
+          status: 'pass',
+          facts: [{
+            code: obs.code,
+            display: obs.display,
+            date: obs.date,
+            source: `Observations (matched ${result.valueSet.name})`,
+          }],
+          cqlSnippet: `exists ([Observation: "Mammography"] O where O.effective 27 months or less before end of "Measurement Period")`,
+          source: `Standard Value Set: ${result.valueSet.oid}`,
+        };
+        nodes.push(node);
+        console.log(`Breast cancer screening numerator met via mammography observation: ${obs.code} on ${obs.date}`);
+        return { met: true, nodes };
+      }
+    }
+  }
+
+  return { met: false, nodes };
 }
 
 function checkTiming(

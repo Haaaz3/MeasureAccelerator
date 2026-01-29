@@ -88,6 +88,7 @@ const STATIC_TEST_PATIENTS: TestPatient[] = [
       { code: '88175', system: CPT, display: 'Cytopathology, cervical or vaginal, collected in preservative fluid, automated thin layer preparation, with screening by automated system and review by physician', date: '2025-07-18' },
       { code: '87625', system: CPT, display: 'Infectious agent detection by nucleic acid; Human Papillomavirus (HPV), high-risk types', date: '2025-07-18' },
       { code: '45378', system: CPT, display: 'Colonoscopy, diagnostic', date: '2022-08-15' },
+      { code: '77067', system: CPT, display: 'Screening mammography, bilateral, including CAD when performed', date: '2025-09-12' },
     ],
     observations: [
       { code: '8480-6', system: LOINC, display: 'Systolic blood pressure', date: '2026-11-03', value: 128, unit: 'mm[Hg]' },

@@ -530,6 +530,54 @@ export function getCervicalScreeningExclusionValueSets(): StandardValueSet[] {
   ];
 }
 
+// ============================================================================
+// Breast Cancer Screening (CMS125)
+// ============================================================================
+
+/**
+ * Mammography - OID: 2.16.840.1.113883.3.464.1003.108.12.1018
+ * Screening and diagnostic mammography procedures
+ */
+export const MAMMOGRAPHY_VALUE_SET: StandardValueSet = {
+  id: 'mammography',
+  oid: '2.16.840.1.113883.3.464.1003.108.12.1018',
+  name: 'Mammography',
+  codes: [
+    // CPT Mammography codes
+    { code: '77065', system: CPT, display: 'Diagnostic mammography, including CAD when performed; unilateral' },
+    { code: '77066', system: CPT, display: 'Diagnostic mammography, including CAD when performed; bilateral' },
+    { code: '77067', system: CPT, display: 'Screening mammography, bilateral, including CAD when performed' },
+    // HCPCS
+    { code: 'G0202', system: HCPCS, display: 'Screening mammography, bilateral, including CAD when performed' },
+    { code: 'G0204', system: HCPCS, display: 'Diagnostic mammography, including CAD when performed; bilateral' },
+    { code: 'G0206', system: HCPCS, display: 'Diagnostic mammography, including CAD when performed; unilateral' },
+    // LOINC
+    { code: '24606-6', system: LOINC, display: 'MG Breast Screening' },
+    { code: '24604-1', system: LOINC, display: 'MG Breast Diagnostic Limited Views' },
+    { code: '24605-8', system: LOINC, display: 'MG Breast Diagnostic' },
+    { code: '26346-7', system: LOINC, display: 'MG Breast - bilateral Screening' },
+    { code: '26349-1', system: LOINC, display: 'MG Breast - bilateral Diagnostic' },
+    { code: '26347-5', system: LOINC, display: 'MG Breast - left Screening' },
+    { code: '26350-9', system: LOINC, display: 'MG Breast - left Diagnostic' },
+    { code: '26348-3', system: LOINC, display: 'MG Breast - right Screening' },
+    { code: '26351-7', system: LOINC, display: 'MG Breast - right Diagnostic' },
+    // SNOMED CT
+    { code: '24623002', system: SNOMEDCT, display: 'Screening mammography' },
+    { code: '71651007', system: SNOMEDCT, display: 'Mammography' },
+    { code: '566571000119105', system: SNOMEDCT, display: 'Mammography of right breast' },
+    { code: '572701000119102', system: SNOMEDCT, display: 'Mammography of left breast' },
+  ],
+};
+
+/**
+ * Get breast cancer screening numerator value sets
+ */
+export function getBreastCancerScreeningNumeratorValueSets(): StandardValueSet[] {
+  return [
+    MAMMOGRAPHY_VALUE_SET,
+  ];
+}
+
 /**
  * Get all standard value sets organized by measure
  */

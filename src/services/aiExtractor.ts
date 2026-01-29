@@ -728,15 +728,22 @@ function convertToUMS(data: ExtractedMeasureData): UniversalMeasureSpec {
           `${crit.thresholds.operator} ${crit.thresholds.value}${crit.thresholds.unit ? ` ${crit.thresholds.unit}` : ''}`
         );
       }
-      if (crit.ageRange) {
+      if (crit.ageRange && (crit.type !== 'demographic')) {
         additionalRequirements.push(
           `Age ${crit.ageRange.min}-${crit.ageRange.max} ${crit.ageRange.unit}`
         );
       }
 
+      // If this criterion has an ageRange, treat it as a demographic element with thresholds
+      const elementType = crit.ageRange ? 'demographic' : (crit.type || 'assessment');
+      const ageThresholds = crit.ageRange ? {
+        ageMin: crit.ageRange.min,
+        ageMax: crit.ageRange.max,
+      } : undefined;
+
       const dataElement: DataElement = {
         id: `${popType}-elem-${idx}-${cidx}`,
-        type: crit.type || 'assessment',
+        type: elementType as any,
         description: crit.description,
         valueSet: linkedValueSet ? {
           id: linkedValueSet.id,
@@ -747,6 +754,9 @@ function convertToUMS(data: ExtractedMeasureData): UniversalMeasureSpec {
           totalCodeCount: linkedValueSet.totalCodeCount,
         } : undefined,
         directCodes: directCodes.length > 0 ? directCodes : undefined,
+        thresholds: ageThresholds || (crit.thresholds ? {
+          valueMin: typeof crit.thresholds.value === 'number' ? crit.thresholds.value : undefined,
+        } : undefined),
         timingRequirements: timingRequirements.length > 0 ? timingRequirements : undefined,
         additionalRequirements: additionalRequirements.length > 0 ? additionalRequirements : undefined,
         confidence: linkedValueSet ? 'high' as ConfidenceLevel : 'medium' as ConfidenceLevel,
@@ -804,6 +814,15 @@ function convertToUMS(data: ExtractedMeasureData): UniversalMeasureSpec {
   // Determine measurement year from data or default
   const currentYear = new Date().getFullYear();
 
+  // Build globalConstraints from measure-level age range
+  const globalConstraints: any = {};
+  if (data.ageRange) {
+    globalConstraints.ageRange = {
+      min: data.ageRange.min,
+      max: data.ageRange.max,
+    };
+  }
+
   return {
     id,
     metadata: {
@@ -828,6 +847,7 @@ function convertToUMS(data: ExtractedMeasureData): UniversalMeasureSpec {
       sourceDocuments: ['AI Extraction'],
     },
     populations,
+    globalConstraints: Object.keys(globalConstraints).length > 0 ? globalConstraints : undefined,
     valueSets,
     status: 'in_progress',
     overallConfidence: valueSets.length > 0 && valueSets.some(vs => vs.codes.length > 0) ? 'high' : 'medium',
