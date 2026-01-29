@@ -49,9 +49,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127', 'CMS147'],
-      usageCount: 4,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -97,9 +96,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127', 'CMS147', 'CMS165'],
-      usageCount: 5,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -144,9 +142,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125'],
-      usageCount: 2,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -191,9 +188,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127'],
-      usageCount: 3,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -238,9 +234,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS165'],
-      usageCount: 3,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -285,9 +280,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130'],
-      usageCount: 1,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -336,9 +330,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130'],
-      usageCount: 1,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -384,9 +377,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127', 'CMS165'],
-      usageCount: 4,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -431,9 +423,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127', 'CMS165'],
-      usageCount: 4,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -480,9 +471,8 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T10:00:00Z',
     },
     usage: {
-      measureIds: ['CMS125'],
-      usageCount: 1,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T10:00:00Z',
@@ -530,9 +520,8 @@ export const sampleComposites: Omit<CompositeComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T12:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130'],
-      usageCount: 1,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T12:00:00Z',
@@ -571,9 +560,8 @@ export const sampleComposites: Omit<CompositeComponent, 'complexity'>[] = [
       approvedAt: '2024-01-15T12:00:00Z',
     },
     usage: {
-      measureIds: ['CMS130', 'CMS125', 'CMS127', 'CMS165'],
-      usageCount: 4,
-      lastUsedAt: '2024-06-01T00:00:00Z',
+      measureIds: [],
+      usageCount: 0,
     },
     metadata: {
       createdAt: '2024-01-15T12:00:00Z',

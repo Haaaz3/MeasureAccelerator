@@ -18,6 +18,7 @@ import type {
   ApprovalStatus,
   ComponentChanges,
   EditAction,
+  TimingExpression,
 } from '../types/componentLibrary';
 import { calculateAtomicComplexity, calculateCompositeComplexity } from '../services/complexityCalculator';
 import {
@@ -31,7 +32,7 @@ import {
 } from '../services/componentLibraryService';
 import { parseDataElementToComponent, findExactMatch } from '../services/componentMatcher';
 import { sampleAtomics, sampleComposites, sampleCategories } from '../data/sampleLibraryData';
-import type { DataElement, LogicalClause } from '../types/ums';
+import type { DataElement, LogicalClause, UniversalMeasureSpec } from '../types/ums';
 
 // ============================================================================
 // State Interface
@@ -77,6 +78,17 @@ interface ComponentLibraryState {
 
   // Measure linking
   linkMeasureComponents: (measureId: string, populations: Array<{ criteria?: LogicalClause | null; type: string }>) => Record<string, string>;
+
+  // Usage recalculation from actual measures
+  recalculateUsage: (measures: UniversalMeasureSpec[]) => void;
+
+  // Sync component edits to measures
+  syncComponentToMeasures: (
+    componentId: ComponentId,
+    changes: ComponentChanges,
+    measures: UniversalMeasureSpec[],
+    updateMeasure: (id: string, updates: Partial<UniversalMeasureSpec>) => void,
+  ) => void;
 
   // Computed / Selectors
   getComponent: (id: ComponentId) => LibraryComponent | null;
@@ -339,6 +351,131 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
         }
 
         return linkMap;
+      },
+
+      // Recalculate usage from actual measures (resets all counts, rebuilds from scratch)
+      recalculateUsage: (measures) => {
+        const state = get();
+
+        // Helper to collect all data elements from a criteria tree
+        const collectElements = (node: LogicalClause | DataElement): DataElement[] => {
+          if ('operator' in node && 'children' in node) {
+            return (node as LogicalClause).children.flatMap(collectElements);
+          }
+          return [node as DataElement];
+        };
+
+        // Build a set of (componentId -> Set<measureId>) from actual measures
+        const usageMap = new Map<string, Set<string>>();
+
+        // Also build a library lookup for matching
+        const libraryRecord: Record<string, LibraryComponent> = {};
+        state.components.forEach((c) => { libraryRecord[c.id] = c; });
+
+        for (const measure of measures) {
+          const measureId = measure.metadata.measureId;
+          for (const pop of measure.populations) {
+            if (!pop.criteria) continue;
+            const elements = collectElements(pop.criteria as LogicalClause | DataElement);
+            for (const element of elements) {
+              // Check if element is linked to a library component
+              let componentId = element.libraryComponentId;
+
+              // If not linked, try to match
+              if (!componentId) {
+                const parsed = parseDataElementToComponent(element);
+                if (parsed) {
+                  const match = findExactMatch(parsed, libraryRecord);
+                  if (match) {
+                    componentId = match.id;
+                  }
+                }
+              }
+
+              if (componentId && libraryRecord[componentId]) {
+                if (!usageMap.has(componentId)) {
+                  usageMap.set(componentId, new Set());
+                }
+                usageMap.get(componentId)!.add(measureId);
+              }
+            }
+          }
+        }
+
+        // Reset all components' usage and rebuild from usageMap
+        const updatedComponents = state.components.map((c) => {
+          const measureIds = usageMap.has(c.id) ? Array.from(usageMap.get(c.id)!) : [];
+          return {
+            ...c,
+            usage: {
+              ...c.usage,
+              measureIds,
+              usageCount: measureIds.length,
+              lastUsedAt: measureIds.length > 0 ? new Date().toISOString() : c.usage.lastUsedAt,
+            },
+          } as LibraryComponent;
+        });
+
+        set({ components: updatedComponents });
+      },
+
+      // Sync component changes to all measures that use it
+      syncComponentToMeasures: (componentId, changes, measures, updateMeasure) => {
+        const component = get().components.find((c) => c.id === componentId);
+        if (!component) return;
+
+        const affectedMeasureIds = component.usage.measureIds;
+
+        // Helper to walk criteria tree and update matching data elements
+        const updateCriteria = (node: any): any => {
+          if (!node) return node;
+
+          // LogicalClause
+          if ('operator' in node && 'children' in node) {
+            return {
+              ...node,
+              children: node.children.map(updateCriteria),
+            };
+          }
+
+          // DataElement — check if it's linked to this component
+          if (node.libraryComponentId === componentId) {
+            const updated = { ...node };
+            if (changes.name) {
+              updated.description = changes.name;
+            }
+            if (component.type === 'atomic') {
+              const atomicComp = component as AtomicComponent;
+              if (changes.timing) {
+                updated.timingRequirements = [{
+                  description: changes.timing.displayExpression,
+                  window: changes.timing.quantity ? {
+                    value: changes.timing.quantity,
+                    unit: changes.timing.unit || 'years',
+                    direction: changes.timing.position || 'before end of',
+                  } : undefined,
+                }];
+              }
+              if (changes.negation !== undefined) {
+                updated.negation = changes.negation;
+              }
+            }
+            return updated;
+          }
+
+          return node;
+        };
+
+        for (const measure of measures) {
+          if (!affectedMeasureIds.includes(measure.metadata.measureId)) continue;
+
+          const updatedPopulations = measure.populations.map((pop) => ({
+            ...pop,
+            criteria: pop.criteria ? updateCriteria(pop.criteria) : pop.criteria,
+          }));
+
+          updateMeasure(measure.id, { populations: updatedPopulations });
+        }
       },
 
       // Selectors

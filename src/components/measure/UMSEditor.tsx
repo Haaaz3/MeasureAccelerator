@@ -11,7 +11,8 @@ import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet
 export function UMSEditor() {
   const { getActiveMeasure, updateReviewStatus, approveAllHighConfidence, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
-  const { components: libraryComponents, linkMeasureComponents, initializeWithSampleData, getComponent } = useComponentLibraryStore();
+  const { components: libraryComponents, linkMeasureComponents, initializeWithSampleData, getComponent, recalculateUsage, syncComponentToMeasures } = useComponentLibraryStore();
+  const { updateMeasure } = useMeasureStore();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['ip', 'den', 'ex', 'num']));
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [showCQL, setShowCQL] = useState(false);
@@ -33,8 +34,10 @@ export function UMSEditor() {
         measure.populations,
       );
       setComponentLinkMap(linkMap);
+      // Recalculate usage counts from all actual measures
+      recalculateUsage(measures);
     }
-  }, [measure?.id]);
+  }, [measure?.id, measures.length]);
 
   // Force re-render when measures change (for progress bar)
   const [, forceUpdate] = useState({});

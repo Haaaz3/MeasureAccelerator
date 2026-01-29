@@ -14,8 +14,10 @@ import {
   ToggleRight,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
+import { useMeasureStore } from '../../stores/measureStore';
 import { createAtomicComponent, createCompositeComponent } from '../../services/componentLibraryService';
 import type { TimingOperator, ComponentCategory } from '../../types/componentLibrary';
+import SharedEditWarning from './SharedEditWarning';
 
 // ============================================================================
 // Types
@@ -71,7 +73,10 @@ const CATEGORIES: { value: ComponentCategory; label: string }[] = [
 // ============================================================================
 
 export default function ComponentEditor({ componentId, onSave, onClose }: ComponentEditorProps) {
-  const { components, addComponent, updateComponent, getComponent } = useComponentLibraryStore();
+  const { components, addComponent, updateComponent, getComponent, syncComponentToMeasures, handleSharedEdit, recalculateUsage } = useComponentLibraryStore();
+  const { measures, updateMeasure } = useMeasureStore();
+  const [showSharedWarning, setShowSharedWarning] = useState(false);
+  const [pendingChanges, setPendingChanges] = useState<Partial<any> | null>(null);
 
   const isEditMode = componentId !== undefined;
   const existingComponent = isEditMode ? getComponent(componentId) : null;
@@ -239,7 +244,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
       });
 
       if (isEditMode && existingComponent) {
-        updateComponent(existingComponent.id, {
+        const updates = {
           name: component.name,
           valueSet: component.valueSet,
           timing: component.timing,
@@ -252,7 +257,25 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
             updatedAt: new Date().toISOString(),
             updatedBy: 'user',
           },
-        } as Partial<typeof existingComponent>);
+        } as Partial<typeof existingComponent>;
+
+        // Check if shared — show warning if used in multiple measures
+        if (existingComponent.usage.usageCount > 1) {
+          setPendingChanges(updates);
+          setShowSharedWarning(true);
+          return;
+        }
+
+        updateComponent(existingComponent.id, updates);
+        // Sync changes to any linked measures
+        if (existingComponent.usage.usageCount >= 1) {
+          syncComponentToMeasures(
+            existingComponent.id,
+            { changeDescription: 'Component updated', name: component.name, timing: component.timing, negation: component.negation },
+            measures,
+            updateMeasure,
+          );
+        }
       } else {
         addComponent(component);
       }
@@ -281,7 +304,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
       });
 
       if (isEditMode && existingComponent) {
-        updateComponent(existingComponent.id, {
+        const updates = {
           name: component.name,
           operator: component.operator,
           children: component.children,
@@ -293,7 +316,16 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
             updatedAt: new Date().toISOString(),
             updatedBy: 'user',
           },
-        } as Partial<typeof existingComponent>);
+        } as Partial<typeof existingComponent>;
+
+        // Check if shared — show warning if used in multiple measures
+        if (existingComponent.usage.usageCount > 1) {
+          setPendingChanges(updates);
+          setShowSharedWarning(true);
+          return;
+        }
+
+        updateComponent(existingComponent.id, updates);
       } else {
         addComponent(component);
       }
@@ -854,6 +886,59 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
           </button>
         </div>
       </div>
+
+      {/* Shared Edit Warning Modal */}
+      {showSharedWarning && existingComponent && (
+        <SharedEditWarning
+          componentName={existingComponent.name}
+          usageCount={existingComponent.usage.usageCount}
+          measureIds={existingComponent.usage.measureIds}
+          onUpdateAll={() => {
+            if (pendingChanges) {
+              updateComponent(existingComponent.id, pendingChanges);
+              // Propagate changes to all linked measures
+              const changes = {
+                changeDescription: 'Component updated across all measures',
+                name: pendingChanges.name,
+                timing: pendingChanges.timing,
+                negation: pendingChanges.negation,
+                operator: pendingChanges.operator,
+                children: pendingChanges.children,
+              };
+              syncComponentToMeasures(existingComponent.id, changes, measures, updateMeasure);
+              recalculateUsage(measures);
+            }
+            setShowSharedWarning(false);
+            setPendingChanges(null);
+            onSave();
+          }}
+          onCreateCopy={() => {
+            if (pendingChanges) {
+              // Create a new version — duplicate the component, don't touch original
+              const newId = `${existingComponent.id}-v${Date.now()}`;
+              const duplicated = {
+                ...existingComponent,
+                ...pendingChanges,
+                id: newId,
+                usage: { measureIds: [], usageCount: 0 },
+                versionInfo: {
+                  ...existingComponent.versionInfo,
+                  versionId: (parseFloat(existingComponent.versionInfo.versionId) + 0.1).toFixed(1),
+                  status: 'draft' as const,
+                },
+              };
+              addComponent(duplicated as any);
+            }
+            setShowSharedWarning(false);
+            setPendingChanges(null);
+            onSave();
+          }}
+          onCancel={() => {
+            setShowSharedWarning(false);
+            setPendingChanges(null);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   Archive,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
+import { useMeasureStore } from '../../stores/measureStore';
 import { getComplexityColor, getComplexityDots } from '../../services/complexityCalculator';
 import type {
   ComponentCategory,
@@ -99,16 +100,20 @@ export function LibraryBrowser() {
     getCategoryCounts,
     getFilteredComponents,
     initializeWithSampleData,
+    recalculateUsage,
   } = useComponentLibraryStore();
+  const { measures } = useMeasureStore();
 
   const [selectedCategory, setSelectedCategory] = useState<ComponentCategory | 'all'>('all');
 
-  // Seed sample data on mount if store is empty
+  // Seed sample data on mount if store is empty, then recalculate usage from actual measures
   useEffect(() => {
     if (components.length === 0) {
       initializeWithSampleData();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // Always recalculate usage from actual measures to keep counts accurate
+    recalculateUsage(measures);
+  }, [measures.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync category selection into filters
   useEffect(() => {
