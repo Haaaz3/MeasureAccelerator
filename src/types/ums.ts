@@ -251,6 +251,9 @@ export interface DataElement {
     content: string;
     timestamp: string;
   }>;
+
+  /** Link to component library */
+  libraryComponentId?: string;
 }
 
 // ============================================================================

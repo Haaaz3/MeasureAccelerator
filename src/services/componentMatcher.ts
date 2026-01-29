@@ -16,8 +16,10 @@ import type {
   ComponentDiff,
   ComponentIdentity,
   TimingExpression,
+  TimingOperator,
   ComponentLibrary,
 } from '../types/componentLibrary';
+import type { DataElement } from '../types/ums';
 
 // ============================================================================
 // Hash Utilities
@@ -463,4 +465,90 @@ function formatTiming(timing: TimingExpression): string {
   parts.push(timing.reference);
 
   return parts.join(' ');
+}
+
+// ============================================================================
+// Public API: Parse DataElement to ParsedComponent
+// ============================================================================
+
+/**
+ * Convert a UMS DataElement into a ParsedComponent for library matching.
+ *
+ * Extracts value set OID, timing expression, and negation from the element.
+ * Returns null if the element has no value set (e.g., demographics without OID).
+ */
+export function parseDataElementToComponent(element: DataElement): ParsedComponent | null {
+  // Skip elements without value sets (demographics, etc.)
+  if (!element.valueSet?.oid || element.valueSet.oid === 'N/A') {
+    return null;
+  }
+
+  // Build timing expression from timingRequirements
+  let timing: TimingExpression | undefined;
+  if (element.timingRequirements && element.timingRequirements.length > 0) {
+    const tr = element.timingRequirements[0];
+    const desc = tr.description?.toLowerCase() || '';
+
+    // Parse timing from description and window
+    let operator: TimingOperator = 'during';
+    let quantity: number | undefined;
+    let unit: 'years' | 'months' | 'days' | 'hours' | undefined;
+    let position: TimingExpression['position'] | undefined;
+    let reference: string = 'Measurement Period';
+
+    if (tr.window) {
+      // Has explicit window (e.g., "within 10 years before")
+      operator = 'within';
+      quantity = tr.window.value;
+      unit = tr.window.unit as 'years' | 'months' | 'days' | 'hours';
+      if (tr.window.direction === 'before') {
+        position = 'before end of';
+      } else if (tr.window.direction === 'after') {
+        position = 'after start of';
+      }
+    } else if (desc.includes('during')) {
+      operator = 'during';
+    } else if (desc.includes('before')) {
+      operator = 'before';
+    } else if (desc.includes('after')) {
+      operator = 'after';
+    }
+
+    if (tr.relativeTo === 'measurement_period_end') {
+      reference = 'Measurement Period';
+      if (!position && operator === 'within') {
+        position = 'before end of';
+      }
+    } else if (tr.relativeTo === 'measurement_period') {
+      reference = 'Measurement Period';
+    }
+
+    timing = {
+      operator,
+      quantity,
+      unit,
+      position,
+      reference,
+      displayExpression: tr.description || `${operator} ${reference}`,
+    };
+  } else {
+    // Default: during measurement period
+    timing = {
+      operator: 'during',
+      reference: 'Measurement Period',
+      displayExpression: 'during Measurement Period',
+    };
+  }
+
+  // Detect negation
+  const desc = element.description?.toLowerCase() || '';
+  const negation = element.negation || desc.includes('absence of') || desc.includes('without');
+
+  return {
+    name: element.description || element.valueSet.name,
+    valueSetOid: element.valueSet.oid,
+    valueSetName: element.valueSet.name,
+    timing,
+    negation,
+  };
 }

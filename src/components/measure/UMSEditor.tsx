@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
-import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText } from 'lucide-react';
+import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
+import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { ComponentBuilder } from './ComponentBuilder';
 import type { PopulationDefinition, LogicalClause, DataElement, ConfidenceLevel, ReviewStatus, ValueSetReference, CodeReference, CodeSystem } from '../../types/ums';
+import type { ComplexityLevel } from '../../types/componentLibrary';
+import { getComplexityColor, getComplexityDots, getComplexityLevel } from '../../services/complexityCalculator';
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 
 export function UMSEditor() {
   const { getActiveMeasure, updateReviewStatus, approveAllHighConfidence, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
+  const { components: libraryComponents, linkMeasureComponents, initializeWithSampleData, getComponent } = useComponentLibraryStore();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['ip', 'den', 'ex', 'num']));
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [showCQL, setShowCQL] = useState(false);
@@ -15,6 +19,22 @@ export function UMSEditor() {
   const [builderTarget, setBuilderTarget] = useState<{ populationId: string; populationType: string } | null>(null);
   const [deepMode, setDeepMode] = useState(false);
   const [showValueSetBrowser, setShowValueSetBrowser] = useState(false);
+  const [componentLinkMap, setComponentLinkMap] = useState<Record<string, string>>({});
+
+  // Initialize component library and link measure components
+  useEffect(() => {
+    initializeWithSampleData();
+  }, []);
+
+  useEffect(() => {
+    if (measure && measure.populations.length > 0) {
+      const linkMap = linkMeasureComponents(
+        measure.metadata.measureId,
+        measure.populations,
+      );
+      setComponentLinkMap(linkMap);
+    }
+  }, [measure?.id]);
 
   // Force re-render when measures change (for progress bar)
   const [, forceUpdate] = useState({});
@@ -122,13 +142,21 @@ export function UMSEditor() {
                   <span className="px-2 py-1 text-sm font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded">
                     {measure.metadata.measureId}
                   </span>
-                  <ConfidenceBadge confidence={measure.overallConfidence} />
+                  <ComplexityBadge level="medium" />
                 </div>
                 <h1 className="text-xl font-bold text-[var(--text)]">{measure.metadata.title}</h1>
                 <p className="text-sm text-[var(--text-muted)] mt-1">{measure.metadata.description}</p>
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab('components')}
+                  className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
+                  title="Browse the Component Library"
+                >
+                  <LibraryIcon className="w-4 h-4" />
+                  Browse Library
+                </button>
                 <button
                   onClick={() => setDeepMode(!deepMode)}
                   className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
@@ -287,7 +315,6 @@ export function UMSEditor() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <ConfidenceBadge confidence={vs.confidence} size="sm" />
                           {vs.verified && (
                             <span className="px-1.5 py-0.5 text-[10px] bg-[var(--success-light)] text-[var(--success)] rounded">VSAC Verified</span>
                           )}
@@ -465,7 +492,7 @@ function PopulationSection({
         )}
         <span className="text-lg">{icon}</span>
         <span className="font-medium text-[var(--text)]">{label}</span>
-        <ConfidenceBadge confidence={population.confidence} size="sm" />
+        <ComplexityBadge level={population.confidence === 'high' ? 'low' : population.confidence === 'low' ? 'high' : 'medium'} size="sm" />
         <ReviewStatusBadge status={effectiveStatus} size="sm" />
       </button>
 
@@ -665,8 +692,14 @@ function CriteriaNode({
             <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-dim)] uppercase">
               {element.type}
             </span>
-            <ConfidenceBadge confidence={element.confidence} size="sm" />
+            <ComplexityBadge level={element.confidence === 'high' ? 'low' : element.confidence === 'low' ? 'high' : 'medium'} size="sm" />
             <ReviewStatusBadge status={element.reviewStatus} size="sm" />
+            {element.libraryComponentId && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/30" title="Linked to component library">
+                <Link className="w-3 h-3" />
+                Library
+              </span>
+            )}
           </div>
           <p className="text-sm text-[var(--text)]">{element.description}</p>
 
@@ -990,8 +1023,14 @@ function NodeDetailPanel({
           <span className="text-xs px-2 py-1 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)] uppercase">
             {node.type}
           </span>
-          <ConfidenceBadge confidence={node.confidence} />
+          <ComplexityBadge level={node.confidence === 'high' ? 'low' : node.confidence === 'low' ? 'high' : 'medium'} />
           <ReviewStatusBadge status={node.reviewStatus} />
+          {node.libraryComponentId && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-[var(--accent-light)] text-[var(--accent)] border border-[var(--accent)]/30">
+              <Link className="w-3.5 h-3.5" />
+              Linked to Library
+            </span>
+          )}
         </div>
 
         {/* Editable Description */}
@@ -1364,7 +1403,6 @@ function ValueSetModal({ valueSet, measureId, onClose }: { valueSet: ValueSetRef
               {currentValueSet.verified && (
                 <span className="px-2 py-0.5 text-xs bg-[var(--success-light)] text-[var(--success)] rounded">VSAC Verified</span>
               )}
-              <ConfidenceBadge confidence={currentValueSet.confidence} />
               {corrections.length > 0 && (
                 <span className="px-2 py-0.5 text-xs bg-purple-500/15 text-purple-400 rounded flex items-center gap-1">
                   <History className="w-3 h-3" />
@@ -1915,23 +1953,23 @@ function AgeRangeEditor({ min, max, onSave, onCancel }: { min: number; max: numb
   );
 }
 
-function ConfidenceBadge({ confidence, size = 'md' }: { confidence: ConfidenceLevel; size?: 'sm' | 'md' }) {
-  const colors = {
-    high: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]/30',
+function ComplexityBadge({ level, size = 'md' }: { level: ComplexityLevel; size?: 'sm' | 'md' }) {
+  const colors: Record<ComplexityLevel, string> = {
+    low: 'bg-[var(--success-light)] text-[var(--success)] border-[var(--success)]/30',
     medium: 'bg-[var(--warning-light)] text-[var(--warning)] border-[var(--warning)]/30',
-    low: 'bg-[var(--danger-light)] text-[var(--danger)] border-[var(--danger)]/30',
+    high: 'bg-[var(--danger-light)] text-[var(--danger)] border-[var(--danger)]/30',
   };
 
-  const icons = {
-    high: <CheckCircle className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
-    medium: <HelpCircle className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
-    low: <AlertTriangle className={size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5'} />,
+  const dots: Record<ComplexityLevel, string> = {
+    low: '\u25CB',
+    medium: '\u25CF\u25CF',
+    high: '\u25CF\u25CF\u25CF',
   };
 
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${colors[confidence]} ${size === 'sm' ? 'text-[10px]' : 'text-xs'}`}>
-      {icons[confidence]}
-      {confidence}
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${colors[level]} ${size === 'sm' ? 'text-[10px]' : 'text-xs'}`}>
+      <span>{dots[level]}</span>
+      {level}
     </span>
   );
 }

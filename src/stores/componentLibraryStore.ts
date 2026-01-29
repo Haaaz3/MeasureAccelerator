@@ -27,8 +27,11 @@ import {
   addUsageReference,
   removeUsageReference,
   searchComponents,
+  createAtomicComponent,
 } from '../services/componentLibraryService';
+import { parseDataElementToComponent, findExactMatch } from '../services/componentMatcher';
 import { sampleAtomics, sampleComposites, sampleCategories } from '../data/sampleLibraryData';
+import type { DataElement, LogicalClause } from '../types/ums';
 
 // ============================================================================
 // State Interface
@@ -71,6 +74,9 @@ interface ComponentLibraryState {
     action: EditAction,
     updatedBy: string,
   ) => void;
+
+  // Measure linking
+  linkMeasureComponents: (measureId: string, populations: Array<{ criteria?: LogicalClause | null; type: string }>) => Record<string, string>;
 
   // Computed / Selectors
   getComponent: (id: ComponentId) => LibraryComponent | null;
@@ -229,6 +235,110 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
             components: [...state.components, duplicatedWithNewId],
           });
         }
+      },
+
+      // Measure linking - extract data elements and match/create in library
+      linkMeasureComponents: (measureId, populations) => {
+        const state = get();
+        const linkMap: Record<string, string> = {}; // dataElementId -> componentId
+
+        // Build library lookup from current components
+        const libraryRecord: Record<string, LibraryComponent> = {};
+        state.components.forEach((c) => { libraryRecord[c.id] = c; });
+
+        // Collect all data elements from all populations
+        const collectElements = (node: LogicalClause | DataElement): DataElement[] => {
+          if ('operator' in node && 'children' in node) {
+            // It's a LogicalClause
+            const clause = node as LogicalClause;
+            return clause.children.flatMap(collectElements);
+          }
+          // It's a DataElement
+          return [node as DataElement];
+        };
+
+        const allElements: DataElement[] = [];
+        for (const pop of populations) {
+          if (pop.criteria) {
+            allElements.push(...collectElements(pop.criteria as LogicalClause | DataElement));
+          }
+        }
+
+        const newComponents: LibraryComponent[] = [];
+        const updatedComponents: LibraryComponent[] = [];
+
+        for (const element of allElements) {
+          const parsed = parseDataElementToComponent(element);
+          if (!parsed) continue; // Skip elements without value sets
+
+          // Try exact match against library
+          const match = findExactMatch(parsed, libraryRecord);
+
+          if (match) {
+            // Link to existing component
+            linkMap[element.id] = match.id;
+            // Add usage if not already tracked
+            if (!match.usage.measureIds.includes(measureId)) {
+              const updated = addUsageReference(match, measureId);
+              updatedComponents.push(updated);
+              libraryRecord[match.id] = updated;
+            }
+          } else {
+            // Create new atomic component from this element
+            const categoryMap: Record<string, ComponentCategory> = {
+              demographic: 'demographics',
+              encounter: 'encounters',
+              diagnosis: 'conditions',
+              procedure: 'procedures',
+              medication: 'medications',
+              observation: 'observations',
+            };
+            const category: ComponentCategory = categoryMap[element.type] || 'other';
+
+            const vsOid = element.valueSet?.oid || '';
+            const vsName = element.valueSet?.name || element.description;
+            const newComp = createAtomicComponent({
+              name: vsName,
+              description: element.description,
+              valueSet: {
+                oid: vsOid,
+                version: vsOid,
+                name: vsName,
+              },
+              timing: parsed.timing || {
+                operator: 'during',
+                reference: 'Measurement Period',
+                displayExpression: 'during Measurement Period',
+              },
+              negation: parsed.negation || false,
+              category,
+              tags: [element.type],
+              createdBy: 'auto-import',
+            });
+
+            // Add usage
+            const withUsage = addUsageReference(newComp, measureId);
+            newComponents.push(withUsage);
+            libraryRecord[withUsage.id] = withUsage;
+            linkMap[element.id] = withUsage.id;
+          }
+        }
+
+        // Update store
+        if (newComponents.length > 0 || updatedComponents.length > 0) {
+          set((s) => {
+            let components = [...s.components];
+            // Update existing components with new usage
+            for (const updated of updatedComponents) {
+              components = components.map((c) => c.id === updated.id ? updated : c);
+            }
+            // Add new components
+            components = [...components, ...newComponents];
+            return { components, initialized: true };
+          });
+        }
+
+        return linkMap;
       },
 
       // Selectors
