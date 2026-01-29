@@ -65,6 +65,7 @@ The central hub where users manage all their quality measures.
 | **AI Extraction** | Automatically parse uploaded documents | Eliminates manual data entry |
 | **Filter & Search** | Find measures by status, program, or text | Manage large measure libraries |
 | **Duplicate** | Copy existing measure as template | Faster creation of similar measures |
+| **Batch Upload** | Queue multiple measures for sequential processing | Process entire measure portfolios efficiently |
 | **Lock & Publish** | Prevent edits and mark as production-ready | Version control and governance |
 
 **Measure Card Information:**
@@ -72,7 +73,16 @@ The central hub where users manage all their quality measures.
 - Program type (MIPS, eCQM, HEDIS, etc.)
 - Status badge (In Progress / Published)
 - Review progress (0-100% complete)
-- Confidence indicator (High/Medium/Low)
+- Complexity indicator (Low/Medium/High) based on structural scoring
+
+**Batch Upload Queue:**
+
+When processing a measure upload, users can continue adding more files to a queue:
+- While a measure is being processed, a queue panel appears below the progress indicator
+- Users can drag-and-drop or browse for additional file groups
+- Each queued item shows its files and a remove button
+- Measures process sequentially with progress displayed as "[2/3] Processing..."
+- Queue automatically advances to the next measure when one completes
 
 **Supported File Types:**
 - PDF (measure specification documents)
@@ -176,14 +186,15 @@ AI extraction is powerful but not perfect. The review workflow ensures every com
 | **Needs Revision** | ⚠️ | Requires changes |
 | **Flagged** | 🚩 | Needs discussion/escalation |
 
-**Confidence Levels:**
-AI assigns confidence to each extracted component:
-- **High** (green) - AI is confident this is correct
-- **Medium** (yellow) - Likely correct but should verify
-- **Low** (red) - Uncertain, needs careful review
+**Complexity Levels:**
+Each component receives an objective complexity score based on its structure:
+- **Low** (1-3 score) - Simple component (e.g., single value set during measurement period)
+- **Medium** (4-7 score) - Moderate complexity (e.g., multiple timing clauses or negation)
+- **High** (8+ score) - Complex component (e.g., composite with many children and nesting)
+
+Complexity is calculated from structural factors: base score (1) + timing clauses (+1 each) + negation (+2). Composites sum children's scores plus operator and nesting depth bonuses.
 
 **Batch Operations:**
-- **Approve High-Confidence** - One-click approval for all high-confidence items
 - **Approve All** - Approve everything remaining (use carefully)
 
 **Progress Tracking:**
@@ -398,6 +409,82 @@ Customize AI providers, API keys, and system behavior.
 
 ---
 
+### 9. Component Library
+
+A reusable component library system for sharing, versioning, and validating measure logic blocks across measures.
+
+**Core Concepts:**
+
+| Concept | Description |
+|---------|-------------|
+| **Atomic Component** | Smallest reusable unit: Value Set OID + Version + Timing Expression |
+| **Composite Component** | Collection of atomic components combined with AND/OR logic |
+| **Exact Matching** | Components reuse requires 100% identical match (no fuzzy matching) |
+| **Versioning** | Same OID with different timing = new version; different OID = new component |
+| **Auto-Archive** | Components not used in any measure are automatically archived |
+
+**Library Browser:**
+
+| Feature | Description |
+|---------|-------------|
+| **Category Navigation** | Browse by: Demographics, Encounters, Conditions, Procedures, Medications, Observations, Exclusions |
+| **Filters** | Filter by status (Draft/Pending/Approved/Archived), complexity level, search text |
+| **Component Cards** | Display name, complexity dots (○ Low, ●● Medium, ●●● High), status badge, usage count |
+| **Archived Display** | Archived components appear greyed out but remain visible for reference |
+| **Show Archived Toggle** | On by default; toggle to hide archived components |
+
+**Component Detail Panel:**
+
+For each component, view:
+- Full definition (value set, timing, negation for atomics; children and operator for composites)
+- Complexity score with factor breakdown
+- Version history with status of each version
+- List of measures using this component
+- Actions: Edit, Archive, Approve
+
+**Shared Edit Warning:**
+
+When editing a component used in multiple measures, a modal appears with two options:
+
+| Option | Behavior |
+|--------|----------|
+| **Update All Measures** | All measures using this component get the new version. Old version is archived. Changes propagate to all linked measure DataElements. |
+| **Create New Version** | Only the current measure gets the new version. Other measures keep the original. Both versions coexist. |
+
+Composites do NOT auto-update when their children are versioned — changes require explicit user action.
+
+**Import Matching:**
+
+When a measure is imported, the system automatically:
+1. Parses the measure to atomic components (value set + timing)
+2. Searches the entire library (including archived components) for exact matches
+3. Shows the ImportMatcher panel with results:
+   - Exact matches (green) — component already exists in library
+   - Similar components (yellow) — same OID but different timing
+   - New components — no match found
+4. User confirms: link to existing library component or create new
+5. Usage counts update automatically
+
+**Auto-Archive Behavior:**
+- Components with zero usage across all measures are automatically archived
+- When a measure is imported or linked, archived components that gain usage are automatically restored to their previous status
+- Import matching searches all components regardless of archive status
+
+**Complexity Scoring:**
+
+| Component Type | Scoring Formula |
+|---------------|-----------------|
+| **Atomic** | Base (1) + timing clauses (+1 each) + negation (+2) |
+| **Composite** | Sum of children scores + AND operators (+1 each) + nesting depth (+2 per level) |
+
+| Level | Score Range | Indicator |
+|-------|------------|-----------|
+| Low | 1-3 | ○ |
+| Medium | 4-7 | ●● |
+| High | 8+ | ●●● |
+
+---
+
 ## Data Architecture
 
 ### How Data Flows
@@ -461,7 +548,8 @@ Each population contains criteria organized in a logic tree:
 
 Each component tracks:
 - Review status (pending, approved, needs revision, flagged)
-- Confidence level (high, medium, low)
+- Complexity level (low, medium, high)
+- Library link status (linked to shared component or local)
 - Review notes
 - Correction history
 
@@ -619,8 +707,12 @@ This data feeds back to improve AI extraction accuracy over time.
 | 1.1 | Added gender/age pre-checks for cervical cancer and childhood immunization measures |
 | 1.2 | Validation harness overhaul - detailed Initial Population breakdown, visual status indicators |
 | 1.3 | Streamlined measure creation wizard - consolidated Denominator step, removed Quick Parse |
+| 1.4 | Component Library - reusable atomic/composite components, complexity scoring, versioning, shared edit workflow, import matching |
+| 1.5 | Batch measure upload queue - sequential processing with drag-and-drop queuing |
+| 1.6 | Component library linking fixes - accurate usage counts from actual measures, edit propagation to linked measures |
+| 1.7 | Auto-archive unused components, greyed-out archived display, full-library import matching |
 
 ---
 
 *Last Updated: January 2026*
-*MeasureAccelerator Product Specification v1.3*
+*MeasureAccelerator Product Specification v1.7*
