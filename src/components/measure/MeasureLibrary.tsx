@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef } from 'react';
 import { Upload, FileText, Trash2, Clock, CheckCircle, AlertTriangle, Lock, Unlock, Shield, Brain, Zap, ChevronDown, Send, Edit3, Plus, Copy, X } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { ingestMeasureFiles, type IngestionProgress } from '../../services/measureIngestion';
 import { MeasureCreator } from './MeasureCreator';
 import type { UniversalMeasureSpec, MeasureStatus } from '../../types/ums';
@@ -21,6 +22,7 @@ function resetReviewStatus(obj: any): any {
 
 export function MeasureLibrary() {
   const { measures, addMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus } = useMeasureStore();
+  const { linkMeasureComponents, recalculateUsage } = useComponentLibraryStore();
   const {
     selectedProvider,
     selectedModel,
@@ -99,6 +101,15 @@ export function MeasureLibrary() {
       if (result.success && result.ums) {
         const measureWithStatus = { ...result.ums, status: 'in_progress' as MeasureStatus };
         addMeasure(measureWithStatus);
+
+        // Immediately match against component library — link to existing approved components
+        linkMeasureComponents(
+          measureWithStatus.metadata.measureId,
+          measureWithStatus.populations,
+        );
+        // Recalculate usage counts across all measures (including the new one)
+        recalculateUsage([...measures, measureWithStatus]);
+
         const ct = batchCounterRef.current;
         const lbl = ct.total > 1 ? `[${ct.index}/${ct.total}] ` : '';
         setProgress({ stage: 'complete', message: `${lbl}Successfully imported "${result.ums.metadata.title}"`, progress: 100 });
@@ -111,7 +122,7 @@ export function MeasureLibrary() {
 
     // Brief pause then process next
     setTimeout(() => processNext(), 1500);
-  }, [getActiveApiKey, addMeasure, selectedProvider, selectedModel, getCustomLlmConfig]);
+  }, [getActiveApiKey, addMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, recalculateUsage, measures]);
 
   // Handle files: either start processing or add to queue
   const handleFiles = useCallback(async (files: File[]) => {

@@ -431,6 +431,31 @@ export const HOSPICE_CARE_VALUE_SET: StandardValueSet = {
 };
 
 /**
+ * Hospice Care Ambulatory - OID: 2.16.840.1.113883.3.526.3.1584
+ * Used across many eCQMs including CMS117, CMS122, CMS127, CMS347, etc.
+ * Ambulatory encounter codes indicating hospice care
+ */
+export const HOSPICE_CARE_AMBULATORY_VALUE_SET: StandardValueSet = {
+  id: 'hospice-care-ambulatory',
+  oid: '2.16.840.1.113883.3.526.3.1584',
+  name: 'Hospice Care Ambulatory',
+  codes: [
+    // SNOMED CT
+    { code: '385763009', system: SNOMEDCT, display: 'Hospice care (regime/therapy)' },
+    { code: '385765002', system: SNOMEDCT, display: 'Hospice care management (procedure)' },
+    { code: '386359008', system: SNOMEDCT, display: 'Hospice care (finding)' },
+    { code: '182964004', system: SNOMEDCT, display: 'Terminal care (regime/therapy)' },
+    { code: '305336008', system: SNOMEDCT, display: 'Admission to hospice (procedure)' },
+    { code: '183919006', system: SNOMEDCT, display: 'Urgent admission to hospice (procedure)' },
+    { code: '183920000', system: SNOMEDCT, display: 'Routine admission to hospice (procedure)' },
+    { code: '183921001', system: SNOMEDCT, display: 'Admission to hospice for respite (procedure)' },
+    { code: '442361000124100', system: SNOMEDCT, display: 'Referral to hospice service (procedure)' },
+    { code: '428371000124100', system: SNOMEDCT, display: 'Discharge to healthcare facility for hospice care (procedure)' },
+    { code: '428361000124107', system: SNOMEDCT, display: 'Discharge to home for hospice care (procedure)' },
+  ],
+};
+
+/**
  * Frailty/Advanced Illness - OID: 2.16.840.1.113883.3.464.1003.110.12.1082
  */
 export const FRAILTY_VALUE_SET: StandardValueSet = {
@@ -684,6 +709,7 @@ export function getChildhoodImmunizationValueSets(): StandardValueSet[] {
 export function getChildhoodImmunizationExclusionValueSets(): StandardValueSet[] {
   return [
     HOSPICE_CARE_VALUE_SET,
+    HOSPICE_CARE_AMBULATORY_VALUE_SET,
   ];
 }
 
@@ -823,6 +849,7 @@ export function getAllStandardValueSets(): StandardValueSet[] {
     COLORECTAL_CANCER_VALUE_SET,
     TOTAL_COLECTOMY_VALUE_SET,
     HOSPICE_CARE_VALUE_SET,
+    HOSPICE_CARE_AMBULATORY_VALUE_SET,
     FRAILTY_VALUE_SET,
     DEMENTIA_VALUE_SET,
     ...getChildhoodImmunizationValueSets(),
