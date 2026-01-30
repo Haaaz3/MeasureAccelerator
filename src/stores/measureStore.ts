@@ -11,6 +11,7 @@ import type {
   CorrectionExport,
 } from '../types/ums';
 import { syncAgeConstraints } from '../utils/constraintSync';
+import { calculateDataElementComplexity } from '../services/complexityCalculator';
 import { migrateMeasure, needsMigration } from '../utils/measureMigration';
 
 export type CodeOutputFormat = 'cql' | 'hdi' | 'synapse' | 'sql';
@@ -46,7 +47,7 @@ interface MeasureState {
 
   // Review actions
   updateReviewStatus: (measureId: string, componentId: string, status: ReviewStatus, notes?: string) => void;
-  approveAllHighConfidence: (measureId: string) => void;
+  approveAllLowComplexity: (measureId: string) => void;
 
   // Lock/unlock for publish
   lockMeasure: (measureId: string) => void;
@@ -204,18 +205,24 @@ export const useMeasureStore = create<MeasureState>()(
           };
         }),
 
-      approveAllHighConfidence: (measureId) =>
+      approveAllLowComplexity: (measureId) =>
         set((state) => {
-          const approveHighConfidence = (obj: any): any => {
+          const approveLowComplexity = (obj: any): any => {
             if (!obj) return obj;
-            const updated = obj.confidence === 'high' && obj.reviewStatus === 'pending'
-              ? { ...obj, reviewStatus: 'approved' as ReviewStatus }
-              : obj;
+            // For data elements (leaf nodes with type), check complexity
+            const isDataElement = obj.type && !obj.operator;
+            let updated = obj;
+            if (isDataElement && obj.reviewStatus === 'pending') {
+              const complexity = calculateDataElementComplexity(obj);
+              if (complexity === 'low') {
+                updated = { ...obj, reviewStatus: 'approved' as ReviewStatus };
+              }
+            }
             if (updated.criteria) {
-              return { ...updated, criteria: approveHighConfidence(updated.criteria) };
+              return { ...updated, criteria: approveLowComplexity(updated.criteria) };
             }
             if (updated.children) {
-              return { ...updated, children: updated.children.map(approveHighConfidence) };
+              return { ...updated, children: updated.children.map(approveLowComplexity) };
             }
             return updated;
           };
@@ -252,7 +259,7 @@ export const useMeasureStore = create<MeasureState>()(
           return {
             measures: state.measures.map((m) => {
               if (m.id !== measureId) return m;
-              const approvedPops = m.populations.map(approveHighConfidence);
+              const approvedPops = m.populations.map(approveLowComplexity);
               const finalPops = approvedPops.map(autoApproveParents);
               return {
                 ...m,

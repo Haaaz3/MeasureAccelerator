@@ -9,7 +9,7 @@ import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDat
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 
 export function UMSEditor() {
-  const { getActiveMeasure, updateReviewStatus, approveAllHighConfidence, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
+  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
   const { components: libraryComponents, linkMeasureComponents, initializeWithSampleData, getComponent, recalculateUsage, syncComponentToMeasures } = useComponentLibraryStore();
   const { updateMeasure } = useMeasureStore();
@@ -180,11 +180,11 @@ export function UMSEditor() {
                   CQL
                 </button>
                 <button
-                  onClick={() => approveAllHighConfidence(measure.id)}
+                  onClick={() => approveAllLowComplexity(measure.id)}
                   className="px-3 py-2 bg-[var(--success-light)] text-[var(--success)] rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-80 transition-all"
                 >
                   <Sparkles className="w-4 h-4" />
-                  Auto-approve High Confidence
+                  Auto-approve Low Complexity
                 </button>
                 {corrections.length > 0 && (
                   <button
