@@ -8,6 +8,17 @@ import type { ComplexityLevel, LibraryComponent } from '../../types/componentLib
 import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDataElementComplexity, calculatePopulationComplexity, calculateMeasureComplexity } from '../../services/complexityCalculator';
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 
+/** Strip standalone AND/OR/NOT operators that appear as line separators in descriptions */
+function cleanDescription(desc: string | undefined): string {
+  if (!desc) return '';
+  return desc
+    .replace(/\n\s*(AND|OR|NOT)\s*\n/gi, ' ')
+    .replace(/\n\s*(AND|OR|NOT)\s*$/gi, '')
+    .replace(/^\s*(AND|OR|NOT)\s*\n/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 export function UMSEditor() {
   const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
@@ -360,13 +371,13 @@ export function UMSEditor() {
           populationId={builderTarget.populationId}
           populationType={builderTarget.populationType}
           existingValueSets={measure.valueSets}
-          onSave={(component, newValueSet) => {
+          onSave={(component, newValueSet, logicOperator) => {
             // Add new value set if created
             if (newValueSet) {
               addValueSet(measure.id, newValueSet);
             }
-            // Add component to population
-            addComponentToPopulation(measure.id, builderTarget.populationId, component);
+            // Add component to population with specified logic
+            addComponentToPopulation(measure.id, builderTarget.populationId, component, logicOperator);
             setBuilderTarget(null);
           }}
           onClose={() => setBuilderTarget(null)}
@@ -592,29 +603,19 @@ function CriteriaNode({
     return (
       <div className="ml-7 space-y-2">
         <div className="flex items-center gap-2 text-sm group">
-          {/* Operator badge - clickable in deep mode */}
-          {deepMode ? (
-            <button
-              onClick={() => onToggleOperator(clause.id)}
-              className={`px-2 py-0.5 rounded font-mono text-xs cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
-                clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
-                clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
-                'bg-[var(--danger-light)] text-[var(--danger)]'
-              }`}
-              title="Click to toggle: AND → OR → NOT"
-            >
-              {clause.operator}
-            </button>
-          ) : (
-            <span className={`px-2 py-0.5 rounded font-mono text-xs ${
+          {/* Operator badge - always clickable to toggle */}
+          <button
+            onClick={() => onToggleOperator(clause.id)}
+            className={`px-2 py-0.5 rounded font-mono text-xs cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
               clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
               clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
               'bg-[var(--danger-light)] text-[var(--danger)]'
-            }`}>
-              {clause.operator}
-            </span>
-          )}
-          <span className="text-[var(--text-muted)] flex-1">{clause.description}</span>
+            }`}
+            title="Click to toggle: AND → OR → NOT"
+          >
+            {clause.operator}
+          </button>
+          <span className="text-[var(--text-muted)] flex-1">{cleanDescription(clause.description)}</span>
 
           {/* Deep mode controls for clause */}
           {deepMode && parentId && (
@@ -654,27 +655,17 @@ function CriteriaNode({
             {idx > 0 && (
               <div className="flex items-center gap-2 ml-4">
                 <div className="w-px h-3 bg-[var(--border)]" />
-                {deepMode ? (
-                  <button
-                    onClick={() => onToggleOperator(clause.id)}
-                    className={`px-2 py-0.5 rounded font-mono text-[10px] cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
-                      clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
-                      clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
-                      'bg-[var(--danger-light)] text-[var(--danger)]'
-                    }`}
-                    title="Click to toggle: AND → OR → NOT"
-                  >
-                    {clause.operator}
-                  </button>
-                ) : (
-                  <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+                <button
+                  onClick={() => onToggleOperator(clause.id)}
+                  className={`px-2 py-0.5 rounded font-mono text-[10px] cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
                     clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
                     clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
                     'bg-[var(--danger-light)] text-[var(--danger)]'
-                  }`}>
-                    {clause.operator}
-                  </span>
-                )}
+                  }`}
+                  title="Click to toggle: AND → OR → NOT"
+                >
+                  {clause.operator}
+                </button>
                 <div className="w-px h-3 bg-[var(--border)]" />
               </div>
             )}
@@ -733,7 +724,7 @@ function CriteriaNode({
               <LibraryStatusBadge component={linkedComponent} size="sm" />
             )}
           </div>
-          <p className="text-sm text-[var(--text)]">{element.description}</p>
+          <p className="text-sm text-[var(--text)]">{cleanDescription(element.description)}</p>
 
           {/* Zero-code ingestion warning */}
           {element.ingestionWarning && (

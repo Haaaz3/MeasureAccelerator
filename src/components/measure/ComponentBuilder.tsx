@@ -7,7 +7,7 @@ interface ComponentBuilderProps {
   populationId?: string;
   populationType: string;
   existingValueSets: ValueSetReference[];
-  onSave: (component: DataElement, newValueSet?: ValueSetReference) => void;
+  onSave: (component: DataElement, newValueSet?: ValueSetReference, logicOperator?: 'AND' | 'OR') => void;
   onClose: () => void;
 }
 
@@ -50,6 +50,7 @@ export function ComponentBuilder({
   // Component state
   const [componentType, setComponentType] = useState<ComponentType>('diagnosis');
   const [description, setDescription] = useState('');
+  const [logicOperator, setLogicOperator] = useState<'AND' | 'OR'>('AND');
 
   // Value set state
   const [valueSetMode, setValueSetMode] = useState<'existing' | 'new'>('existing');
@@ -149,7 +150,7 @@ export function ComponentBuilder({
       reviewStatus: 'pending',
     };
 
-    onSave(component, newValueSet);
+    onSave(component, newValueSet, logicOperator);
   };
 
   return (
@@ -192,6 +193,36 @@ export function ComponentBuilder({
                   <p className="text-xs text-[var(--text-muted)]">{type.description}</p>
                 </button>
               ))}
+            </div>
+          </div>
+
+          {/* Logic Connection */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text)] mb-2">Logic Connection</label>
+            <p className="text-xs text-[var(--text-muted)] mb-3">How should this component connect to existing criteria?</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setLogicOperator('AND')}
+                className={`flex-1 px-4 py-3 rounded-lg border text-center transition-all ${
+                  logicOperator === 'AND'
+                    ? 'bg-[var(--success)]/10 border-[var(--success)]/50 text-[var(--success)]'
+                    : 'bg-[var(--bg-tertiary)] border-[var(--border)] text-[var(--text)] hover:border-[var(--text-dim)]'
+                }`}
+              >
+                <span className="font-mono font-bold text-sm">AND</span>
+                <p className="text-xs mt-1 opacity-70">Must also meet this criterion</p>
+              </button>
+              <button
+                onClick={() => setLogicOperator('OR')}
+                className={`flex-1 px-4 py-3 rounded-lg border text-center transition-all ${
+                  logicOperator === 'OR'
+                    ? 'bg-[var(--warning)]/10 border-[var(--warning)]/50 text-[var(--warning)]'
+                    : 'bg-[var(--bg-tertiary)] border-[var(--border)] text-[var(--text)] hover:border-[var(--text-dim)]'
+                }`}
+              >
+                <span className="font-mono font-bold text-sm">OR</span>
+                <p className="text-xs mt-1 opacity-70">Alternative to existing criteria</p>
+              </button>
             </div>
           </div>
 

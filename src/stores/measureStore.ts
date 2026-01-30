@@ -70,7 +70,7 @@ interface MeasureState {
   syncAgeRange: (measureId: string, minAge: number, maxAge: number) => void;
 
   // Component builder actions
-  addComponentToPopulation: (measureId: string, populationId: string, component: import('../types/ums').DataElement) => void;
+  addComponentToPopulation: (measureId: string, populationId: string, component: import('../types/ums').DataElement, logicOperator?: 'AND' | 'OR') => void;
   deleteComponentFromPopulation: (measureId: string, populationId: string, componentId: string) => void;
   addValueSet: (measureId: string, valueSet: import('../types/ums').ValueSetReference) => void;
 
@@ -485,7 +485,7 @@ export const useMeasureStore = create<MeasureState>()(
         }),
 
       // Component builder: add a new component to a population's criteria
-      addComponentToPopulation: (measureId, populationId, component) =>
+      addComponentToPopulation: (measureId, populationId, component, logicOperator) =>
         set((state) => ({
           measures: state.measures.map((m) => {
             if (m.id !== measureId) return m;
@@ -493,23 +493,71 @@ export const useMeasureStore = create<MeasureState>()(
               ...m,
               populations: m.populations.map((pop) => {
                 if (pop.id !== populationId) return pop;
-                // Add component to the criteria's children
-                const updatedCriteria = pop.criteria
-                  ? {
-                      ...pop.criteria,
-                      children: [...(pop.criteria.children || []), component],
-                    }
-                  : {
+
+                if (!pop.criteria) {
+                  // No criteria yet — create a new clause with the chosen operator
+                  return {
+                    ...pop,
+                    criteria: {
                       id: `${pop.type}-criteria-new`,
-                      operator: 'AND' as const,
+                      operator: (logicOperator || 'AND') as 'AND' | 'OR',
                       description: 'Criteria',
                       confidence: 'high' as const,
                       reviewStatus: 'pending' as const,
                       children: [component],
-                    };
+                    },
+                  };
+                }
+
+                const criteria = pop.criteria;
+
+                // If chosen operator matches the top-level, just append
+                if (!logicOperator || criteria.operator === logicOperator) {
+                  return {
+                    ...pop,
+                    criteria: {
+                      ...criteria,
+                      children: [...(criteria.children || []), component],
+                    },
+                  };
+                }
+
+                // Operator differs — find or create a subclause with the chosen operator
+                const existingSubclause = criteria.children.find(
+                  (c: any) => 'operator' in c && c.operator === logicOperator
+                );
+
+                if (existingSubclause && 'children' in existingSubclause) {
+                  // Append to the existing subclause
+                  return {
+                    ...pop,
+                    criteria: {
+                      ...criteria,
+                      children: criteria.children.map((c: any) =>
+                        c.id === existingSubclause.id
+                          ? { ...c, children: [...(c as any).children, component] }
+                          : c
+                      ),
+                    },
+                  };
+                }
+
+                // Create a new subclause with the chosen operator
+                const newSubclause = {
+                  id: `${pop.type}-${logicOperator.toLowerCase()}-${Date.now()}`,
+                  operator: logicOperator as 'AND' | 'OR',
+                  description: logicOperator === 'OR' ? 'Alternative Criteria' : 'Additional Criteria',
+                  confidence: 'high' as const,
+                  reviewStatus: 'pending' as const,
+                  children: [component],
+                };
+
                 return {
                   ...pop,
-                  criteria: updatedCriteria,
+                  criteria: {
+                    ...criteria,
+                    children: [...criteria.children, newSubclause],
+                  },
                 };
               }),
               updatedAt: new Date().toISOString(),

@@ -5,6 +5,17 @@ import type { PatientValidationTrace, ValidationNode } from '../../types/ums';
 import { generateTestPatients } from '../../services/testPatientGenerator';
 import { evaluatePatient, type TestPatient } from '../../services/measureEvaluator';
 
+/** Strip standalone AND/OR/NOT operators that appear as line separators in descriptions */
+function cleanDescription(desc: string | undefined): string {
+  if (!desc) return '';
+  return desc
+    .replace(/\n\s*(AND|OR|NOT)\s*\n/gi, ' ')
+    .replace(/\n\s*(AND|OR|NOT)\s*$/gi, '')
+    .replace(/^\s*(AND|OR|NOT)\s*\n/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 const CODE_FORMAT_INFO: Record<CodeOutputFormat, { label: string; icon: typeof Code; color: string }> = {
   cql: { label: 'CQL (Clinical Quality Language)', icon: FileCode, color: 'text-purple-400' },
   hdi: { label: 'HDI SQL (HealtheIntent)', icon: Database, color: 'text-blue-400' },
@@ -2426,7 +2437,7 @@ function ValidationNodeList({
                 }`}>
                   {node.operator}
                 </span>
-                <h4 className="text-sm font-medium text-[var(--text-muted)]">{node.title}</h4>
+                <h4 className="text-sm font-medium text-[var(--text-muted)]">{cleanDescription(node.title)}</h4>
                 {node.facts[0] && (
                   <span className="text-xs text-[var(--text-dim)]">{node.facts[0].display}</span>
                 )}
@@ -2480,7 +2491,7 @@ function ValidationNodeRow({ node, onClick }: { node: ValidationNode; onClick: (
       {/* Criterion title and description */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <h4 className="font-medium text-[var(--text)] text-sm truncate">{node.title}</h4>
+          <h4 className="font-medium text-[var(--text)] text-sm truncate">{cleanDescription(node.title)}</h4>
           {doseFact && (
             <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
               node.status === 'pass'
@@ -2510,7 +2521,7 @@ function ValidationNodeRow({ node, onClick }: { node: ValidationNode; onClick: (
         ) : noMatchFact ? (
           <p className="text-xs text-[var(--text-dim)] mt-0.5">{noMatchFact.display}</p>
         ) : (
-          <p className="text-xs text-[var(--text-dim)] mt-0.5">{node.description}</p>
+          <p className="text-xs text-[var(--text-dim)] mt-0.5">{cleanDescription(node.description)}</p>
         )}
       </div>
 
@@ -2550,8 +2561,8 @@ function ValidationNodeCard({ node, onClick }: { node: ValidationNode; onClick: 
           : node.type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
       </span>
 
-      <h4 className="font-medium text-[var(--text)] text-sm mb-1 pr-6">{node.title}</h4>
-      <p className="text-xs text-[var(--text-muted)] mb-2">{node.description}</p>
+      <h4 className="font-medium text-[var(--text)] text-sm mb-1 pr-6">{cleanDescription(node.title)}</h4>
+      <p className="text-xs text-[var(--text-muted)] mb-2">{cleanDescription(node.description)}</p>
 
       {/* Facts preview with codes */}
       {node.facts.length > 0 && (
@@ -2601,7 +2612,7 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
             ) : (
               <XCircle className="w-5 h-5 text-[var(--danger)]" />
             )}
-            <h3 className="font-bold text-[var(--text)]">{node.title}</h3>
+            <h3 className="font-bold text-[var(--text)]">{cleanDescription(node.title)}</h3>
           </div>
           <button
             onClick={onClose}
@@ -2637,7 +2648,7 @@ function InspectModal({ node, onClose }: { node: ValidationNode; onClose: () => 
             </span>
           </div>
 
-          <p className="text-sm text-[var(--text-muted)]">{node.description}</p>
+          <p className="text-sm text-[var(--text-muted)]">{cleanDescription(node.description)}</p>
 
           {/* CQL */}
           {node.cqlSnippet && (
