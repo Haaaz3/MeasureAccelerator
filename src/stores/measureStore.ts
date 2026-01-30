@@ -77,6 +77,7 @@ interface MeasureState {
   // Advanced logic building actions
   toggleLogicalOperator: (measureId: string, clauseId: string) => void;
   reorderComponent: (measureId: string, parentClauseId: string, componentId: string, direction: 'up' | 'down') => void;
+  moveComponentToIndex: (measureId: string, parentClauseId: string, componentId: string, targetIndex: number) => void;
   deleteComponent: (measureId: string, componentId: string) => void;
 
   // Correction management
@@ -673,6 +674,43 @@ export const useMeasureStore = create<MeasureState>()(
               return {
                 ...m,
                 populations: m.populations.map(reorder),
+                updatedAt: new Date().toISOString(),
+              };
+            }),
+          };
+        }),
+
+      // Move a component to a specific index within its parent clause (for drag-and-drop)
+      moveComponentToIndex: (measureId, parentClauseId, componentId, targetIndex) =>
+        set((state) => {
+          const moveInTree = (obj: any): any => {
+            if (!obj) return obj;
+
+            if (obj.id === parentClauseId && obj.children) {
+              const children = [...obj.children];
+              const fromIdx = children.findIndex((c: any) => c.id === componentId);
+              if (fromIdx === -1 || fromIdx === targetIndex) return obj;
+
+              const [moved] = children.splice(fromIdx, 1);
+              children.splice(targetIndex, 0, moved);
+              return { ...obj, children };
+            }
+
+            if (obj.criteria) {
+              return { ...obj, criteria: moveInTree(obj.criteria) };
+            }
+            if (obj.children) {
+              return { ...obj, children: obj.children.map(moveInTree) };
+            }
+            return obj;
+          };
+
+          return {
+            measures: state.measures.map((m) => {
+              if (m.id !== measureId) return m;
+              return {
+                ...m,
+                populations: m.populations.map(moveInTree),
                 updatedAt: new Date().toISOString(),
               };
             }),

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
-import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck } from 'lucide-react';
+import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck, GripVertical } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
@@ -22,7 +22,7 @@ function cleanDescription(desc: string | undefined): string {
 }
 
 export function UMSEditor() {
-  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
+  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, moveComponentToIndex, deleteComponent, setActiveTab, syncAgeRange } = useMeasureStore();
   const measure = getActiveMeasure();
   const { components: libraryComponents, linkMeasureComponents, initializeWithSampleData, getComponent, recalculateUsage, syncComponentToMeasures } = useComponentLibraryStore();
   const { updateMeasure } = useMeasureStore();
@@ -35,6 +35,34 @@ export function UMSEditor() {
   const [showValueSetBrowser, setShowValueSetBrowser] = useState(false);
   const [componentLinkMap, setComponentLinkMap] = useState<Record<string, string>>({});
   const [detailPanelMode, setDetailPanelMode] = useState<'edit' | 'code'>('edit');
+  const [dragState, setDragState] = useState<{ draggedId: string | null; dragOverId: string | null; dragOverPosition: 'before' | 'after' | null }>({ draggedId: null, dragOverId: null, dragOverPosition: null });
+
+  const handleDragStart = (id: string) => {
+    setDragState({ draggedId: id, dragOverId: null, dragOverPosition: null });
+  };
+  const handleDragEnd = () => {
+    setDragState({ draggedId: null, dragOverId: null, dragOverPosition: null });
+  };
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (id === dragState.draggedId) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const position = e.clientY < midY ? 'before' : 'after';
+    setDragState(prev => ({ ...prev, dragOverId: id, dragOverPosition: position }));
+  };
+  const handleDrop = (e: React.DragEvent, targetId: string, targetIndex: number, targetParentId: string | null) => {
+    e.preventDefault();
+    const draggedId = dragState.draggedId;
+    if (!draggedId || !targetParentId || !measure || draggedId === targetId) {
+      handleDragEnd();
+      return;
+    }
+    const adjustedIndex = dragState.dragOverPosition === 'after' ? targetIndex + 1 : targetIndex;
+    moveComponentToIndex(measure.id, targetParentId, draggedId, adjustedIndex);
+    handleDragEnd();
+  };
 
   // Initialize component library and link measure components
   useEffect(() => {
@@ -281,6 +309,11 @@ export function UMSEditor() {
                 onToggleOperator={(clauseId) => toggleLogicalOperator(measure.id, clauseId)}
                 onReorder={(parentId, childId, dir) => reorderComponent(measure.id, parentId, childId, dir)}
                 onDeleteComponent={(componentId) => deleteComponent(measure.id, componentId)}
+                dragState={dragState}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
               />
             ))}
           </div>
@@ -487,6 +520,11 @@ function PopulationSection({
   onToggleOperator,
   onReorder,
   onDeleteComponent,
+  dragState,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
 }: {
   population: PopulationDefinition;
   measureId: string;
@@ -505,6 +543,11 @@ function PopulationSection({
   onToggleOperator: (clauseId: string) => void;
   onReorder: (parentId: string, childId: string, direction: 'up' | 'down') => void;
   onDeleteComponent: (componentId: string) => void;
+  dragState: { draggedId: string | null; dragOverId: string | null; dragOverPosition: 'before' | 'after' | null };
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent, id: string) => void;
+  onDrop: (e: React.DragEvent, targetId: string, targetIndex: number, targetParentId: string | null) => void;
 }) {
   // Compute effective status based on children's status
   const computeEffectiveStatus = (pop: PopulationDefinition): ReviewStatus => {
@@ -572,6 +615,11 @@ function PopulationSection({
               onToggleOperator={onToggleOperator}
               onReorder={onReorder}
               onDeleteComponent={onDeleteComponent}
+              dragState={dragState}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
             />
           )}
 
@@ -616,6 +664,11 @@ function CriteriaNode({
   onToggleOperator,
   onReorder,
   onDeleteComponent,
+  dragState,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDrop,
 }: {
   node: LogicalClause | DataElement;
   parentId: string | null;
@@ -632,6 +685,11 @@ function CriteriaNode({
   onToggleOperator: (clauseId: string) => void;
   onReorder: (parentId: string, childId: string, direction: 'up' | 'down') => void;
   onDeleteComponent: (componentId: string) => void;
+  dragState: { draggedId: string | null; dragOverId: string | null; dragOverPosition: 'before' | 'after' | null };
+  onDragStart: (id: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent, id: string) => void;
+  onDrop: (e: React.DragEvent, targetId: string, targetIndex: number, targetParentId: string | null) => void;
 }) {
   const isClause = 'operator' in node;
   const isSelected = selectedNode === node.id;
@@ -725,6 +783,11 @@ function CriteriaNode({
               onToggleOperator={onToggleOperator}
               onReorder={onReorder}
               onDeleteComponent={onDeleteComponent}
+              dragState={dragState}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragOver={onDragOver}
+              onDrop={onDrop}
             />
           </Fragment>
         ))}
@@ -743,16 +806,48 @@ function CriteriaNode({
     ? allValueSets.find(vs => vs.id === element.valueSet?.id) || element.valueSet
     : undefined;
 
+  const isDraggedOver = dragState.dragOverId === element.id && dragState.draggedId !== element.id;
+  const isDragging = dragState.draggedId === element.id;
+
   return (
     <div
-      onClick={() => onSelectNode(isSelected ? null : element.id)}
-      className={`ml-7 p-3 rounded-lg border cursor-pointer transition-all ${
-        isSelected
-          ? 'bg-[var(--accent-light)] border-[var(--accent)]/50'
-          : 'bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
-      }`}
+      className={`relative ml-7 ${isDraggedOver && dragState.dragOverPosition === 'before' ? 'pt-1' : ''} ${isDraggedOver && dragState.dragOverPosition === 'after' ? 'pb-1' : ''}`}
+      onDragOver={(e) => onDragOver(e, element.id)}
+      onDrop={(e) => onDrop(e, element.id, index, parentId)}
+      onDragLeave={() => {}}
     >
+      {/* Drop indicator - before */}
+      {isDraggedOver && dragState.dragOverPosition === 'before' && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-[var(--accent)] rounded-full z-10" />
+      )}
+
+      <div
+        onClick={() => onSelectNode(isSelected ? null : element.id)}
+        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+          isDragging ? 'opacity-40' :
+          isSelected
+            ? 'bg-[var(--accent-light)] border-[var(--accent)]/50'
+            : 'bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
+        }`}
+      >
       <div className="flex items-start justify-between gap-3">
+        {/* Drag handle */}
+        {parentId && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', element.id);
+              onDragStart(element.id);
+            }}
+            onDragEnd={onDragEnd}
+            className="flex-shrink-0 p-1 mt-0.5 rounded cursor-grab text-[var(--text-dim)] hover:text-[var(--text-muted)] hover:bg-[var(--bg-secondary)] active:cursor-grabbing"
+            title="Drag to reorder"
+          >
+            <GripVertical className="w-4 h-4" />
+          </div>
+        )}
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs px-1.5 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-dim)] uppercase">
@@ -890,6 +985,12 @@ function CriteriaNode({
           )}
         </div>
       </div>
+      </div>
+
+      {/* Drop indicator - after */}
+      {isDraggedOver && dragState.dragOverPosition === 'after' && (
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--accent)] rounded-full z-10" />
+      )}
     </div>
   );
 }
