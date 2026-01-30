@@ -21,7 +21,7 @@ function resetReviewStatus(obj: any): any {
 }
 
 export function MeasureLibrary() {
-  const { measures, addMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus } = useMeasureStore();
+  const { measures, addMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus, updateMeasure } = useMeasureStore();
   const { linkMeasureComponents, recalculateUsage } = useComponentLibraryStore();
   const {
     selectedProvider,
@@ -103,10 +103,30 @@ export function MeasureLibrary() {
         addMeasure(measureWithStatus);
 
         // Immediately match against component library — link to existing approved components
-        linkMeasureComponents(
+        const linkMap = linkMeasureComponents(
           measureWithStatus.metadata.measureId,
           measureWithStatus.populations,
         );
+
+        // Write libraryComponentId back onto DataElements in the measure
+        if (Object.keys(linkMap).length > 0) {
+          const stampLinks = (node: any): any => {
+            if (!node) return node;
+            if (node.id && linkMap[node.id]) {
+              node = { ...node, libraryComponentId: linkMap[node.id] };
+            }
+            if (node.children) {
+              node = { ...node, children: node.children.map(stampLinks) };
+            }
+            if (node.criteria) {
+              node = { ...node, criteria: stampLinks(node.criteria) };
+            }
+            return node;
+          };
+          const linkedPopulations = measureWithStatus.populations.map(stampLinks);
+          updateMeasure(measureWithStatus.id, { populations: linkedPopulations });
+        }
+
         // Recalculate usage counts across all measures (including the new one)
         recalculateUsage([...measures, measureWithStatus]);
 
@@ -122,7 +142,7 @@ export function MeasureLibrary() {
 
     // Brief pause then process next
     setTimeout(() => processNext(), 1500);
-  }, [getActiveApiKey, addMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, recalculateUsage, measures]);
+  }, [getActiveApiKey, addMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, recalculateUsage, measures]);
 
   // Handle files: either start processing or add to queue
   const handleFiles = useCallback(async (files: File[]) => {
