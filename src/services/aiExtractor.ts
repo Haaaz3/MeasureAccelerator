@@ -24,6 +24,7 @@ import {
   getValueSetByOID,
   getCRCScreeningNumeratorValueSets,
   getCRCScreeningExclusionValueSets,
+  getChildhoodImmunizationValueSets,
   type StandardValueSet,
 } from '../constants/standardValueSets';
 
@@ -54,7 +55,7 @@ export interface AIExtractionResult {
 }
 
 interface ExtractedCriterion {
-  type: 'diagnosis' | 'encounter' | 'procedure' | 'observation' | 'medication' | 'demographic' | 'assessment';
+  type: 'diagnosis' | 'encounter' | 'procedure' | 'observation' | 'medication' | 'demographic' | 'assessment' | 'immunization';
   description: string;
   valueSetName?: string;
   valueSetOid?: string;
@@ -268,7 +269,7 @@ You must respond with ONLY a valid JSON object (no markdown, no explanation). Th
       "cqlExpression": "Full CQL definition if present",
       "criteria": [
         {
-          "type": "diagnosis" | "encounter" | "procedure" | "observation" | "medication" | "demographic" | "assessment",
+          "type": "diagnosis" | "encounter" | "procedure" | "observation" | "medication" | "demographic" | "assessment" | "immunization",
           "description": "What this criterion checks for",
           "valueSetName": "Exact name of value set used (must match a valueSets entry)",
           "valueSetOid": "OID like 2.16.840.1.113883.3.464.1003.101.12.1001",
@@ -337,6 +338,23 @@ WELL-KNOWN VALUE SET OIDs (use these when you recognize the value set type):
 - Hospice Care: 2.16.840.1.113883.3.464.1003.1003
 - Advanced Illness/Dementia: 2.16.840.1.113883.3.464.1003.113.12.1050
 - Frailty: 2.16.840.1.113883.3.464.1003.113.12.1074
+
+IMMUNIZATION MEASURES (e.g., Childhood Immunization Status CMS117):
+- Use type "immunization" for ALL vaccine/immunization criteria — NEVER use "procedure"
+- Childhood immunization measures typically require ALL of these 10 vaccine groups as SEPARATE criteria in the numerator:
+  1. DTaP (Diphtheria, Tetanus, Pertussis) - OID: 2.16.840.1.113883.3.464.1003.196.12.1214
+  2. IPV (Inactivated Polio) - OID: 2.16.840.1.113883.3.464.1003.196.12.1219
+  3. MMR (Measles, Mumps, Rubella) - OID: 2.16.840.1.113883.3.464.1003.196.12.1224
+  4. Hib (Haemophilus influenzae type b) - OID: 2.16.840.1.113883.3.464.1003.110.12.1085
+  5. Hepatitis B - OID: 2.16.840.1.113883.3.464.1003.196.12.1216
+  6. VZV/Varicella (Chickenpox) - OID: 2.16.840.1.113883.3.464.1003.196.12.1236
+  7. PCV (Pneumococcal Conjugate) - OID: 2.16.840.1.113883.3.464.1003.196.12.1221
+  8. Hepatitis A - OID: 2.16.840.1.113883.3.464.1003.196.12.1215
+  9. Rotavirus - OID: 2.16.840.1.113883.3.464.1003.196.12.1223
+  10. Influenza - OID: 2.16.840.1.113883.3.464.1003.196.12.1218
+- Each vaccine group should be its own criterion with type "immunization"
+- Vaccines use CVX codes (e.g., CVX 20 = DTaP), not CPT or SNOMED
+- The numerator logic is typically AND (all vaccines required)
 
 CRITICAL OID EXTRACTION:
 - Always extract the FULL OID (2.16.840.1.113883.x.xxx.xxx.xx.xxxx format)
@@ -580,8 +598,20 @@ function validateExtractedData(data: any): ExtractedMeasureData | null {
           };
         }
         // New format: use structured criterion
+        let criterionType = crit.type || 'assessment';
+
+        // Normalize vaccine/immunization criteria that were mistyped as 'procedure'
+        if (criterionType === 'procedure' || criterionType === 'assessment') {
+          const desc = (crit.description || '').toLowerCase();
+          const vsName = (crit.valueSetName || '').toLowerCase();
+          if (/\b(vaccine|vaccination|immunization|immunize|dtap|ipv|mmr|hib|hepatitis\s*[ab]|varicella|chickenpox|pneumococcal|pcv|rotavirus|influenza|polio|diphtheria|tetanus|pertussis|measles|mumps|rubella)\b/i.test(desc) ||
+              /\b(vaccine|vaccination|immunization|dtap|ipv|mmr|hib|hep\s*[ab]|varicella|pcv|rotavirus|influenza)\b/i.test(vsName)) {
+            criterionType = 'immunization';
+          }
+        }
+
         return {
-          type: crit.type || 'assessment',
+          type: criterionType,
           description: crit.description || '',
           valueSetName: crit.valueSetName,
           valueSetOid: crit.valueSetOid,
@@ -1042,7 +1072,40 @@ function findStandardValueSetByName(name: string, measureTitle?: string): Standa
     }
   }
 
-  // TODO: Add more measure-specific value set matching here
+  // Check if this is an immunization-related measure
+  const isImmunizationMeasure = lowerTitle.includes('immunization') ||
+                                 lowerTitle.includes('childhood imm') ||
+                                 lowerTitle.includes('cms117');
+
+  if (isImmunizationMeasure || /\b(vaccine|vaccination|immunization|dtap|ipv|mmr|hib|hepatitis\s*[ab]|varicella|pcv|pneumococcal|rotavirus|influenza)\b/i.test(lowerName)) {
+    const immunizationSets = getChildhoodImmunizationValueSets();
+
+    for (const vs of immunizationSets) {
+      const vsNameLower = vs.name.toLowerCase();
+      if (lowerName.includes(vsNameLower) || vsNameLower.includes(lowerName)) {
+        return vs;
+      }
+      // Check for keyword matches
+      const keywords: Record<string, string[]> = {
+        'dtap': ['dtap', 'diphtheria', 'tetanus', 'pertussis'],
+        'ipv': ['ipv', 'polio', 'inactivated polio'],
+        'mmr': ['mmr', 'measles', 'mumps', 'rubella'],
+        'hib': ['hib', 'haemophilus'],
+        'hep-b': ['hepatitis b', 'hep b', 'hepb'],
+        'varicella': ['varicella', 'chickenpox', 'vzv'],
+        'pcv': ['pcv', 'pneumococcal conjugate'],
+        'hep-a': ['hepatitis a', 'hep a', 'hepa'],
+        'rotavirus': ['rotavirus', 'rota'],
+        'influenza': ['influenza', 'flu vaccine'],
+      };
+
+      for (const [vsId, kws] of Object.entries(keywords)) {
+        if (vs.id === `${vsId}-vaccine` && kws.some(kw => lowerName.includes(kw))) {
+          return vs;
+        }
+      }
+    }
+  }
 
   return null;
 }
@@ -1072,6 +1135,21 @@ function detectMissingValueSets(data: ExtractedMeasureData, existingOids: Set<st
     // Add CRC exclusion value sets if missing
     const crcExclusionSets = getCRCScreeningExclusionValueSets();
     for (const vs of crcExclusionSets) {
+      if (!existingOids.has(vs.oid)) {
+        missing.push(vs);
+        existingOids.add(vs.oid);
+      }
+    }
+  }
+
+  // Detect childhood immunization measure
+  if (lowerTitle.includes('immunization') ||
+      lowerTitle.includes('childhood imm') ||
+      lowerDesc.includes('childhood immunization') ||
+      lowerTitle.includes('cms117')) {
+
+    const immunizationSets = getChildhoodImmunizationValueSets();
+    for (const vs of immunizationSets) {
       if (!existingOids.has(vs.oid)) {
         missing.push(vs);
         existingOids.add(vs.oid);

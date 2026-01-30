@@ -8,7 +8,7 @@
  * accurate patient classification.
  */
 
-import { CPT, HCPCS, ICD10CM, SNOMEDCT, LOINC } from './fhirCodeSystems';
+import { CPT, HCPCS, ICD10CM, SNOMEDCT, LOINC, CVX } from './fhirCodeSystems';
 
 export interface StandardValueSet {
   id: string;
@@ -480,6 +480,204 @@ export const DEMENTIA_VALUE_SET: StandardValueSet = {
 };
 
 // =============================================================================
+// CHILDHOOD IMMUNIZATION STATUS (CMS117) VALUE SETS
+// =============================================================================
+
+/**
+ * DTaP Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1214
+ * Diphtheria, Tetanus, and Pertussis vaccine
+ */
+export const DTAP_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'dtap-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1214',
+  name: 'DTaP Vaccine',
+  codes: [
+    { code: '20', system: CVX, display: 'DTaP vaccine' },
+    { code: '50', system: CVX, display: 'DTaP-Hib vaccine' },
+    { code: '106', system: CVX, display: 'DTaP, 5 pertussis antigens' },
+    { code: '107', system: CVX, display: 'DTaP, unspecified formulation' },
+    { code: '110', system: CVX, display: 'DTaP-Hep B-IPV vaccine' },
+    { code: '120', system: CVX, display: 'DTaP-Hib-IPV vaccine' },
+    { code: '146', system: CVX, display: 'DTaP-IPV-Hib-Hep B vaccine' },
+  ],
+};
+
+/**
+ * IPV (Inactivated Polio Vaccine) - OID: 2.16.840.1.113883.3.464.1003.196.12.1219
+ */
+export const IPV_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'ipv-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1219',
+  name: 'Inactivated Polio Vaccine (IPV)',
+  codes: [
+    { code: '10', system: CVX, display: 'IPV vaccine' },
+    { code: '89', system: CVX, display: 'Polio vaccine, unspecified formulation' },
+    { code: '110', system: CVX, display: 'DTaP-Hep B-IPV vaccine' },
+    { code: '120', system: CVX, display: 'DTaP-Hib-IPV vaccine' },
+    { code: '146', system: CVX, display: 'DTaP-IPV-Hib-Hep B vaccine' },
+  ],
+};
+
+/**
+ * MMR Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1224
+ * Measles, Mumps, and Rubella vaccine
+ */
+export const MMR_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'mmr-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1224',
+  name: 'MMR Vaccine',
+  codes: [
+    { code: '03', system: CVX, display: 'MMR vaccine' },
+    { code: '94', system: CVX, display: 'MMRV vaccine' },
+  ],
+};
+
+/**
+ * Hib Vaccine - OID: 2.16.840.1.113883.3.464.1003.110.12.1085
+ * Haemophilus influenzae type b vaccine
+ */
+export const HIB_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'hib-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.110.12.1085',
+  name: 'Hib Vaccine',
+  codes: [
+    { code: '17', system: CVX, display: 'Hib vaccine, unspecified formulation' },
+    { code: '46', system: CVX, display: 'Hib (PRP-D) vaccine' },
+    { code: '47', system: CVX, display: 'Hib (HbOC) vaccine' },
+    { code: '48', system: CVX, display: 'Hib (PRP-T) vaccine' },
+    { code: '49', system: CVX, display: 'Hib (PRP-OMP) vaccine' },
+    { code: '50', system: CVX, display: 'DTaP-Hib vaccine' },
+    { code: '120', system: CVX, display: 'DTaP-Hib-IPV vaccine' },
+    { code: '146', system: CVX, display: 'DTaP-IPV-Hib-Hep B vaccine' },
+    { code: '148', system: CVX, display: 'Meningococcal C/Y-Hib PRP vaccine' },
+  ],
+};
+
+/**
+ * Hepatitis B Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1216
+ */
+export const HEPATITIS_B_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'hep-b-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1216',
+  name: 'Hepatitis B Vaccine',
+  codes: [
+    { code: '08', system: CVX, display: 'Hep B vaccine, pediatric or adolescent' },
+    { code: '42', system: CVX, display: 'Hep B vaccine, adolescent/high risk infant' },
+    { code: '43', system: CVX, display: 'Hep B vaccine, adult' },
+    { code: '44', system: CVX, display: 'Hep B vaccine, dialysis' },
+    { code: '45', system: CVX, display: 'Hep B vaccine, unspecified formulation' },
+    { code: '51', system: CVX, display: 'Hib-Hep B vaccine' },
+    { code: '110', system: CVX, display: 'DTaP-Hep B-IPV vaccine' },
+    { code: '146', system: CVX, display: 'DTaP-IPV-Hib-Hep B vaccine' },
+    { code: '189', system: CVX, display: 'Hep B vaccine (CpG adjuvant)' },
+  ],
+};
+
+/**
+ * Varicella (Chickenpox) Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1236
+ */
+export const VARICELLA_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'varicella-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1236',
+  name: 'Varicella Vaccine',
+  codes: [
+    { code: '21', system: CVX, display: 'Varicella vaccine' },
+    { code: '94', system: CVX, display: 'MMRV vaccine' },
+  ],
+};
+
+/**
+ * Pneumococcal Conjugate Vaccine (PCV) - OID: 2.16.840.1.113883.3.464.1003.196.12.1221
+ */
+export const PCV_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'pcv-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1221',
+  name: 'Pneumococcal Conjugate Vaccine (PCV)',
+  codes: [
+    { code: '133', system: CVX, display: 'PCV13 vaccine' },
+    { code: '152', system: CVX, display: 'PCV vaccine, unspecified' },
+    { code: '100', system: CVX, display: 'PCV7 vaccine' },
+  ],
+};
+
+/**
+ * Hepatitis A Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1215
+ */
+export const HEPATITIS_A_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'hep-a-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1215',
+  name: 'Hepatitis A Vaccine',
+  codes: [
+    { code: '31', system: CVX, display: 'Hep A vaccine, pediatric, unspecified' },
+    { code: '83', system: CVX, display: 'Hep A vaccine, pediatric/adolescent, 2 dose' },
+    { code: '84', system: CVX, display: 'Hep A vaccine, pediatric/adolescent, 3 dose' },
+    { code: '85', system: CVX, display: 'Hep A vaccine, unspecified formulation' },
+    { code: '104', system: CVX, display: 'Hep A-Hep B vaccine' },
+  ],
+};
+
+/**
+ * Rotavirus Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1223
+ */
+export const ROTAVIRUS_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'rotavirus-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1223',
+  name: 'Rotavirus Vaccine',
+  codes: [
+    { code: '116', system: CVX, display: 'Rotavirus vaccine, pentavalent' },
+    { code: '119', system: CVX, display: 'Rotavirus vaccine, monovalent' },
+    { code: '122', system: CVX, display: 'Rotavirus vaccine, unspecified formulation' },
+  ],
+};
+
+/**
+ * Influenza Vaccine - OID: 2.16.840.1.113883.3.464.1003.196.12.1218
+ */
+export const INFLUENZA_VACCINE_VALUE_SET: StandardValueSet = {
+  id: 'influenza-vaccine',
+  oid: '2.16.840.1.113883.3.464.1003.196.12.1218',
+  name: 'Influenza Vaccine',
+  codes: [
+    { code: '88', system: CVX, display: 'Influenza vaccine, unspecified formulation' },
+    { code: '135', system: CVX, display: 'Influenza, high dose seasonal' },
+    { code: '140', system: CVX, display: 'Influenza, seasonal, injectable, preservative free' },
+    { code: '141', system: CVX, display: 'Influenza, seasonal, injectable' },
+    { code: '144', system: CVX, display: 'Influenza, seasonal, intradermal, preservative free' },
+    { code: '149', system: CVX, display: 'Influenza, live, intranasal, quadrivalent' },
+    { code: '150', system: CVX, display: 'Influenza, injectable, quadrivalent, preservative free' },
+    { code: '153', system: CVX, display: 'Influenza, injectable, MDCK, preservative free' },
+    { code: '155', system: CVX, display: 'Influenza, recombinant, injectable, preservative free' },
+    { code: '158', system: CVX, display: 'Influenza, injectable, quadrivalent' },
+    { code: '161', system: CVX, display: 'Influenza, injectable, quadrivalent, preservative free, pediatric' },
+    { code: '166', system: CVX, display: 'Influenza, intradermal, quadrivalent, preservative free' },
+    { code: '168', system: CVX, display: 'Influenza, trivalent, adjuvanted' },
+    { code: '171', system: CVX, display: 'Influenza, injectable, MDCK, preservative free, quadrivalent' },
+    { code: '185', system: CVX, display: 'Influenza, recombinant, quadrivalent, injectable, preservative free' },
+    { code: '186', system: CVX, display: 'Influenza, injectable, MDCK, quadrivalent, preservative free' },
+    { code: '197', system: CVX, display: 'Influenza, high-dose, quadrivalent' },
+    { code: '205', system: CVX, display: 'Influenza, adjuvanted, quadrivalent' },
+  ],
+};
+
+/**
+ * Get all childhood immunization vaccine value sets
+ */
+export function getChildhoodImmunizationValueSets(): StandardValueSet[] {
+  return [
+    DTAP_VACCINE_VALUE_SET,
+    IPV_VACCINE_VALUE_SET,
+    MMR_VACCINE_VALUE_SET,
+    HIB_VACCINE_VALUE_SET,
+    HEPATITIS_B_VACCINE_VALUE_SET,
+    VARICELLA_VACCINE_VALUE_SET,
+    PCV_VACCINE_VALUE_SET,
+    HEPATITIS_A_VACCINE_VALUE_SET,
+    ROTAVIRUS_VACCINE_VALUE_SET,
+    INFLUENZA_VACCINE_VALUE_SET,
+  ];
+}
+
+// =============================================================================
 // HELPER FUNCTIONS
 // =============================================================================
 
@@ -599,19 +797,7 @@ export const STANDARD_VALUE_SETS_BY_MEASURE: Record<string, {
  * Look up a value set by OID
  */
 export function getValueSetByOID(oid: string): StandardValueSet | undefined {
-  const allValueSets = [
-    COLONOSCOPY_VALUE_SET,
-    FOBT_VALUE_SET,
-    FIT_DNA_VALUE_SET,
-    FLEXIBLE_SIGMOIDOSCOPY_VALUE_SET,
-    CT_COLONOGRAPHY_VALUE_SET,
-    COLORECTAL_CANCER_VALUE_SET,
-    TOTAL_COLECTOMY_VALUE_SET,
-    HOSPICE_CARE_VALUE_SET,
-    FRAILTY_VALUE_SET,
-    DEMENTIA_VALUE_SET,
-  ];
-  return allValueSets.find(vs => vs.oid === oid);
+  return getAllStandardValueSets().find(vs => vs.oid === oid);
 }
 
 /**
@@ -629,6 +815,7 @@ export function getAllStandardValueSets(): StandardValueSet[] {
     HOSPICE_CARE_VALUE_SET,
     FRAILTY_VALUE_SET,
     DEMENTIA_VALUE_SET,
+    ...getChildhoodImmunizationValueSets(),
   ];
 }
 
