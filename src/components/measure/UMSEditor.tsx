@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, Fragment } from 'react';
 import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
@@ -650,24 +650,52 @@ function CriteriaNode({
           )}
         </div>
         {clause.children.map((child, idx) => (
-          <CriteriaNode
-            key={child.id}
-            node={child}
-            parentId={clause.id}
-            measureId={measureId}
-            depth={depth + 1}
-            index={idx}
-            totalSiblings={clause.children.length}
-            selectedNode={selectedNode}
-            onSelectNode={onSelectNode}
-            onSelectValueSet={onSelectValueSet}
-            updateReviewStatus={updateReviewStatus}
-            allValueSets={allValueSets}
-            deepMode={deepMode}
-            onToggleOperator={onToggleOperator}
-            onReorder={onReorder}
-            onDeleteComponent={onDeleteComponent}
-          />
+          <Fragment key={child.id}>
+            {idx > 0 && (
+              <div className="flex items-center gap-2 ml-4">
+                <div className="w-px h-3 bg-[var(--border)]" />
+                {deepMode ? (
+                  <button
+                    onClick={() => onToggleOperator(clause.id)}
+                    className={`px-2 py-0.5 rounded font-mono text-[10px] cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
+                      clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                      clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
+                      'bg-[var(--danger-light)] text-[var(--danger)]'
+                    }`}
+                    title="Click to toggle: AND → OR → NOT"
+                  >
+                    {clause.operator}
+                  </button>
+                ) : (
+                  <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
+                    clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                    clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
+                    'bg-[var(--danger-light)] text-[var(--danger)]'
+                  }`}>
+                    {clause.operator}
+                  </span>
+                )}
+                <div className="w-px h-3 bg-[var(--border)]" />
+              </div>
+            )}
+            <CriteriaNode
+              node={child}
+              parentId={clause.id}
+              measureId={measureId}
+              depth={depth + 1}
+              index={idx}
+              totalSiblings={clause.children.length}
+              selectedNode={selectedNode}
+              onSelectNode={onSelectNode}
+              onSelectValueSet={onSelectValueSet}
+              updateReviewStatus={updateReviewStatus}
+              allValueSets={allValueSets}
+              deepMode={deepMode}
+              onToggleOperator={onToggleOperator}
+              onReorder={onReorder}
+              onDeleteComponent={onDeleteComponent}
+            />
+          </Fragment>
         ))}
       </div>
     );
