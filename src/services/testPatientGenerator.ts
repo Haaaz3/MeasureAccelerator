@@ -1446,6 +1446,131 @@ const STATIC_TEST_PATIENTS: TestPatient[] = [
       { code: '141', system: CVX, display: 'Influenza, seasonal, injectable', date: '2025-10-20', status: 'completed' },
     ],
   },
+
+  // ============================================================================
+  // Patient 37: Alai Momoe - Partial immunizations (missing 3 vaccine groups)
+  // Born 2024-04-10 → turns 2 on 2026-04-10 (during MP 2026)
+  // Has 7/10 vaccine groups complete; missing Hepatitis A, Rotavirus, Influenza
+  // Expected: FAIL numerator (missing 3 vaccine groups entirely)
+  // ============================================================================
+  {
+    id: 'pt-037',
+    name: 'Alai Momoe',
+    demographics: {
+      birthDate: '2024-04-10',
+      gender: 'male',
+      race: 'Asian',
+      ethnicity: 'Not Hispanic or Latino',
+    },
+    diagnoses: [],
+    encounters: [
+      { code: '99381', system: CPT, display: 'Initial preventive visit, infant', date: '2024-04-15', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2024-06-10', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2024-08-12', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2024-10-14', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2025-01-13', type: 'outpatient' },
+      { code: '99392', system: CPT, display: 'Periodic preventive visit, 1-4 years', date: '2025-07-10', type: 'outpatient' },
+      // Missed 12-month and 15-month visits — no Hep A, Rotavirus series incomplete, no flu shot
+    ],
+    procedures: [],
+    observations: [
+      { code: '8302-2', system: LOINC, display: 'Body height', date: '2025-07-10', value: 80, unit: 'cm' },
+      { code: '29463-7', system: LOINC, display: 'Body weight', date: '2025-07-10', value: 10.5, unit: 'kg' },
+    ],
+    medications: [],
+    immunizations: [
+      // DTaP — 4 doses (COMPLETE: needs 4)
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2024-06-10', status: 'completed' },
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2024-08-12', status: 'completed' },
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2024-10-14', status: 'completed' },
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2025-07-10', status: 'completed' },
+      // IPV — 3 doses (COMPLETE: needs 3)
+      { code: '10', system: CVX, display: 'IPV vaccine', date: '2024-06-10', status: 'completed' },
+      { code: '10', system: CVX, display: 'IPV vaccine', date: '2024-08-12', status: 'completed' },
+      { code: '10', system: CVX, display: 'IPV vaccine', date: '2025-01-13', status: 'completed' },
+      // MMR — 1 dose (COMPLETE: needs 1)
+      { code: '03', system: CVX, display: 'MMR vaccine', date: '2025-07-10', status: 'completed' },
+      // Hib — 3 doses (COMPLETE: needs 3 for PRP-OMP schedule)
+      { code: '49', system: CVX, display: 'Hib (PRP-OMP)', date: '2024-06-10', status: 'completed' },
+      { code: '49', system: CVX, display: 'Hib (PRP-OMP)', date: '2024-08-12', status: 'completed' },
+      { code: '49', system: CVX, display: 'Hib (PRP-OMP)', date: '2025-07-10', status: 'completed' },
+      // Hep B — 3 doses (COMPLETE: needs 3)
+      { code: '08', system: CVX, display: 'Hep B vaccine, pediatric', date: '2024-04-10', status: 'completed' },
+      { code: '08', system: CVX, display: 'Hep B vaccine, pediatric', date: '2024-06-10', status: 'completed' },
+      { code: '08', system: CVX, display: 'Hep B vaccine, pediatric', date: '2024-10-14', status: 'completed' },
+      // VZV — 1 dose (COMPLETE: needs 1)
+      { code: '21', system: CVX, display: 'Varicella vaccine', date: '2025-07-10', status: 'completed' },
+      // PCV — 4 doses (COMPLETE: needs 4)
+      { code: '133', system: CVX, display: 'PCV13', date: '2024-06-10', status: 'completed' },
+      { code: '133', system: CVX, display: 'PCV13', date: '2024-08-12', status: 'completed' },
+      { code: '133', system: CVX, display: 'PCV13', date: '2024-10-14', status: 'completed' },
+      { code: '133', system: CVX, display: 'PCV13', date: '2025-07-10', status: 'completed' },
+      // MISSING: Hepatitis A (0 of 1 dose)
+      // MISSING: Rotavirus (0 of 2-3 doses)
+      // MISSING: Influenza (0 of 2 doses)
+    ],
+  },
+
+  // ============================================================================
+  // Patient 38: Dink Meeker - All 10 vaccine groups started, insufficient doses
+  // Born 2024-01-18 → turns 2 on 2026-01-18 (during MP 2026)
+  // Has all 10 groups but only partial doses: 2/4 DTaP, 2/3 IPV, 2/4 PCV, 1/3 HepB, etc.
+  // Expected: FAIL numerator (insufficient dose counts for multiple vaccines)
+  // ============================================================================
+  {
+    id: 'pt-038',
+    name: 'Dink Meeker',
+    demographics: {
+      birthDate: '2024-01-18',
+      gender: 'male',
+      race: 'Black or African American',
+      ethnicity: 'Not Hispanic or Latino',
+    },
+    diagnoses: [
+      { code: 'J06.9', system: ICD10CM, display: 'Acute upper respiratory infection, unspecified', onsetDate: '2024-11-05', status: 'resolved' },
+    ],
+    encounters: [
+      { code: '99381', system: CPT, display: 'Initial preventive visit, infant', date: '2024-01-25', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2024-03-18', type: 'outpatient' },
+      { code: '99391', system: CPT, display: 'Periodic preventive visit, infant', date: '2024-05-20', type: 'outpatient' },
+      { code: '99213', system: CPT, display: 'Office visit, established patient', date: '2024-11-05', type: 'outpatient' },
+      // Missed 6-month, 9-month, 12-month, and 15-month well visits — dose gaps
+      { code: '99392', system: CPT, display: 'Periodic preventive visit, 1-4 years', date: '2025-07-18', type: 'outpatient' },
+    ],
+    procedures: [],
+    observations: [
+      { code: '8302-2', system: LOINC, display: 'Body height', date: '2025-07-18', value: 82, unit: 'cm' },
+      { code: '29463-7', system: LOINC, display: 'Body weight', date: '2025-07-18', value: 11.2, unit: 'kg' },
+    ],
+    medications: [],
+    immunizations: [
+      // DTaP — 2 doses (INSUFFICIENT: needs 4)
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2024-03-18', status: 'completed' },
+      { code: '20', system: CVX, display: 'DTaP vaccine', date: '2024-05-20', status: 'completed' },
+      // IPV — 2 doses (INSUFFICIENT: needs 3)
+      { code: '10', system: CVX, display: 'IPV vaccine', date: '2024-03-18', status: 'completed' },
+      { code: '10', system: CVX, display: 'IPV vaccine', date: '2024-05-20', status: 'completed' },
+      // MMR — 1 dose (COMPLETE: needs 1)
+      { code: '03', system: CVX, display: 'MMR vaccine', date: '2025-07-18', status: 'completed' },
+      // Hib — 2 doses (INSUFFICIENT: needs 3)
+      { code: '49', system: CVX, display: 'Hib (PRP-OMP)', date: '2024-03-18', status: 'completed' },
+      { code: '49', system: CVX, display: 'Hib (PRP-OMP)', date: '2024-05-20', status: 'completed' },
+      // Hep B — 1 dose (INSUFFICIENT: needs 3) — only birth dose
+      { code: '08', system: CVX, display: 'Hep B vaccine, pediatric', date: '2024-01-18', status: 'completed' },
+      // VZV — 1 dose (COMPLETE: needs 1)
+      { code: '21', system: CVX, display: 'Varicella vaccine', date: '2025-07-18', status: 'completed' },
+      // PCV — 2 doses (INSUFFICIENT: needs 4)
+      { code: '133', system: CVX, display: 'PCV13', date: '2024-03-18', status: 'completed' },
+      { code: '133', system: CVX, display: 'PCV13', date: '2024-05-20', status: 'completed' },
+      // Hep A — 1 dose (COMPLETE: needs 1)
+      { code: '83', system: CVX, display: 'Hepatitis A, pediatric', date: '2025-07-18', status: 'completed' },
+      // Rotavirus — 2 doses (COMPLETE: needs 2 for monovalent or 3 for pentavalent)
+      { code: '119', system: CVX, display: 'Rotavirus, monovalent', date: '2024-03-18', status: 'completed' },
+      { code: '119', system: CVX, display: 'Rotavirus, monovalent', date: '2024-05-20', status: 'completed' },
+      // Influenza — 1 dose (INSUFFICIENT: needs 2)
+      { code: '141', system: CVX, display: 'Influenza, seasonal, injectable', date: '2025-07-18', status: 'completed' },
+    ],
+  },
 ];
 
 /**
