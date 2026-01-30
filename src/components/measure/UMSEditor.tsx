@@ -707,19 +707,8 @@ function CriteriaNode({
     const clause = node as LogicalClause;
     return (
       <div className="ml-7 space-y-2">
+        {/* Clause header - description only, no operator badge (operators only appear between siblings) */}
         <div className="flex items-center gap-2 text-sm group">
-          {/* Operator badge - always clickable to toggle */}
-          <button
-            onClick={() => onToggleOperator(clause.id)}
-            className={`px-2 py-0.5 rounded font-mono text-xs cursor-pointer hover:ring-2 hover:ring-white/20 hover:opacity-80 transition-all ${
-              clause.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
-              clause.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
-              'bg-[var(--danger-light)] text-[var(--danger)]'
-            }`}
-            title="Click to toggle: AND → OR → NOT"
-          >
-            {clause.operator}
-          </button>
           <span className="text-[var(--text-muted)] flex-1">{cleanDescription(clause.description)}</span>
 
           {/* Deep mode controls for clause */}
