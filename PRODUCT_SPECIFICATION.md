@@ -144,29 +144,48 @@ Universal Measure Specification (UMS) is our internal format that represents any
 
 **Criteria Tree View:**
 
-Each population section displays logic as a collapsible tree:
+Each population section displays logic as a collapsible tree with visible AND/OR operators between every sibling element:
 
 ```
-Denominator (AND)
-├── Age 50-75 years
-├── Has qualifying encounter (OR)
+Initial Population (AND)
+├── Women aged 51-74 years at end of measurement period
+│       AND
+├── Qualifying Encounters (OR)
 │   ├── Office Visit
-│   ├── Preventive Care Visit
-│   └── Annual Wellness Visit
-└── No exclusions apply
+│   │       OR
+│   ├── Annual Wellness Visit
+│   │       OR
+│   ├── Preventive Care Established Visit
+│   │       OR
+│   └── Home Healthcare Services
 ```
+
+**Operator badges** appear between every pair of sibling elements, making the logical relationships explicit and always visible. All operator badges (both clause headers and inter-sibling separators) are clickable to toggle between AND, OR, and NOT.
+
+**Description Cleaning:**
+
+Descriptions are automatically cleaned to remove embedded AND/OR/NOT text that may appear from source document parsing. Logical operators are only shown as dedicated operator badges, never as inline text.
 
 **Editing Capabilities:**
 
 | Feature | Description |
 |---------|-------------|
-| **Add Component** | Insert new criteria (diagnosis, procedure, etc.) |
+| **Add Component** | Insert new criteria with AND/OR logic selector |
 | **Edit Component** | Modify descriptions, codes, timing |
-| **Change Logic** | Switch between AND/OR/NOT operators |
+| **Change Logic** | Click any AND/OR/NOT badge to toggle operators |
 | **Reorder** | Move components up/down |
 | **Delete** | Remove components |
 | **View Value Set** | See all codes in a referenced code set |
 | **Add/Remove Codes** | Modify value set contents |
+
+**Adding Components:**
+
+When adding a new component, users must specify:
+- **Component type** (diagnosis, encounter, procedure, etc.)
+- **Logic connection** (AND or OR) — determines how the new component relates to existing criteria
+  - **AND**: Must also meet this criterion (appends to top-level AND clause)
+  - **OR**: Alternative to existing criteria (creates or appends to an OR subclause)
+- Description, value set, timing, and additional requirements
 
 ---
 
@@ -188,14 +207,19 @@ AI extraction is powerful but not perfect. The review workflow ensures every com
 
 **Complexity Levels:**
 Each component receives an objective complexity score based on its structure:
-- **Low** (1-3 score) - Simple component (e.g., single value set during measurement period)
-- **Medium** (4-7 score) - Moderate complexity (e.g., multiple timing clauses or negation)
+- **Low** (1-3 score) - Simple component (e.g., single value set during measurement period, has codes)
+- **Medium** (4-7 score) - Moderate complexity (e.g., multiple timing clauses, negation, or zero codes)
 - **High** (8+ score) - Complex component (e.g., composite with many children and nesting)
 
-Complexity is calculated from structural factors: base score (1) + timing clauses (+1 each) + negation (+2). Composites sum children's scores plus operator and nesting depth bonuses.
+Complexity is calculated from structural factors: base score (1) + timing clauses (+1 each) + negation (+2). Composites sum children's scores plus operator and nesting depth bonuses. **Components with zero codes are automatically floored at medium complexity** to prevent auto-approval of incomplete components.
+
+**Zero-Code Protection:**
+- Components with no codes are never created in the library — instead, a red ingestion warning is shown on the data element
+- If codes cannot be found during extraction, the element displays: "No codes found for this logic block. Add codes in the component library or re-upload with terminology."
+- Zero-code elements are flagged at medium complexity minimum, preventing auto-approval
 
 **Batch Operations:**
-- **Approve All** - Approve everything remaining (use carefully)
+- **Approve All Low Complexity** - Auto-approve only verified, complete components (low complexity with codes)
 
 **Progress Tracking:**
 - Circular progress indicator (0-100%)
@@ -244,6 +268,31 @@ The validation harness evaluates patients through three population sections:
 2. **Denominator Exclusions** - Conditions that exclude patients (hospice, terminal illness)
 3. **Numerator** - Success criteria (screenings, test results, procedures)
 
+**Nested Criteria Tree:**
+
+The validation view mirrors the UMS editor's tree structure, including nested logical groups with operator badges between every sibling element:
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ ✓ INITIAL POPULATION                           [IN POPULATION]   │
+│   Patient must meet ALL criteria                                  │
+├──────────────────────────────────────────────────────────────────┤
+│  ✓ Women aged 51-74 years at end of measurement period           │
+│         AND                                                       │
+│  ┌─ OR ─ Qualifying Encounters (5 of 9 met) ─────────────────┐  │
+│  │  ✓ Office Visit                                              │  │
+│  │         OR                                                    │  │
+│  │  ✓ Annual Wellness Visit                                     │  │
+│  │         OR                                                    │  │
+│  │  ✗ Preventive Care Established Visit                         │  │
+│  │         OR                                                    │  │
+│  │  ...                                                          │  │
+│  └────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**Group nodes** display the operator (AND/OR), title, match count (e.g., "5 of 9 met"), and contain nested children with operator separators. This matches the UMS editor structure exactly, providing a consistent experience across editing and validation.
+
 **Visual Status Indicators:**
 
 Each population section has clear visual feedback:
@@ -252,28 +301,7 @@ Each population section has clear visual feedback:
 |--------|-----------------|
 | **All Criteria Met** | Green background, ✓ checkmark icon, green title, solid green chip |
 | **Criteria Not Met** | Neutral background, ✗ icon, muted title, red outlined chip |
-
-This makes it immediately clear at a glance whether each section passed or failed.
-
-**Detailed Criteria Breakdown:**
-
-Each population section shows ALL individual criteria with pass/fail status:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ ✓ INITIAL POPULATION                          [IN POPULATION]  │
-│   Patient must meet ALL criteria to be included                 │
-├─────────────────────────────────────────────────────────────────┤
-│ ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│ │ ✓ Gender     │AND │ ✓ Age        │AND │ ✓ Diagnosis  │       │
-│ │   Requirement│    │   Requirement│    │   Requirement│       │
-│ │              │    │              │    │              │       │
-│ │ Female meets │    │ Age 47 at MP │    │ I10 - HTN    │       │
-│ │ requirement  │    │ start, 47 at │    │ Matched on   │       │
-│ │              │    │ MP end       │    │ 2024-06-12   │       │
-│ └──────────────┘    └──────────────┘    └──────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-```
+| **Partial (Group)** | Warning icon, indicates some but not all criteria met within a group |
 
 **Evidence Facts:**
 Each criterion card shows:
@@ -417,11 +445,13 @@ A reusable component library system for sharing, versioning, and validating meas
 
 | Concept | Description |
 |---------|-------------|
-| **Atomic Component** | Smallest reusable unit: Value Set OID + Version + Timing Expression |
+| **Atomic Component** | Smallest reusable unit: Value Set OID + Version + Timing Expression + Codes |
 | **Composite Component** | Collection of atomic components combined with AND/OR logic |
-| **Exact Matching** | Components reuse requires 100% identical match (no fuzzy matching) |
+| **Exact Matching** | Components reuse requires identity hash match (OID + timing + negation) |
+| **Name-Based Fallback** | When OID matching fails, normalized value set names are compared with timing + negation |
 | **Versioning** | Same OID with different timing = new version; different OID = new component |
 | **Auto-Archive** | Components not used in any measure are automatically archived |
+| **Zero-Code Guard** | Components with no codes are never created — a warning is shown instead |
 
 **Library Browser:**
 
@@ -437,10 +467,25 @@ A reusable component library system for sharing, versioning, and validating meas
 
 For each component, view:
 - Full definition (value set, timing, negation for atomics; children and operator for composites)
+- **Codes table** showing all codes (code, display, system) with expandable list for large code sets
+- Zero-code warning if no codes are defined
 - Complexity score with factor breakdown
 - Version history with status of each version
 - List of measures using this component
 - Actions: Edit, Archive, Approve
+
+**Component Editor — Codes Management:**
+
+When editing a component in the library:
+- View all codes in a table (code, display, system)
+- Delete individual codes
+- Add new codes with code value, display text, and system dropdown (CPT, ICD10, SNOMED, HCPCS, LOINC, RxNorm, CVX)
+- When saving, codes are synced to ALL linked measures via `syncComponentToMeasures`
+
+**Bidirectional Code Sync:**
+- Codes are stored on both the library component (`AtomicComponent.valueSet.codes`) and the measure data element (`DataElement.valueSet.codes`)
+- When codes are edited in the library, all linked measures are updated
+- When a new measure is imported and matches an existing component with no codes, the incoming codes are synced to the library component
 
 **Shared Edit Warning:**
 
@@ -457,13 +502,11 @@ Composites do NOT auto-update when their children are versioned — changes requ
 
 When a measure is imported, the system automatically:
 1. Parses the measure to atomic components (value set + timing)
-2. Searches the entire library (including archived components) for exact matches
-3. Shows the ImportMatcher panel with results:
-   - Exact matches (green) — component already exists in library
-   - Similar components (yellow) — same OID but different timing
-   - New components — no match found
-4. User confirms: link to existing library component or create new
-5. Usage counts update automatically
+2. Searches the entire library (including archived components) for exact matches by identity hash
+3. Falls back to **name-based matching** — normalizes value set names and compares with timing + negation
+4. When matching an existing component that has no codes but the incoming element does, **codes are synced** to the existing component
+5. Elements with zero codes are NOT created as components — they receive an ingestion warning instead
+6. Usage counts update automatically
 
 **Auto-Archive Behavior:**
 - Components with zero usage across all measures are automatically archived
@@ -474,7 +517,7 @@ When a measure is imported, the system automatically:
 
 | Component Type | Scoring Formula |
 |---------------|-----------------|
-| **Atomic** | Base (1) + timing clauses (+1 each) + negation (+2) |
+| **Atomic** | Base (1) + timing clauses (+1 each) + negation (+2) + zero-codes floor (4 minimum if no codes) |
 | **Composite** | Sum of children scores + AND operators (+1 each) + nesting depth (+2 per level) |
 
 | Level | Score Range | Indicator |
@@ -482,6 +525,8 @@ When a measure is imported, the system automatically:
 | Low | 1-3 | ○ |
 | Medium | 4-7 | ●● |
 | High | 8+ | ●●● |
+
+**Zero-codes penalty:** Atomic components and data elements with no codes are automatically floored at a score of 4 (medium complexity). This prevents auto-approval of incomplete components. Demographic elements (age, gender) are exempt since they don't use codes.
 
 ---
 
@@ -496,10 +541,18 @@ When a measure is imported, the system automatically:
 │  (PDF, HTML)    │     │  (Claude)    │     │  (UMS)          │
 └─────────────────┘     └──────────────┘     └─────────────────┘
                                                       │
-                                                      ▼
+                                              ┌───────┴───────┐
+                                              ▼               ▼
+                                    ┌─────────────┐  ┌──────────────┐
+                                    │  Component  │  │  Human       │
+                                    │  Library    │  │  Review      │
+                                    │  (Matching) │  │              │
+                                    └─────────────┘  └──────┬───────┘
+                                                            │
+                                                            ▼
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-│  Executable     │     │  Code        │     │  Human          │
-│  Code           │ ◀── │  Generation  │ ◀── │  Review         │
+│  Executable     │     │  Code        │     │  Test           │
+│  Code           │ ◀── │  Generation  │ ◀── │  Validation     │
 │  (CQL, SQL)     │     │              │     │                 │
 └─────────────────┘     └──────────────┘     └─────────────────┘
 ```
@@ -538,17 +591,18 @@ Each population contains criteria organized in a logic tree:
 
 | Component | Description |
 |-----------|-------------|
-| **Logical Operators** | AND, OR, NOT - combine criteria |
-| **Data Elements** | Specific clinical data (diagnosis, procedure, etc.) |
-| **Value Sets** | Collections of medical codes |
+| **Logical Operators** | AND, OR, NOT - combine criteria, displayed as clickable badges between siblings |
+| **Data Elements** | Specific clinical data (diagnosis, procedure, etc.) with codes |
+| **Value Sets** | Collections of medical codes with code references |
 | **Timing** | When the data must occur (during measurement period, within 10 years, etc.) |
 | **Thresholds** | Numeric requirements (age 45-75, HbA1c < 8%, etc.) |
+| **Ingestion Warning** | Red banner shown when codes couldn't be found during extraction |
 
 **Review Metadata:**
 
 Each component tracks:
 - Review status (pending, approved, needs revision, flagged)
-- Complexity level (low, medium, high)
+- Complexity level (low, medium, high) — zero-code elements are floored at medium
 - Library link status (linked to shared component or local)
 - Review notes
 - Correction history
@@ -711,8 +765,11 @@ This data feeds back to improve AI extraction accuracy over time.
 | 1.5 | Batch measure upload queue - sequential processing with drag-and-drop queuing |
 | 1.6 | Component library linking fixes - accurate usage counts from actual measures, edit propagation to linked measures |
 | 1.7 | Auto-archive unused components, greyed-out archived display, full-library import matching |
+| 1.8 | Removed hardcoded fallback logic from evaluator to align validation with UMS spec |
+| 1.9 | Name-based component matching fallback, zero-code validation guard, codes editing in component library with bidirectional sync |
+| 2.0 | AND vs OR logic fix for qualifying encounters, nested criteria tree in validation view, always-clickable operators, logic selector in component builder, description cleaning |
 
 ---
 
 *Last Updated: January 2026*
-*MeasureAccelerator Product Specification v1.7*
+*MeasureAccelerator Product Specification v2.0*
