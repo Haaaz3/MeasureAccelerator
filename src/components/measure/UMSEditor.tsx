@@ -447,6 +447,12 @@ export function UMSEditor() {
               onNavigateToLibrary={(id) => {
                 setActiveTab('components');
               }}
+              onSaveTiming={(componentId, modified) => {
+                updateTimingOverride(measure.id, componentId, modified);
+              }}
+              onResetTiming={(componentId) => {
+                updateTimingOverride(measure.id, componentId, null);
+              }}
             />
           )}
         </div>
@@ -1092,11 +1098,15 @@ function SelectedComponentDetailPanel({
   nodeId,
   onClose,
   onNavigateToLibrary,
+  onSaveTiming,
+  onResetTiming,
 }: {
   measureId: string;
   nodeId: string;
   onClose: () => void;
   onNavigateToLibrary: (id: string) => void;
+  onSaveTiming: (componentId: string, modified: TimingConstraint) => void;
+  onResetTiming: (componentId: string) => void;
 }) {
   const { measures } = useMeasureStore();
   const currentMeasure = measures.find(m => m.id === measureId);
@@ -1133,12 +1143,20 @@ function SelectedComponentDetailPanel({
     );
   }
 
+  // Get measurement period from measure
+  const mpStart = currentMeasure?.metadata.measurementPeriod?.start || '2024-01-01';
+  const mpEnd = currentMeasure?.metadata.measurementPeriod?.end || '2024-12-31';
+
   return (
     <ComponentDetailPanel
       element={element}
       onClose={onClose}
       onNavigateToLibrary={onNavigateToLibrary}
       className="w-[450px]"
+      mpStart={mpStart}
+      mpEnd={mpEnd}
+      onSaveTiming={onSaveTiming}
+      onResetTiming={onResetTiming}
     />
   );
 }

@@ -29,10 +29,11 @@ import {
   Bookmark,
 } from 'lucide-react';
 
-import type { DataElement, ValueSetReference } from '../../types/ums';
+import type { DataElement, ValueSetReference, TimingConstraint } from '../../types/ums';
 import type { ComponentCodeState, CodeEditNote } from '../../types/componentCode';
 
 import { ComponentCodeViewer } from './ComponentCodeViewer';
+import { TimingBadge, TimingEditorPanel } from './TimingEditor';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
 import { formatNoteTimestamp, getAllNotesForComponent } from '../../types/componentCode';
 
@@ -228,6 +229,11 @@ export interface ComponentDetailPanelProps {
   onClose: () => void;
   onNavigateToLibrary?: (componentId: string) => void;
   className?: string;
+  // Timing editor props
+  mpStart?: string;
+  mpEnd?: string;
+  onSaveTiming?: (componentId: string, modified: TimingConstraint) => void;
+  onResetTiming?: (componentId: string) => void;
 }
 
 /** Strip standalone AND/OR/NOT operators from descriptions */
@@ -246,6 +252,10 @@ export const ComponentDetailPanel = ({
   onClose,
   onNavigateToLibrary,
   className = '',
+  mpStart = '2024-01-01',
+  mpEnd = '2024-12-31',
+  onSaveTiming,
+  onResetTiming,
 }: ComponentDetailPanelProps) => {
   // Section visibility state
   const [expandedSections, setExpandedSections] = useState({
@@ -254,6 +264,9 @@ export const ComponentDetailPanel = ({
     code: true,
     notes: false,
   });
+
+  // Timing editor state
+  const [isEditingTiming, setIsEditingTiming] = useState(false);
 
   // Code state from store
   const codeState = useComponentCodeStore((state) =>
@@ -374,10 +387,42 @@ export const ComponentDetailPanel = ({
         />
         {expandedSections.details && (
           <div className="px-4 py-3 space-y-3 border-b border-[var(--border)]">
-            {element.timingRequirements?.length ? (
+            {/* Structured timing with badge and resolved dates */}
+            {element.timingOverride && (
+              <div>
+                <label className="text-xs text-[var(--text-dim)] mb-2 block">
+                  Timing Constraint
+                </label>
+                <TimingBadge
+                  timing={element.timingOverride}
+                  mpStart={mpStart}
+                  mpEnd={mpEnd}
+                  onClick={() => setIsEditingTiming(!isEditingTiming)}
+                />
+                {isEditingTiming && onSaveTiming && onResetTiming && (
+                  <TimingEditorPanel
+                    timing={element.timingOverride}
+                    mpStart={mpStart}
+                    mpEnd={mpEnd}
+                    onSave={(modified) => {
+                      onSaveTiming(element.id, modified);
+                      setIsEditingTiming(false);
+                    }}
+                    onCancel={() => setIsEditingTiming(false)}
+                    onReset={() => {
+                      onResetTiming(element.id);
+                      setIsEditingTiming(false);
+                    }}
+                  />
+                )}
+              </div>
+            )}
+
+            {/* Legacy timing requirements display - only if no timingOverride */}
+            {!element.timingOverride && element.timingRequirements?.length ? (
               <div>
                 <label className="text-xs text-[var(--text-dim)]">
-                  Timing Requirements
+                  Timing
                 </label>
                 <div className="mt-1 space-y-1">
                   {element.timingRequirements.map((timing, i) => (
