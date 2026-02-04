@@ -7,7 +7,8 @@ import { ComponentBuilder } from './ComponentBuilder';
 import { ComponentDetailPanel } from './ComponentDetailPanel';
 import type { PopulationDefinition, LogicalClause, DataElement, ConfidenceLevel, ReviewStatus, ValueSetReference, CodeReference, CodeSystem, LogicalOperator, TimingConstraint, TimingOverride, TimingWindow } from '../../types/ums';
 import { getOperatorBetween } from '../../types/ums';
-import { MeasurePeriodBar, TimingBadge, TimingEditorPanel } from './TimingEditor';
+import { MeasurePeriodBar, TimingBadge, TimingEditorPanel, TimingWindowLabel, TimingWindowEditor } from './TimingEditor';
+import { parseTimingText } from '../../utils/timingResolver';
 import type { ComplexityLevel, LibraryComponent } from '../../types/componentLibrary';
 import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDataElementComplexity, calculatePopulationComplexity, calculateMeasureComplexity } from '../../services/complexityCalculator';
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
@@ -438,6 +439,14 @@ export function UMSEditor() {
               onClose={() => setSelectedNode(null)}
               onSelectValueSet={setActiveValueSet}
               updateReviewStatus={updateReviewStatus}
+              mpStart={measure.metadata.measurementPeriod?.start || '2024-01-01'}
+              mpEnd={measure.metadata.measurementPeriod?.end || '2024-12-31'}
+              onSaveTimingWindow={(componentId, modified) => {
+                updateTimingWindow(measure.id, componentId, modified);
+              }}
+              onResetTimingWindow={(componentId) => {
+                updateTimingWindow(measure.id, componentId, null);
+              }}
             />
           ) : (
             <SelectedComponentDetailPanel
@@ -1180,6 +1189,10 @@ function NodeDetailPanel({
   onClose,
   onSelectValueSet,
   updateReviewStatus,
+  mpStart,
+  mpEnd,
+  onSaveTimingWindow,
+  onResetTimingWindow,
 }: {
   measureId: string;
   nodeId: string;
@@ -1187,6 +1200,10 @@ function NodeDetailPanel({
   onClose: () => void;
   onSelectValueSet: (vs: ValueSetReference) => void;
   updateReviewStatus: (measureId: string, componentId: string, status: ReviewStatus, notes?: string) => void;
+  mpStart: string;
+  mpEnd: string;
+  onSaveTimingWindow: (componentId: string, modified: TimingWindow) => void;
+  onResetTimingWindow: (componentId: string) => void;
 }) {
   const { updateDataElement, measures, syncAgeRange } = useMeasureStore();
   const { getComponent } = useComponentLibraryStore();
@@ -1200,6 +1217,7 @@ function NodeDetailPanel({
   const [editValue, setEditValue] = useState<string>('');
   const [editTimingIdx, setEditTimingIdx] = useState<number | null>(null);
   const [editReqIdx, setEditReqIdx] = useState<number | null>(null);
+  const [editingTimingWindow, setEditingTimingWindow] = useState(false);
 
   // Find the node in the tree (re-fetch from measures to get live updates)
   const findNode = (obj: any): DataElement | null => {
@@ -1509,44 +1527,65 @@ function NodeDetailPanel({
           </div>
         )}
 
-        {/* Editable Timing Requirements */}
-        {node.timingRequirements && node.timingRequirements.length > 0 && (
-          <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border)]">
-            <h4 className="text-xs text-[var(--text-muted)] uppercase tracking-wider mb-2">Timing Requirements</h4>
-            <div className="space-y-2">
-              {node.timingRequirements.map((tr, i) => (
-                <div key={i} className="group">
-                  {editTimingIdx === i ? (
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="w-full px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--accent)]/50 rounded-lg text-sm text-[var(--text)] focus:outline-none"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && saveTiming(i, editValue)}
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={() => setEditTimingIdx(null)} className="px-3 py-1.5 text-xs bg-[var(--bg-secondary)] text-[var(--text-muted)] rounded">Cancel</button>
-                        <button onClick={() => saveTiming(i, editValue)} className="px-3 py-1.5 text-xs bg-[var(--primary)] text-white rounded">Save</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between p-2 bg-[var(--bg-secondary)] rounded">
-                      <span className="text-sm text-[var(--accent)]">{tr.description}</span>
-                      <button
-                        onClick={() => { setEditTimingIdx(i); setEditValue(tr.description); }}
-                        className="p-1 opacity-0 group-hover:opacity-100 hover:bg-[var(--bg-tertiary)] rounded text-[var(--text-dim)] hover:text-[var(--accent)] transition-all"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
+        {/* Structured Timing Requirements */}
+        {(() => {
+          // Get structured timing window, or try to parse from text
+          const timingWindow = node.timingWindow;
+          const timingText = node.timingRequirements?.[0]?.description;
+          const parsedWindow = timingText ? parseTimingText(timingText) : null;
+
+          // Create a TimingWindowOverride if we only have parsed text
+          const effectiveOverride: typeof timingWindow | undefined = timingWindow ?? (parsedWindow ? {
+            original: parsedWindow,
+            modified: null,
+            sourceText: timingText || '',
+            modifiedAt: null,
+            modifiedBy: null,
+          } : undefined);
+
+          if (!effectiveOverride && !timingText) return null;
+
+          return (
+            <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border)]">
+              <h4 className="text-xs text-[var(--text-muted)] uppercase tracking-wider mb-2">Timing Requirements</h4>
+
+              {editingTimingWindow && effectiveOverride ? (
+                <TimingWindowEditor
+                  window={effectiveOverride}
+                  mpStart={mpStart}
+                  mpEnd={mpEnd}
+                  onSave={(modified) => {
+                    onSaveTimingWindow(node.id, modified);
+                    setEditingTimingWindow(false);
+                  }}
+                  onCancel={() => setEditingTimingWindow(false)}
+                  onReset={() => {
+                    onResetTimingWindow(node.id);
+                    setEditingTimingWindow(false);
+                  }}
+                />
+              ) : effectiveOverride ? (
+                <div className="p-2 bg-[var(--bg-secondary)] rounded">
+                  <TimingWindowLabel
+                    window={effectiveOverride}
+                    mpStart={mpStart}
+                    mpEnd={mpEnd}
+                    onClick={() => setEditingTimingWindow(true)}
+                  />
                 </div>
-              ))}
+              ) : timingText ? (
+                <div className="p-2 bg-[var(--bg-secondary)] rounded">
+                  <span className="text-sm text-[var(--text-muted)] italic">
+                    {timingText}
+                  </span>
+                  <div className="text-xs text-[var(--text-dim)] mt-1">
+                    Unable to parse timing - showing original text
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Editable Additional Requirements */}
         {(node.additionalRequirements && node.additionalRequirements.length > 0) && (
