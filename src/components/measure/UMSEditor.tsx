@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
-import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck, GripVertical } from 'lucide-react';
+import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck, GripVertical, Loader2 } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
+import { useSettingsStore } from '../../stores/settingsStore';
 import { ComponentBuilder } from './ComponentBuilder';
 import { ComponentDetailPanel } from './ComponentDetailPanel';
 import type { PopulationDefinition, LogicalClause, DataElement, ConfidenceLevel, ReviewStatus, ValueSetReference, CodeReference, CodeSystem, LogicalOperator, TimingConstraint, TimingOverride, TimingWindow } from '../../types/ums';
@@ -12,6 +13,7 @@ import { parseTimingText } from '../../utils/timingResolver';
 import type { ComplexityLevel, LibraryComponent } from '../../types/componentLibrary';
 import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDataElementComplexity, calculatePopulationComplexity, calculateMeasureComplexity } from '../../services/complexityCalculator';
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
+import { handleAIAssistantRequest, buildAssistantContext, applyAIChanges, formatChangesForDisplay, type AIAssistantResponse } from '../../services/aiAssistant';
 
 /** Strip standalone AND/OR/NOT operators that appear as line separators in descriptions */
 function cleanDescription(desc: string | undefined): string {
@@ -1207,8 +1209,17 @@ function NodeDetailPanel({
 }) {
   const { updateDataElement, measures, syncAgeRange } = useMeasureStore();
   const { getComponent } = useComponentLibraryStore();
+  const { selectedProvider, selectedModel, getActiveApiKey, getCustomLlmConfig } = useSettingsStore();
   const [chatInput, setChatInput] = useState('');
-  const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant'; content: string; action?: string }>>([]);
+  const [chatHistory, setChatHistory] = useState<Array<{
+    role: 'user' | 'assistant';
+    content: string;
+    action?: string;
+    pendingEdit?: {
+      changes: NonNullable<AIAssistantResponse['changes']>;
+      explanation?: string;
+    };
+  }>>([]);
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -1238,16 +1249,25 @@ function NodeDetailPanel({
   // Get fresh data from store
   const currentMeasure = measures.find(m => m.id === measureId);
   let node: DataElement | null = null;
+  let nodePopulation: PopulationDefinition | null = null;
   if (currentMeasure) {
     for (const pop of currentMeasure.populations) {
       node = findNode(pop);
-      if (node) break;
+      if (node) {
+        nodePopulation = pop;
+        break;
+      }
     }
   }
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory]);
+
+  // Clear chat when component changes
+  useEffect(() => {
+    setChatHistory([]);
+  }, [nodeId]);
 
   if (!node) return null;
 
@@ -1384,34 +1404,149 @@ function NodeDetailPanel({
     updateDataElement(measureId, nodeId, { additionalRequirements: updated }, 'element_added', 'Added new requirement');
   };
 
-  // Chat command handling (simplified - now most editing is inline)
+  // Apply pending AI edit
+  const handleApplyEdit = (messageIndex: number) => {
+    const message = chatHistory[messageIndex];
+    if (!message?.pendingEdit?.changes || !node) return;
+
+    const updates = applyAIChanges(node, message.pendingEdit.changes);
+
+    // Handle value set changes separately (need to look up from measure's value sets)
+    if (message.pendingEdit.changes.valueSet) {
+      const vsChange = message.pendingEdit.changes.valueSet;
+      const matchingVS = currentMeasure?.valueSets.find(
+        vs => vs.name.toLowerCase() === vsChange.name.toLowerCase() ||
+              (vsChange.oid && vs.oid === vsChange.oid)
+      );
+      if (matchingVS) {
+        updates.valueSet = {
+          id: matchingVS.id,
+          name: matchingVS.name,
+          oid: matchingVS.oid,
+          codes: matchingVS.codes,
+          confidence: matchingVS.confidence,
+          totalCodeCount: matchingVS.totalCodeCount,
+        };
+      }
+    }
+
+    updateDataElement(measureId, nodeId, updates, 'description_changed', message.pendingEdit.explanation || 'AI-assisted edit');
+
+    // Mark the edit as applied
+    setChatHistory(prev => prev.map((msg, idx) =>
+      idx === messageIndex
+        ? { ...msg, pendingEdit: undefined, action: 'applied', content: `✓ Changes applied: ${message.pendingEdit?.explanation || 'Edit complete'}` }
+        : msg
+    ));
+  };
+
+  // Dismiss pending AI edit
+  const handleDismissEdit = (messageIndex: number) => {
+    setChatHistory(prev => prev.map((msg, idx) =>
+      idx === messageIndex
+        ? { ...msg, pendingEdit: undefined, content: 'Edit dismissed.' }
+        : msg
+    ));
+  };
+
+  // Chat command handling - now with real AI integration
   const handleSendMessage = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() || !node || !nodePopulation || !currentMeasure) return;
     const userMessage = chatInput.trim();
     setChatInput('');
     setChatHistory(prev => [...prev, { role: 'user', content: userMessage }]);
     setIsTyping(true);
 
-    setTimeout(() => {
-      let response = 'You can now edit most fields directly by clicking the edit icon next to them. Try clicking on the description, age range, timing, or requirements to edit inline.';
-      let action: string | undefined;
-
-      const lowerMsg = userMessage.toLowerCase();
-      if (lowerMsg === 'help') {
-        response = `**Inline Editing Available:**\n\n• Click ✏️ next to any field to edit directly\n• Age ranges can be adjusted with number inputs\n• Timing and requirements are all editable\n• Changes are automatically tracked for AI training`;
-      } else if (lowerMsg.match(/^approve(\s+this)?$/)) {
-        updateReviewStatus(measureId, nodeId, 'approved');
-        response = 'Marked as **approved**.';
-        action = 'approved';
-      } else if (lowerMsg.match(/^flag(\s+.*)?$/)) {
-        updateReviewStatus(measureId, nodeId, 'flagged');
-        response = 'Flagged for engineering review.';
-        action = 'flagged';
-      }
-
-      setChatHistory(prev => [...prev, { role: 'assistant', content: response, action }]);
+    // Handle quick commands locally
+    const lowerMsg = userMessage.toLowerCase();
+    if (lowerMsg === 'help') {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `**AI Assistant Commands:**\n\n• Ask questions about this component\n• Request changes: "Change the age range to 50-75"\n• "Set timing to within 3 years of measurement period end"\n• "Switch to the Preventive Care value set"\n• \`approve\` - Mark as approved\n• \`flag\` - Flag for review\n\nI have full context of the measure and can help edit any field.`
+      }]);
       setIsTyping(false);
-    }, 300);
+      return;
+    }
+    if (lowerMsg.match(/^approve(\s+this)?$/)) {
+      updateReviewStatus(measureId, nodeId, 'approved');
+      setChatHistory(prev => [...prev, { role: 'assistant', content: 'Marked as **approved**.', action: 'approved' }]);
+      setIsTyping(false);
+      return;
+    }
+    if (lowerMsg.match(/^flag(\s+.*)?$/)) {
+      updateReviewStatus(measureId, nodeId, 'flagged');
+      setChatHistory(prev => [...prev, { role: 'assistant', content: 'Flagged for engineering review.', action: 'flagged' }]);
+      setIsTyping(false);
+      return;
+    }
+
+    // Build context for AI
+    const conversationHistory = chatHistory
+      .filter(msg => !msg.pendingEdit && !msg.action)
+      .map(msg => ({ role: msg.role, content: msg.content }));
+
+    // Adapt measure to expected type with default measurementPeriod
+    const measureForContext = {
+      id: currentMeasure.id,
+      metadata: {
+        measureId: currentMeasure.metadata.measureId,
+        title: currentMeasure.metadata.title,
+        measurementPeriod: {
+          start: currentMeasure.metadata.measurementPeriod?.start || mpStart,
+          end: currentMeasure.metadata.measurementPeriod?.end || mpEnd,
+        },
+      },
+      populations: currentMeasure.populations,
+      valueSets: currentMeasure.valueSets,
+    };
+
+    const context = buildAssistantContext(node, nodePopulation, measureForContext, conversationHistory);
+
+    // Get API configuration
+    const apiKey = getActiveApiKey();
+    const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
+
+    // Call AI
+    const response = await handleAIAssistantRequest(
+      userMessage,
+      context,
+      selectedProvider,
+      apiKey,
+      selectedModel,
+      customConfig
+    );
+
+    setIsTyping(false);
+
+    if (response.action === 'error') {
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: `⚠️ ${response.error}`
+      }]);
+      return;
+    }
+
+    if (response.action === 'edit' && response.changes) {
+      // Show edit proposal with Apply/Dismiss buttons
+      const changes = response.changes;
+      const displayChanges = formatChangesForDisplay(context.currentComponent, changes, mpStart, mpEnd);
+      const changesText = displayChanges.map(c => `• **${c.field}:** ${c.from} → ${c.to}`).join('\n');
+
+      setChatHistory(prev => [...prev, {
+        role: 'assistant' as const,
+        content: `**Proposed changes:**\n\n${changesText}${response.explanation ? `\n\n${response.explanation}` : ''}`,
+        pendingEdit: {
+          changes: changes as NonNullable<AIAssistantResponse['changes']>,
+          explanation: response.explanation,
+        }
+      }]);
+    } else {
+      // Answer or clarification
+      setChatHistory(prev => [...prev, {
+        role: 'assistant',
+        content: response.response || 'I couldn\'t process that request.'
+      }]);
+    }
   };
 
   return (
@@ -1683,9 +1818,15 @@ function NodeDetailPanel({
             <div key={i} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : ''}`}>
               {msg.role === 'assistant' && (
                 <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  msg.action === 'applied' ? 'bg-[var(--success-light)]' :
+                  msg.pendingEdit ? 'bg-[var(--warning-light)]' :
                   msg.action ? 'bg-[var(--success-light)]' : 'bg-[var(--accent-light)]'
                 }`}>
-                  {msg.action ? (
+                  {msg.action === 'applied' ? (
+                    <CheckCircle className="w-3.5 h-3.5 text-[var(--success)]" />
+                  ) : msg.pendingEdit ? (
+                    <Sparkles className="w-3.5 h-3.5 text-[var(--warning)]" />
+                  ) : msg.action ? (
                     <CheckCircle className="w-3.5 h-3.5 text-[var(--success)]" />
                   ) : (
                     <Bot className="w-3.5 h-3.5 text-[var(--accent)]" />
@@ -1695,14 +1836,33 @@ function NodeDetailPanel({
               <div className={`max-w-[85%] p-2 rounded-lg text-sm ${
                 msg.role === 'user'
                   ? 'bg-[var(--accent-light)] text-[var(--text)]'
-                  : msg.action
-                    ? 'bg-[var(--success-light)] border border-[var(--success)]/20 text-[var(--text)]'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'
+                  : msg.pendingEdit
+                    ? 'bg-[var(--warning-light)] border border-[var(--warning)]/30 text-[var(--text)]'
+                    : msg.action
+                      ? 'bg-[var(--success-light)] border border-[var(--success)]/20 text-[var(--text)]'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-muted)]'
               }`}>
                 <p className="whitespace-pre-wrap">{msg.content}</p>
-                {msg.action && (
+                {msg.pendingEdit && (
+                  <div className="flex gap-2 mt-2 pt-2 border-t border-[var(--warning)]/20">
+                    <button
+                      onClick={() => handleApplyEdit(i)}
+                      className="flex-1 px-3 py-1.5 bg-[var(--success)] text-white text-xs font-medium rounded hover:opacity-90 transition-opacity flex items-center justify-center gap-1"
+                    >
+                      <CheckCircle className="w-3 h-3" />
+                      Apply Changes
+                    </button>
+                    <button
+                      onClick={() => handleDismissEdit(i)}
+                      className="px-3 py-1.5 bg-[var(--bg-tertiary)] text-[var(--text-muted)] text-xs font-medium rounded hover:bg-[var(--bg-secondary)] transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                {msg.action && !msg.pendingEdit && (
                   <p className="text-[10px] text-[var(--success)] mt-1 flex items-center gap-1">
-                    <History className="w-3 h-3" /> Tracked for AI training
+                    <History className="w-3 h-3" /> {msg.action === 'applied' ? 'Changes applied' : 'Tracked for AI training'}
                   </p>
                 )}
               </div>
@@ -1716,7 +1876,7 @@ function NodeDetailPanel({
           {isTyping && (
             <div className="flex gap-2">
               <div className="w-6 h-6 rounded-full bg-[var(--accent-light)] flex items-center justify-center">
-                <Bot className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <Loader2 className="w-3.5 h-3.5 text-[var(--accent)] animate-spin" />
               </div>
               <div className="bg-[var(--bg-secondary)] p-2 rounded-lg">
                 <span className="text-sm text-[var(--text-muted)]">Thinking...</span>
