@@ -625,12 +625,12 @@ function PopulationSection({
   const effectiveStatus = computeEffectiveStatus(population);
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-colors bg-[var(--bg-secondary)] ${
+    <div className={`rounded-xl overflow-hidden transition-colors bg-[var(--bg-secondary)] ${
       effectiveStatus === 'approved'
-        ? 'border-green-500'
+        ? 'border-2 border-[var(--success)]/60'
         : effectiveStatus === 'needs_revision' || effectiveStatus === 'flagged'
-          ? 'border-amber-500'
-          : 'border-[var(--border)]'
+          ? 'border-2 border-amber-400/60'
+          : 'border border-[var(--border)]'
     }`}>
       <button
         onClick={onToggle}
@@ -904,15 +904,15 @@ function CriteriaNode({
 
       <div
         onClick={() => onSelectNode(isSelected ? null : element.id)}
-        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+        className={`p-3 rounded-lg cursor-pointer transition-all ${
           isDragging ? 'opacity-40' :
           isSelected
-            ? 'bg-[var(--accent-light)] border-[var(--accent)]/50'
+            ? 'border bg-[var(--accent-light)] border-[var(--accent)]/50'
             : element.reviewStatus === 'approved'
-              ? 'bg-[var(--bg-tertiary)] border-green-500 hover:border-green-400'
+              ? 'border-2 bg-[var(--bg-tertiary)] border-[var(--success)]/60 hover:border-[var(--success)]/80'
               : element.reviewStatus === 'needs_revision'
-                ? 'bg-[var(--bg-tertiary)] border-amber-500 hover:border-amber-400'
-                : 'bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
+                ? 'border-2 bg-[var(--bg-tertiary)] border-amber-400/60 hover:border-amber-400/80'
+                : 'border bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
         }`}
       >
       <div className="flex items-start justify-between gap-3">
