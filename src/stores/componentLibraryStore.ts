@@ -55,6 +55,15 @@ interface ComponentLibraryState {
   editingComponentId: ComponentId | null;
   importMatcherState: ImportMatcherState | null;
 
+  // Merge mode state
+  mergeMode: boolean;
+  selectedForMerge: Set<string>;
+
+  // Merge mode actions
+  setMergeMode: (enabled: boolean) => void;
+  toggleMergeSelection: (componentId: string) => void;
+  clearMergeSelection: () => void;
+
   // Actions
   initializeWithSampleData: () => void;
   addComponent: (component: LibraryComponent) => void;
@@ -99,6 +108,13 @@ interface ComponentLibraryState {
   // Validate measure component usage against library
   validateMeasureComponentUsage: (populations: Array<{ criteria?: LogicalClause | null; type: string }>) => ComponentValidationResult;
 
+  // Merge multiple components into one with combined value sets
+  mergeComponents: (
+    componentIds: ComponentId[],
+    mergedName: string,
+    mergedDescription?: string,
+  ) => LibraryComponent | null;
+
   // Computed / Selectors
   getComponent: (id: ComponentId) => LibraryComponent | null;
   getFilteredComponents: () => LibraryComponent[];
@@ -121,6 +137,29 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
       filters: { showArchived: true },
       editingComponentId: null,
       importMatcherState: null,
+      mergeMode: false,
+      selectedForMerge: new Set(),
+
+      // Merge mode actions
+      setMergeMode: (enabled) => {
+        set({ mergeMode: enabled });
+        if (!enabled) {
+          set({ selectedForMerge: new Set() });
+        }
+      },
+      toggleMergeSelection: (componentId) => {
+        const current = get().selectedForMerge;
+        const newSet = new Set(current);
+        if (newSet.has(componentId)) {
+          newSet.delete(componentId);
+        } else {
+          newSet.add(componentId);
+        }
+        set({ selectedForMerge: newSet });
+      },
+      clearMergeSelection: () => {
+        set({ selectedForMerge: new Set() });
+      },
 
       // Initialize with sample data
       initializeWithSampleData: () => {
@@ -668,6 +707,109 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
         }
 
         return validateMeasureComponents(allElements, libraryRecord);
+      },
+
+      // Merge multiple components into one with combined value sets
+      mergeComponents: (componentIds, mergedName, mergedDescription) => {
+        const state = get();
+
+        // Get all components to merge
+        const componentsToMerge = componentIds
+          .map(id => state.components.find(c => c.id === id))
+          .filter((c): c is AtomicComponent => c !== undefined && c.type === 'atomic');
+
+        if (componentsToMerge.length < 2) {
+          console.warn('Need at least 2 atomic components to merge');
+          return null;
+        }
+
+        // Collect all value sets from all components
+        const allValueSets: Array<{ oid: string; version: string; name: string; codes?: import('../types/ums').CodeReference[] }> = [];
+        const seenOids = new Set<string>();
+
+        for (const comp of componentsToMerge) {
+          // Add from valueSets array if present
+          const valueSetsToAdd = comp.valueSets || [comp.valueSet];
+          for (const vs of valueSetsToAdd) {
+            if (!seenOids.has(vs.oid)) {
+              seenOids.add(vs.oid);
+              allValueSets.push(vs);
+            }
+          }
+        }
+
+        // Use the first component as base for timing, category, etc.
+        const baseComponent = componentsToMerge[0];
+
+        // Combine all measure IDs from all components being merged
+        const allMeasureIds = new Set<string>();
+        for (const comp of componentsToMerge) {
+          for (const measureId of comp.usage.measureIds) {
+            allMeasureIds.add(measureId);
+          }
+        }
+
+        // Create the merged component
+        const now = new Date().toISOString();
+        const mergedId = `merged-${Date.now()}`;
+
+        const mergedComponent: AtomicComponent = {
+          type: 'atomic',
+          id: mergedId,
+          name: mergedName,
+          description: mergedDescription || `Combined component: ${componentsToMerge.map(c => c.name).join(' + ')}`,
+          valueSet: allValueSets[0], // Primary value set for backward compatibility
+          valueSets: allValueSets,   // All value sets
+          timing: baseComponent.timing,
+          negation: baseComponent.negation,
+          complexity: baseComponent.complexity, // Will be recalculated
+          versionInfo: {
+            versionId: '1.0',
+            versionHistory: [{
+              versionId: '1.0',
+              status: 'draft',
+              createdAt: now,
+              createdBy: 'merge',
+              changeDescription: `Merged from: ${componentsToMerge.map(c => c.name).join(', ')}`,
+            }],
+            status: 'draft',
+          },
+          usage: {
+            measureIds: Array.from(allMeasureIds),
+            usageCount: allMeasureIds.size,
+            lastUsedAt: now,
+          },
+          metadata: {
+            ...baseComponent.metadata,
+            createdAt: now,
+            updatedAt: now,
+            tags: [...new Set(componentsToMerge.flatMap(c => c.metadata.tags))],
+          },
+        };
+
+        // Update store: add merged component, archive old ones
+        set((s) => {
+          const updatedComponents = s.components.map(c => {
+            if (componentIds.includes(c.id)) {
+              // Archive the merged components
+              return {
+                ...c,
+                versionInfo: {
+                  ...c.versionInfo,
+                  status: 'archived' as const,
+                },
+              };
+            }
+            return c;
+          });
+
+          return {
+            components: [...updatedComponents, mergedComponent],
+          };
+        });
+
+        console.log(`Merged ${componentsToMerge.length} components into "${mergedName}" with ${allValueSets.length} value sets`);
+        return mergedComponent;
       },
 
       // Selectors
