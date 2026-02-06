@@ -939,11 +939,13 @@ function CriteriaNode({
               {element.type}
             </span>
             <ComplexityBadge level={calculateDataElementComplexity(element)} size="sm" />
-            {element.libraryComponentId && (
-              <LibraryStatusBadge component={linkedComponent} size="sm" />
-            )}
           </div>
           <p className="text-sm text-[var(--text)]">{cleanDescription(element.description)}</p>
+
+          {/* Library Connection Indicator */}
+          {linkedComponent && (
+            <ComponentLibraryIndicator component={linkedComponent} />
+          )}
 
           {/* Zero-code ingestion warning */}
           {element.ingestionWarning && (
@@ -2619,5 +2621,63 @@ function LibraryStatusBadge({ component, size = 'sm' }: { component: LibraryComp
       <Link className={iconSize} />
       Library · {statusLabel}
     </span>
+  );
+}
+
+function ComponentLibraryIndicator({ component }: { component: LibraryComponent }) {
+  const isApproved = component.versionInfo.status === 'approved';
+  const usageCount = component.usage?.usageCount ?? component.usage?.measureIds?.length ?? 0;
+  const measureIds = component.usage?.measureIds ?? [];
+  const isShared = usageCount > 1;
+
+  // Don't show if not linked to library
+  if (!component) return null;
+
+  return (
+    <div className={`mt-2 px-2.5 py-2 rounded-lg border flex items-center gap-3 ${
+      isApproved
+        ? 'bg-[var(--success)]/5 border-[var(--success)]/20'
+        : 'bg-[var(--bg-secondary)] border-[var(--border)]'
+    }`}>
+      {/* Library link icon */}
+      <div className={`flex-shrink-0 p-1.5 rounded-full ${
+        isApproved ? 'bg-[var(--success)]/10' : 'bg-[var(--bg-tertiary)]'
+      }`}>
+        {isApproved ? (
+          <ShieldCheck className={`w-4 h-4 ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-dim)]'}`} />
+        ) : (
+          <Link className="w-4 h-4 text-[var(--text-dim)]" />
+        )}
+      </div>
+
+      {/* Component info */}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-medium ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
+            {isApproved ? 'Approved Component' : 'Draft Component'}
+          </span>
+          {isShared && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-medium">
+              Shared
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-[var(--text-dim)] truncate" title={component.name}>
+          {component.name}
+        </p>
+      </div>
+
+      {/* Usage count */}
+      {usageCount > 0 && (
+        <div className="flex-shrink-0 text-right">
+          <div className={`text-sm font-semibold ${isShared ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+            {usageCount}
+          </div>
+          <div className="text-[10px] text-[var(--text-dim)]">
+            {usageCount === 1 ? 'measure' : 'measures'}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
