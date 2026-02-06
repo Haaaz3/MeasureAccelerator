@@ -89,6 +89,14 @@ export interface TimingExpression {
 // Atomic Component
 // ============================================================================
 
+/** Value set definition within a component */
+export interface ComponentValueSet {
+  oid: ValueSetOid;
+  version: string;
+  name: string;
+  codes?: import('./ums').CodeReference[];
+}
+
 export interface AtomicComponent {
   type: 'atomic';
 
@@ -101,13 +109,18 @@ export interface AtomicComponent {
   /** Detailed description */
   description?: string;
 
-  /** Value set reference */
-  valueSet: {
-    oid: ValueSetOid;
-    version: string;
-    name: string;
-    codes?: import('./ums').CodeReference[];
-  };
+  /**
+   * Primary value set reference (for backward compatibility)
+   * @deprecated Use valueSets array for new components
+   */
+  valueSet: ComponentValueSet;
+
+  /**
+   * Multiple value sets combined in this component (OR logic)
+   * E.g., "Hospice or Palliative Care Services" combines hospice + palliative care value sets
+   * All codes from all value sets are included in this component
+   */
+  valueSets?: ComponentValueSet[];
 
   /** Timing constraint */
   timing: TimingExpression;

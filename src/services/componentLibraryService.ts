@@ -40,10 +40,20 @@ function generateId(prefix: string): ComponentId {
 // Creation
 // ============================================================================
 
+export interface ComponentValueSetInput {
+  oid: string;
+  version: string;
+  name: string;
+  codes?: import('../types/ums').CodeReference[];
+}
+
 export interface CreateAtomicParams {
   name: string;
   description?: string;
-  valueSet: { oid: string; version: string; name: string; codes?: import('../types/ums').CodeReference[] };
+  /** Primary value set (required for backward compatibility) */
+  valueSet: ComponentValueSetInput;
+  /** Additional value sets to combine (optional) */
+  additionalValueSets?: ComponentValueSetInput[];
   timing: TimingExpression;
   negation: boolean;
   category: ComponentCategory;
@@ -55,12 +65,18 @@ export function createAtomicComponent(params: CreateAtomicParams): AtomicCompone
   const now = new Date().toISOString();
   const id = generateId('atomic');
 
+  // Combine all value sets if additional ones provided
+  const allValueSets = params.additionalValueSets
+    ? [params.valueSet, ...params.additionalValueSets]
+    : undefined;
+
   const base: Omit<AtomicComponent, 'complexity'> = {
     type: 'atomic',
     id,
     name: params.name,
     description: params.description,
     valueSet: params.valueSet,
+    valueSets: allValueSets,
     timing: params.timing,
     negation: params.negation,
     versionInfo: createInitialVersionInfo(params.createdBy || 'user', now),

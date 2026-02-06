@@ -2627,54 +2627,88 @@ function LibraryStatusBadge({ component, size = 'sm' }: { component: LibraryComp
 function ComponentLibraryIndicator({ component }: { component: LibraryComponent }) {
   const isApproved = component.versionInfo.status === 'approved';
   const usageCount = component.usage?.usageCount ?? component.usage?.measureIds?.length ?? 0;
-  const measureIds = component.usage?.measureIds ?? [];
   const isShared = usageCount > 1;
+
+  // Get value sets info for atomic components
+  const valueSets = component.type === 'atomic'
+    ? (component.valueSets || [component.valueSet])
+    : [];
+  const hasMultipleValueSets = valueSets.length > 1;
+  const totalCodes = valueSets.reduce((sum, vs) => sum + (vs.codes?.length || 0), 0);
 
   // Don't show if not linked to library
   if (!component) return null;
 
   return (
-    <div className={`mt-2 px-2.5 py-2 rounded-lg border flex items-center gap-3 ${
+    <div className={`mt-2 px-2.5 py-2 rounded-lg border ${
       isApproved
         ? 'bg-[var(--success)]/5 border-[var(--success)]/20'
         : 'bg-[var(--bg-secondary)] border-[var(--border)]'
     }`}>
-      {/* Library link icon */}
-      <div className={`flex-shrink-0 p-1.5 rounded-full ${
-        isApproved ? 'bg-[var(--success)]/10' : 'bg-[var(--bg-tertiary)]'
-      }`}>
-        {isApproved ? (
-          <ShieldCheck className={`w-4 h-4 ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-dim)]'}`} />
-        ) : (
-          <Link className="w-4 h-4 text-[var(--text-dim)]" />
+      <div className="flex items-center gap-3">
+        {/* Library link icon */}
+        <div className={`flex-shrink-0 p-1.5 rounded-full ${
+          isApproved ? 'bg-[var(--success)]/10' : 'bg-[var(--bg-tertiary)]'
+        }`}>
+          {isApproved ? (
+            <ShieldCheck className={`w-4 h-4 ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-dim)]'}`} />
+          ) : (
+            <Link className="w-4 h-4 text-[var(--text-dim)]" />
+          )}
+        </div>
+
+        {/* Component info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-medium ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
+              {isApproved ? 'Approved Component' : 'Draft Component'}
+            </span>
+            {isShared && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-medium">
+                Shared
+              </span>
+            )}
+            {hasMultipleValueSets && (
+              <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400 font-medium">
+                {valueSets.length} Value Sets
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-[var(--text-dim)] truncate" title={component.name}>
+            {component.name}
+          </p>
+        </div>
+
+        {/* Usage count */}
+        {usageCount > 0 && (
+          <div className="flex-shrink-0 text-right">
+            <div className={`text-sm font-semibold ${isShared ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+              {usageCount}
+            </div>
+            <div className="text-[10px] text-[var(--text-dim)]">
+              {usageCount === 1 ? 'measure' : 'measures'}
+            </div>
+          </div>
         )}
       </div>
 
-      {/* Component info */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className={`text-xs font-medium ${isApproved ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'}`}>
-            {isApproved ? 'Approved Component' : 'Draft Component'}
-          </span>
-          {isShared && (
-            <span className="text-xs px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-medium">
-              Shared
-            </span>
-          )}
-        </div>
-        <p className="text-[11px] text-[var(--text-dim)] truncate" title={component.name}>
-          {component.name}
-        </p>
-      </div>
-
-      {/* Usage count */}
-      {usageCount > 0 && (
-        <div className="flex-shrink-0 text-right">
-          <div className={`text-sm font-semibold ${isShared ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
-            {usageCount}
+      {/* Multiple value sets detail */}
+      {hasMultipleValueSets && (
+        <div className="mt-2 pt-2 border-t border-[var(--border)]/50">
+          <div className="text-[10px] text-[var(--text-dim)] uppercase tracking-wider mb-1">Combined Value Sets</div>
+          <div className="flex flex-wrap gap-1">
+            {valueSets.map((vs, i) => (
+              <span
+                key={vs.oid || i}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-tertiary)] text-[var(--text-muted)]"
+                title={vs.oid}
+              >
+                {vs.name} ({vs.codes?.length || 0})
+              </span>
+            ))}
           </div>
-          <div className="text-[10px] text-[var(--text-dim)]">
-            {usageCount === 1 ? 'measure' : 'measures'}
+          <div className="mt-1 text-[10px] text-[var(--text-dim)]">
+            Total: {totalCodes} codes
           </div>
         </div>
       )}
