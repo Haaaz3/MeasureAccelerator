@@ -625,12 +625,12 @@ function PopulationSection({
   const effectiveStatus = computeEffectiveStatus(population);
 
   return (
-    <div className={`rounded-xl border overflow-hidden transition-colors ${
+    <div className={`rounded-xl border overflow-hidden transition-colors bg-[var(--bg-secondary)] ${
       effectiveStatus === 'approved'
-        ? 'bg-green-500/5 border-green-500/30'
+        ? 'border-green-500'
         : effectiveStatus === 'needs_revision' || effectiveStatus === 'flagged'
-          ? 'bg-amber-500/5 border-amber-500/30'
-          : 'bg-[var(--bg-secondary)] border-[var(--border)]'
+          ? 'border-amber-500'
+          : 'border-[var(--border)]'
     }`}>
       <button
         onClick={onToggle}
@@ -909,9 +909,9 @@ function CriteriaNode({
           isSelected
             ? 'bg-[var(--accent-light)] border-[var(--accent)]/50'
             : element.reviewStatus === 'approved'
-              ? 'bg-green-500/5 border-green-500/30 hover:border-green-500/50'
+              ? 'bg-[var(--bg-tertiary)] border-green-500 hover:border-green-400'
               : element.reviewStatus === 'needs_revision'
-                ? 'bg-amber-500/5 border-amber-500/30 hover:border-amber-500/50'
+                ? 'bg-[var(--bg-tertiary)] border-amber-500 hover:border-amber-400'
                 : 'bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
         }`}
       >
