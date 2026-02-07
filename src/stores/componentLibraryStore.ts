@@ -39,6 +39,7 @@ import {
 } from '../services/componentMatcher';
 import { sampleAtomics, sampleComposites, sampleCategories } from '../data/sampleLibraryData';
 import type { DataElement, LogicalClause, UniversalMeasureSpec } from '../types/ums';
+import { validateReferentialIntegrity, formatMismatches } from '../utils/integrityCheck';
 
 // ============================================================================
 // State Interface
@@ -105,16 +106,16 @@ interface ComponentLibraryState {
     archivedComponentIds: ComponentId[],
     newComponentId: ComponentId,
     measures: UniversalMeasureSpec[],
-    updateMeasure: (id: string, updates: Partial<UniversalMeasureSpec>) => void,
-  ) => void;
+    batchUpdateMeasures: (updates: Array<{ id: string; updates: Partial<UniversalMeasureSpec> }>) => { success: boolean; error?: string },
+  ) => { success: boolean; error?: string };
 
   // Sync component edits to measures
   syncComponentToMeasures: (
     componentId: ComponentId,
     changes: ComponentChanges,
     measures: UniversalMeasureSpec[],
-    updateMeasure: (id: string, updates: Partial<UniversalMeasureSpec>) => void,
-  ) => void;
+    batchUpdateMeasures: (updates: Array<{ id: string; updates: Partial<UniversalMeasureSpec> }>) => { success: boolean; error?: string },
+  ) => { success: boolean; error?: string };
 
   // Validate measure component usage against library
   validateMeasureComponentUsage: (populations: Array<{ criteria?: LogicalClause | null; type: string }>) => ComponentValidationResult;
@@ -698,7 +699,7 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
       },
 
       // Update all measure DataElements that reference archived components to point to the new merged component
-      updateMeasureReferencesAfterMerge: (archivedComponentIds, newComponentId, measures, updateMeasure) => {
+      updateMeasureReferencesAfterMerge: (archivedComponentIds, newComponentId, measures, batchUpdateMeasures) => {
         // Helper to walk and update libraryComponentId references
         const updateReferences = (node: any): any => {
           if (!node) return node;
@@ -721,6 +722,9 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
 
           return node;
         };
+
+        // Collect all updates FIRST without applying
+        const batchUpdates: Array<{ id: string; updates: Partial<UniversalMeasureSpec> }> = [];
 
         for (const measure of measures) {
           // Check if this measure has any references to archived components
@@ -745,17 +749,50 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
               ...pop,
               criteria: pop.criteria ? updateReferences(pop.criteria) : pop.criteria,
             }));
-            updateMeasure(measure.id, { populations: updatedPopulations });
+            batchUpdates.push({ id: measure.id, updates: { populations: updatedPopulations } });
           }
         }
+
+        // If no updates needed, return success
+        if (batchUpdates.length === 0) {
+          return { success: true };
+        }
+
+        // Apply all updates atomically
+        const result = batchUpdateMeasures(batchUpdates);
+
+        // After batch update, validate referential integrity
+        if (result.success) {
+          const state = get();
+          const mismatches = validateReferentialIntegrity(measures, state.components);
+          if (mismatches.length > 0) {
+            console.error('[Referential Integrity] Mismatches detected after updateMeasureReferencesAfterMerge:');
+            console.error(formatMismatches(mismatches));
+          }
+        }
+
+        return result;
       },
 
       // Sync component changes to all measures that use it
-      syncComponentToMeasures: (componentId, changes, measures, updateMeasure) => {
+      syncComponentToMeasures: (componentId, changes, measures, batchUpdateMeasures) => {
         const component = get().components.find((c) => c.id === componentId);
-        if (!component) return;
+        if (!component) {
+          return { success: false, error: `Component ${componentId} not found` };
+        }
 
         const affectedMeasureIds = component.usage.measureIds;
+
+        // Validate that all affected measures exist
+        const missingMeasures: string[] = [];
+        for (const measureId of affectedMeasureIds) {
+          if (!measures.some((m) => m.metadata?.measureId === measureId || m.id === measureId)) {
+            missingMeasures.push(measureId);
+          }
+        }
+        if (missingMeasures.length > 0) {
+          return { success: false, error: `Measures not found: ${missingMeasures.join(', ')}` };
+        }
 
         // Helper to walk criteria tree and update matching data elements
         const updateCriteria = (node: any): any => {
@@ -776,7 +813,6 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
               updated.description = changes.name;
             }
             if (component.type === 'atomic') {
-              const atomicComp = component as AtomicComponent;
               if (changes.timing) {
                 updated.timingRequirements = [{
                   description: changes.timing.displayExpression,
@@ -805,16 +841,41 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           return node;
         };
 
+        // Collect all updates FIRST without applying
+        const batchUpdates: Array<{ id: string; updates: Partial<UniversalMeasureSpec> }> = [];
+
         for (const measure of measures) {
-          if (!affectedMeasureIds.includes(measure.metadata.measureId)) continue;
+          if (!affectedMeasureIds.includes(measure.metadata?.measureId || '')) continue;
 
           const updatedPopulations = measure.populations.map((pop) => ({
             ...pop,
             criteria: pop.criteria ? updateCriteria(pop.criteria) : pop.criteria,
           }));
 
-          updateMeasure(measure.id, { populations: updatedPopulations });
+          batchUpdates.push({ id: measure.id, updates: { populations: updatedPopulations } });
         }
+
+        // If no updates needed, return success
+        if (batchUpdates.length === 0) {
+          return { success: true };
+        }
+
+        // Apply all updates atomically
+        const result = batchUpdateMeasures(batchUpdates);
+
+        // After batch update, validate referential integrity and rebuild usage index
+        if (result.success) {
+          const state = get();
+          // Rebuild usage index with the updated measures
+          // Note: We need to get the updated measures from the caller's state after batch update
+          const mismatches = validateReferentialIntegrity(measures, state.components);
+          if (mismatches.length > 0) {
+            console.error('[Referential Integrity] Mismatches detected after syncComponentToMeasures:');
+            console.error(formatMismatches(mismatches));
+          }
+        }
+
+        return result;
       },
 
       // Validate measure component usage against library

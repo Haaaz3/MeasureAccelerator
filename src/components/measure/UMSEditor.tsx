@@ -39,7 +39,7 @@ export function UMSEditor() {
     mergeComponents,
     updateMeasureReferencesAfterMerge,
   } = useComponentLibraryStore();
-  const { updateMeasure } = useMeasureStore();
+  const { updateMeasure, batchUpdateMeasures } = useMeasureStore();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['ip', 'den', 'ex', 'num']));
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [activeValueSet, setActiveValueSet] = useState<ValueSetReference | null>(null);
@@ -833,7 +833,10 @@ export function UMSEditor() {
                         .map((el: any) => el.libraryComponentId)
                         .filter(Boolean) as string[];
                       const otherMeasures = measures.filter(m => m.id !== measure.id);
-                      updateMeasureReferencesAfterMerge(archivedIds, mergedComp.id, otherMeasures, updateMeasure);
+                      const result = updateMeasureReferencesAfterMerge(archivedIds, mergedComp.id, otherMeasures, batchUpdateMeasures);
+                      if (!result.success) {
+                        console.error('[UMSEditor] Failed to update measure references after merge:', result.error);
+                      }
 
                       // Rebuild usage index after merge to ensure consistency
                       rebuildUsageIndex(measures);

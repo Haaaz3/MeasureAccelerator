@@ -42,6 +42,7 @@ interface MeasureState {
   // Actions
   addMeasure: (measure: UniversalMeasureSpec) => void;
   updateMeasure: (id: string, updates: Partial<UniversalMeasureSpec>) => void;
+  batchUpdateMeasures: (updates: Array<{ id: string; updates: Partial<UniversalMeasureSpec> }>) => { success: boolean; error?: string };
   deleteMeasure: (id: string) => void;
   setActiveMeasure: (id: string | null) => void;
   setActiveTab: (tab: MeasureState['activeTab']) => void;
@@ -137,6 +138,44 @@ export const useMeasureStore = create<MeasureState>()(
             m.id === id ? { ...m, ...updates, updatedAt: new Date().toISOString() } : m
           ),
         })),
+
+      batchUpdateMeasures: (updates) => {
+        const state = get();
+        const now = new Date().toISOString();
+
+        // Validate all measure IDs exist before applying any updates
+        const missingIds: string[] = [];
+        for (const update of updates) {
+          if (!state.measures.some((m) => m.id === update.id)) {
+            missingIds.push(update.id);
+          }
+        }
+
+        if (missingIds.length > 0) {
+          const error = `Batch update rejected: measure IDs not found: ${missingIds.join(', ')}`;
+          console.error(error);
+          return { success: false, error };
+        }
+
+        // Build a map of updates for efficient lookup
+        const updateMap = new Map<string, Partial<UniversalMeasureSpec>>();
+        for (const update of updates) {
+          updateMap.set(update.id, update.updates);
+        }
+
+        // Apply all updates in a single state transition
+        set((s) => ({
+          measures: s.measures.map((m) => {
+            const measureUpdates = updateMap.get(m.id);
+            if (measureUpdates) {
+              return { ...m, ...measureUpdates, updatedAt: now };
+            }
+            return m;
+          }),
+        }));
+
+        return { success: true };
+      },
 
       deleteMeasure: (id) =>
         set((state) => ({

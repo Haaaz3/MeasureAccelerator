@@ -77,7 +77,7 @@ const CATEGORIES: { value: ComponentCategory; label: string }[] = [
 
 export default function ComponentEditor({ componentId, onSave, onClose }: ComponentEditorProps) {
   const { components, addComponent, updateComponent, getComponent, syncComponentToMeasures, handleSharedEdit, rebuildUsageIndex } = useComponentLibraryStore();
-  const { measures, updateMeasure } = useMeasureStore();
+  const { measures, batchUpdateMeasures } = useMeasureStore();
   const [showSharedWarning, setShowSharedWarning] = useState(false);
   const [pendingChanges, setPendingChanges] = useState<Partial<any> | null>(null);
 
@@ -278,12 +278,15 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
         updateComponent(existingComponent.id, updates);
         // Sync changes to any linked measures (including codes)
         if (existingComponent.usage.usageCount >= 1) {
-          syncComponentToMeasures(
+          const result = syncComponentToMeasures(
             existingComponent.id,
             { changeDescription: 'Component updated', name: component.name, timing: component.timing, negation: component.negation, codes },
             measures,
-            updateMeasure,
+            batchUpdateMeasures,
           );
+          if (!result.success) {
+            console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+          }
         }
       } else {
         addComponent(component);
@@ -996,7 +999,10 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
                 operator: pendingChanges.operator,
                 children: pendingChanges.children,
               };
-              syncComponentToMeasures(existingComponent.id, changes, measures, updateMeasure);
+              const result = syncComponentToMeasures(existingComponent.id, changes, measures, batchUpdateMeasures);
+              if (!result.success) {
+                console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+              }
               rebuildUsageIndex(measures);
             }
             setShowSharedWarning(false);
