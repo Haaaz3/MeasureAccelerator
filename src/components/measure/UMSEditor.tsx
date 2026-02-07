@@ -715,13 +715,18 @@ export function UMSEditor() {
                   onClick={() => {
                     if (!mergeName.trim() || selectedElements.length < 2) return;
 
-                    // Collect all value sets and codes from selected elements
+                    // Collect all value sets from selected elements (keep them separate)
                     const allValueSets: any[] = [];
                     const seenOids = new Set<string>();
                     for (const el of selectedElements) {
-                      if (el.valueSet && !seenOids.has(el.valueSet.oid || el.valueSet.id)) {
-                        seenOids.add(el.valueSet.oid || el.valueSet.id);
-                        allValueSets.push(el.valueSet);
+                      // Collect from valueSets array if present
+                      const elementValueSets = el.valueSets || (el.valueSet ? [el.valueSet] : []);
+                      for (const vs of elementValueSets) {
+                        const key = vs.oid || vs.id || vs.name;
+                        if (key && !seenOids.has(key)) {
+                          seenOids.add(key);
+                          allValueSets.push(vs);
+                        }
                       }
                     }
 
@@ -744,17 +749,16 @@ export function UMSEditor() {
                           .map(updateNode);
                         return { ...node, children: filteredChildren };
                       }
-                      // Update the first element to have merged description and library link
+                      // Update the first element to have merged description and all value sets
                       if (node.id === firstElementId) {
                         return {
                           ...node,
                           description: mergeName.trim(),
                           libraryComponentId: mergedComp?.id,
-                          valueSet: allValueSets.length > 0 ? {
-                            ...allValueSets[0],
-                            name: mergeName.trim(),
-                            codes: allValueSets.flatMap(vs => vs.codes || []),
-                          } : node.valueSet,
+                          // Keep first value set for backward compatibility
+                          valueSet: allValueSets.length > 0 ? allValueSets[0] : node.valueSet,
+                          // Store all value sets separately
+                          valueSets: allValueSets.length > 1 ? allValueSets : undefined,
                         };
                       }
                       return node;
@@ -1170,10 +1174,13 @@ function CriteriaNode({
   const { getComponent } = useComponentLibraryStore();
   const linkedComponent = element.libraryComponentId ? getComponent(element.libraryComponentId) ?? undefined : undefined;
 
-  // Find the full value set with codes from allValueSets
-  const fullValueSet = element.valueSet
-    ? allValueSets.find(vs => vs.id === element.valueSet?.id) || element.valueSet
-    : undefined;
+  // Find all value sets - support multiple value sets for merged components
+  const elementValueSets = element.valueSets || (element.valueSet ? [element.valueSet] : []);
+  const fullValueSets = elementValueSets.map(vs =>
+    allValueSets.find(avs => avs.id === vs.id) || vs
+  ).filter(Boolean);
+  // Keep legacy single value set for backwards compatibility
+  const fullValueSet = fullValueSets.length > 0 ? fullValueSets[0] : undefined;
 
   const isDraggedOver = dragState.dragOverId === element.id && dragState.draggedId !== element.id;
   const isDragging = dragState.draggedId === element.id;
@@ -1301,19 +1308,36 @@ function CriteriaNode({
             </div>
           )}
 
-          {/* Value Set - clickable */}
-          {fullValueSet && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelectValueSet(fullValueSet);
-              }}
-              className="mt-2 text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 group"
-            >
-              <span>Value Set: {fullValueSet.name}</span>
-              <span className="text-[var(--text-dim)]">({fullValueSet.codes?.length || 0} codes)</span>
-              <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </button>
+          {/* Value Sets - clickable, support multiple */}
+          {fullValueSets.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {fullValueSets.length > 1 && (
+                <span className="text-[10px] uppercase tracking-wider text-[var(--text-dim)]">
+                  Combined Value Sets ({fullValueSets.length})
+                </span>
+              )}
+              <div className={fullValueSets.length > 1 ? "flex flex-wrap gap-2" : ""}>
+                {fullValueSets.map((vs, vsIdx) => (
+                  <button
+                    key={vs.id || vsIdx}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectValueSet(vs);
+                    }}
+                    className={`text-xs text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 group ${
+                      fullValueSets.length > 1
+                        ? 'px-2 py-1 rounded-lg bg-[var(--accent)]/5 border border-[var(--accent)]/20 hover:bg-[var(--accent)]/10'
+                        : ''
+                    }`}
+                  >
+                    {fullValueSets.length === 1 && <span>Value Set: </span>}
+                    <span>{vs.name}</span>
+                    <span className="text-[var(--text-dim)]">({vs.codes?.length || 0})</span>
+                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Timing Override - structured timing editor */}

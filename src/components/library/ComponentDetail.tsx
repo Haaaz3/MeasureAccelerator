@@ -399,75 +399,108 @@ export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetai
 // ============================================================================
 
 function AtomicDetails({ component }: { component: AtomicComponent }) {
-  const [showAllCodes, setShowAllCodes] = useState(false);
-  const codes = component.valueSet.codes || [];
-  const codeCount = codes.length;
-  const visibleCodes = showAllCodes ? codes : codes.slice(0, 10);
+  const [showAllCodes, setShowAllCodes] = useState<Record<number, boolean>>({});
+
+  // Support multiple value sets - use valueSets array if available, otherwise fall back to single valueSet
+  const allValueSets = component.valueSets || [component.valueSet];
+  const hasMultipleValueSets = allValueSets.length > 1;
+
+  // Calculate total codes across all value sets
+  const totalCodes = allValueSets.reduce((sum, vs) => sum + (vs.codes?.length || 0), 0);
 
   return (
     <div className="space-y-4">
-      {/* Value Set */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-4 py-3 space-y-2">
+      {/* Value Sets Header */}
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-4 py-3 space-y-3">
         <h3 className="text-sm font-medium text-[var(--text)] flex items-center gap-2">
           <Atom size={14} className="text-purple-400" />
-          Value Set
-        </h3>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-          <dt className="text-[var(--text-dim)]">Name</dt>
-          <dd className="text-[var(--text-muted)] truncate">{component.valueSet.name}</dd>
-          <dt className="text-[var(--text-dim)]">OID</dt>
-          <dd className="text-[var(--text-muted)] font-mono truncate">
-            {component.valueSet.oid}
-          </dd>
-          <dt className="text-[var(--text-dim)]">Version</dt>
-          <dd className="text-[var(--text-muted)]">{component.valueSet.version}</dd>
-        </dl>
-      </div>
-
-      {/* Codes */}
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] px-4 py-3 space-y-2">
-        <h3 className="text-sm font-medium text-[var(--text)] flex items-center gap-2">
-          <Code size={14} className="text-emerald-400" />
-          Codes
-          <span className="text-xs text-[var(--text-dim)]">({codeCount})</span>
-        </h3>
-
-        {codeCount === 0 ? (
-          <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2">
-            <AlertTriangle size={14} className="text-red-400 flex-shrink-0" />
-            <span className="text-xs text-red-400 font-medium">
-              No codes defined for this component. Edit to add codes.
+          {hasMultipleValueSets ? 'Value Sets' : 'Value Set'}
+          {hasMultipleValueSets && (
+            <span className="text-xs px-1.5 py-0.5 rounded-full bg-purple-500/10 text-purple-400">
+              {allValueSets.length} combined
             </span>
+          )}
+        </h3>
+
+        {/* Map through all value sets */}
+        {allValueSets.map((valueSet, vsIndex) => {
+          const codes = valueSet.codes || [];
+          const codeCount = codes.length;
+          const showAll = showAllCodes[vsIndex] || false;
+          const visibleCodes = showAll ? codes : codes.slice(0, 10);
+
+          return (
+            <div
+              key={valueSet.oid || vsIndex}
+              className={`${hasMultipleValueSets ? 'p-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)]' : ''}`}
+            >
+              {/* Value Set Info */}
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                <dt className="text-[var(--text-dim)]">Name</dt>
+                <dd className="text-[var(--text-muted)] truncate">{valueSet.name}</dd>
+                <dt className="text-[var(--text-dim)]">OID</dt>
+                <dd className="text-[var(--text-muted)] font-mono truncate">
+                  {valueSet.oid}
+                </dd>
+                <dt className="text-[var(--text-dim)]">Version</dt>
+                <dd className="text-[var(--text-muted)]">{valueSet.version}</dd>
+              </dl>
+
+              {/* Codes for this value set */}
+              <div className="mt-3 pt-3 border-t border-[var(--border)]/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Code size={12} className="text-emerald-400" />
+                  <span className="text-xs text-[var(--text-dim)]">Codes ({codeCount})</span>
+                </div>
+
+                {codeCount === 0 ? (
+                  <div className="flex items-center gap-2 rounded-md bg-red-500/10 border border-red-500/30 px-3 py-2">
+                    <AlertTriangle size={14} className="text-red-400 flex-shrink-0" />
+                    <span className="text-xs text-red-400 font-medium">
+                      No codes defined. Edit to add codes.
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-[var(--border)]">
+                          <th className="text-left py-1.5 pr-2 text-[var(--text-dim)] font-medium">Code</th>
+                          <th className="text-left py-1.5 pr-2 text-[var(--text-dim)] font-medium">Display</th>
+                          <th className="text-left py-1.5 text-[var(--text-dim)] font-medium">System</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleCodes.map((code, i) => (
+                          <tr key={`${code.code}-${i}`} className="border-b border-[var(--border)] last:border-0">
+                            <td className="py-1.5 pr-2 font-mono text-[var(--accent)]">{code.code}</td>
+                            <td className="py-1.5 pr-2 text-[var(--text-muted)] truncate max-w-[200px]">{code.display}</td>
+                            <td className="py-1.5 text-[var(--text-dim)]">{code.system}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {codeCount > 10 && (
+                      <button
+                        onClick={() => setShowAllCodes(prev => ({ ...prev, [vsIndex]: !showAll }))}
+                        className="text-xs text-[var(--accent)] hover:underline"
+                      >
+                        {showAll ? 'Show less' : `Show all ${codeCount} codes`}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Total codes across all value sets */}
+        {hasMultipleValueSets && (
+          <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between">
+            <span className="text-xs text-[var(--text-dim)]">Total across all value sets</span>
+            <span className="text-xs font-medium text-[var(--text-muted)]">{totalCodes} codes</span>
           </div>
-        ) : (
-          <>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-[var(--border)]">
-                  <th className="text-left py-1.5 pr-2 text-[var(--text-dim)] font-medium">Code</th>
-                  <th className="text-left py-1.5 pr-2 text-[var(--text-dim)] font-medium">Display</th>
-                  <th className="text-left py-1.5 text-[var(--text-dim)] font-medium">System</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleCodes.map((code, i) => (
-                  <tr key={`${code.code}-${i}`} className="border-b border-[var(--border)] last:border-0">
-                    <td className="py-1.5 pr-2 font-mono text-[var(--accent)]">{code.code}</td>
-                    <td className="py-1.5 pr-2 text-[var(--text-muted)] truncate max-w-[200px]">{code.display}</td>
-                    <td className="py-1.5 text-[var(--text-dim)]">{code.system}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {codeCount > 10 && (
-              <button
-                onClick={() => setShowAllCodes(!showAllCodes)}
-                className="text-xs text-[var(--accent)] hover:underline"
-              >
-                {showAllCodes ? 'Show less' : `Show all ${codeCount} codes`}
-              </button>
-            )}
-          </>
         )}
       </div>
 

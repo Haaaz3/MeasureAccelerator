@@ -467,8 +467,10 @@ export interface DataElement {
   resourceType?: QICoreResourceType;
   description: string;
 
-  /** Value set that defines valid codes for this element */
+  /** Value set that defines valid codes for this element (primary/legacy) */
   valueSet?: ValueSetReference;
+  /** Multiple value sets combined in this element (OR logic) */
+  valueSets?: ValueSetReference[];
   /** Direct codes (when not using a value set) */
   directCodes?: CodeReference[];
 
