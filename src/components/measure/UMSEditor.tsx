@@ -669,7 +669,18 @@ export function UMSEditor() {
                   <label className="block text-sm text-[var(--text-muted)] mb-2">Components to Merge ({selectedElements.length})</label>
                   <div className="space-y-2 max-h-[200px] overflow-auto">
                     {selectedElements.map((el: any) => {
-                      const codeCount = el.valueSet?.codes?.length || el.directCodes?.length || 0;
+                      // Look up code count from measure.valueSets for accurate count
+                      const elementVsRefs = el.valueSets || (el.valueSet ? [el.valueSet] : []);
+                      let codeCount = 0;
+                      for (const vsRef of elementVsRefs) {
+                        const fullVs = measure.valueSets.find(
+                          mvs => mvs.id === vsRef.id || mvs.oid === vsRef.oid
+                        );
+                        codeCount += fullVs?.codes?.length || vsRef.codes?.length || 0;
+                      }
+                      if (codeCount === 0) {
+                        codeCount = el.directCodes?.length || 0;
+                      }
                       return (
                         <div key={el.id} className="p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)] flex items-center gap-3">
                           <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
@@ -696,7 +707,7 @@ export function UMSEditor() {
 
                 <div className="p-3 bg-purple-500/10 rounded-lg border border-purple-500/20">
                   <p className="text-xs text-purple-400">
-                    Components will be combined using OR logic. All value sets and codes will be merged into a single component. Duplicate elements will be removed.
+                    Components will be combined using OR logic. Each value set remains separate with its codes preserved. Duplicate codes across value sets are removed.
                   </p>
                 </div>
               </div>
@@ -716,16 +727,59 @@ export function UMSEditor() {
                     if (!mergeName.trim() || selectedElements.length < 2) return;
 
                     // Collect all value sets from selected elements (keep them separate)
+                    // Look up full value set data including codes from measure.valueSets
                     const allValueSets: any[] = [];
                     const seenOids = new Set<string>();
+                    const allCodeKeys = new Set<string>(); // Track all codes for deduplication
+
                     for (const el of selectedElements) {
-                      // Collect from valueSets array if present
-                      const elementValueSets = el.valueSets || (el.valueSet ? [el.valueSet] : []);
-                      for (const vs of elementValueSets) {
-                        const key = vs.oid || vs.id || vs.name;
+                      // Get value set references from element
+                      const elementVsRefs = el.valueSets || (el.valueSet ? [el.valueSet] : []);
+
+                      for (const vsRef of elementVsRefs) {
+                        const key = vsRef.oid || vsRef.id || vsRef.name;
                         if (key && !seenOids.has(key)) {
                           seenOids.add(key);
-                          allValueSets.push(vs);
+
+                          // Look up the full value set with codes from measure.valueSets
+                          const fullVs = measure.valueSets.find(
+                            mvs => mvs.id === vsRef.id || mvs.oid === vsRef.oid
+                          );
+
+                          if (fullVs) {
+                            // Deduplicate codes across value sets
+                            const dedupedCodes = (fullVs.codes || []).filter(code => {
+                              const codeKey = `${code.system}|${code.code}`;
+                              if (allCodeKeys.has(codeKey)) {
+                                return false; // Skip duplicate
+                              }
+                              allCodeKeys.add(codeKey);
+                              return true;
+                            });
+
+                            allValueSets.push({
+                              ...fullVs,
+                              codes: dedupedCodes,
+                            });
+                          } else if (vsRef.codes && vsRef.codes.length > 0) {
+                            // Use element's value set if it has codes directly
+                            const dedupedCodes = vsRef.codes.filter((code: any) => {
+                              const codeKey = `${code.system}|${code.code}`;
+                              if (allCodeKeys.has(codeKey)) {
+                                return false;
+                              }
+                              allCodeKeys.add(codeKey);
+                              return true;
+                            });
+
+                            allValueSets.push({
+                              ...vsRef,
+                              codes: dedupedCodes,
+                            });
+                          } else {
+                            // Fallback: use the reference as-is
+                            allValueSets.push(vsRef);
+                          }
                         }
                       }
                     }
