@@ -784,10 +784,12 @@ export function UMSEditor() {
                       }
                     }
 
-                    // Create merged library component
+                    // Create merged library component - pass the value sets with codes
                     const mergedComp = mergeComponents(
                       selectedElements.map((el: any) => el.libraryComponentId).filter(Boolean),
-                      mergeName.trim()
+                      mergeName.trim(),
+                      undefined, // description
+                      allValueSets // Pass value sets with codes for accurate data
                     );
 
                     // Keep the first element, remove the rest, update the first to point to merged component
@@ -811,8 +813,8 @@ export function UMSEditor() {
                           libraryComponentId: mergedComp?.id,
                           // Keep first value set for backward compatibility
                           valueSet: allValueSets.length > 0 ? allValueSets[0] : node.valueSet,
-                          // Store all value sets separately
-                          valueSets: allValueSets.length > 1 ? allValueSets : undefined,
+                          // Always store all value sets for consistency (even if just 1)
+                          valueSets: allValueSets.length > 0 ? allValueSets : undefined,
                         };
                       }
                       return node;
@@ -1229,10 +1231,16 @@ function CriteriaNode({
   const linkedComponent = element.libraryComponentId ? getComponent(element.libraryComponentId) ?? undefined : undefined;
 
   // Find all value sets - support multiple value sets for merged components
+  // Prioritize element's own value sets (with codes) over looked-up versions
   const elementValueSets = element.valueSets || (element.valueSet ? [element.valueSet] : []);
-  const fullValueSets = elementValueSets.map(vs =>
-    allValueSets.find(avs => avs.id === vs.id) || vs
-  ).filter(Boolean);
+  const fullValueSets = elementValueSets.map(vs => {
+    // If the value set already has codes embedded, use it directly
+    if (vs.codes && vs.codes.length > 0) {
+      return vs;
+    }
+    // Otherwise look up from allValueSets
+    return allValueSets.find(avs => avs.id === vs.id || avs.oid === vs.oid) || vs;
+  }).filter(Boolean);
   // Keep legacy single value set for backwards compatibility
   const fullValueSet = fullValueSets.length > 0 ? fullValueSets[0] : undefined;
 
@@ -1675,11 +1683,17 @@ function NodeDetailPanel({
   if (!node) return null;
 
   // Support multiple value sets for merged components
+  // Prioritize the node's own value sets (which have accurate codes) over looked-up versions
   const nodeValueSetRefs = node.valueSets || (node.valueSet ? [node.valueSet] : []);
   const fullValueSets = nodeValueSetRefs.map(vsRef => {
-    return currentMeasure?.valueSets.find(vs => vs.id === vsRef.id || vs.oid === vsRef.oid)
-      || allValueSets.find(vs => vs.id === vsRef.id || vs.oid === vsRef.oid)
-      || vsRef;
+    // If the reference already has codes embedded, use it directly
+    if (vsRef.codes && vsRef.codes.length > 0) {
+      return vsRef;
+    }
+    // Otherwise try to look up from measure or global value sets
+    const lookedUp = currentMeasure?.valueSets.find(vs => vs.id === vsRef.id || vs.oid === vsRef.oid)
+      || allValueSets.find(vs => vs.id === vsRef.id || vs.oid === vsRef.oid);
+    return lookedUp || vsRef;
   }).filter(Boolean);
   // Keep single value set for backward compatibility
   const fullValueSet = fullValueSets.length > 0 ? fullValueSets[0] : undefined;

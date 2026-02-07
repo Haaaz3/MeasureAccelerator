@@ -113,6 +113,7 @@ interface ComponentLibraryState {
     componentIds: ComponentId[],
     mergedName: string,
     mergedDescription?: string,
+    valueSetsWithCodes?: Array<{ oid: string; version: string; name: string; id?: string; codes?: import('../types/ums').CodeReference[] }>,
   ) => LibraryComponent | null;
 
   // Computed / Selectors
@@ -710,7 +711,7 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
       },
 
       // Merge multiple components into one with combined value sets
-      mergeComponents: (componentIds, mergedName, mergedDescription) => {
+      mergeComponents: (componentIds, mergedName, mergedDescription, valueSetsWithCodes) => {
         const state = get();
 
         // Get all components to merge
@@ -718,22 +719,30 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           .map(id => state.components.find(c => c.id === id))
           .filter((c): c is AtomicComponent => c !== undefined && c.type === 'atomic');
 
-        if (componentsToMerge.length < 2) {
-          console.warn('Need at least 2 atomic components to merge');
+        if (componentsToMerge.length < 2 && !valueSetsWithCodes) {
+          console.warn('Need at least 2 atomic components to merge or provide valueSetsWithCodes');
           return null;
         }
 
-        // Collect all value sets from all components
-        const allValueSets: Array<{ oid: string; version: string; name: string; codes?: import('../types/ums').CodeReference[] }> = [];
-        const seenOids = new Set<string>();
+        // Use provided value sets with codes if available, otherwise collect from components
+        let allValueSets: Array<{ oid: string; version: string; name: string; id?: string; codes?: import('../types/ums').CodeReference[] }>;
 
-        for (const comp of componentsToMerge) {
-          // Add from valueSets array if present
-          const valueSetsToAdd = comp.valueSets || [comp.valueSet];
-          for (const vs of valueSetsToAdd) {
-            if (!seenOids.has(vs.oid)) {
-              seenOids.add(vs.oid);
-              allValueSets.push(vs);
+        if (valueSetsWithCodes && valueSetsWithCodes.length > 0) {
+          // Use the pre-collected value sets with codes (from measure.valueSets)
+          allValueSets = valueSetsWithCodes;
+        } else {
+          // Fallback: collect from library components (may not have codes)
+          allValueSets = [];
+          const seenOids = new Set<string>();
+
+          for (const comp of componentsToMerge) {
+            // Add from valueSets array if present
+            const valueSetsToAdd = comp.valueSets || [comp.valueSet];
+            for (const vs of valueSetsToAdd) {
+              if (!seenOids.has(vs.oid)) {
+                seenOids.add(vs.oid);
+                allValueSets.push(vs);
+              }
             }
           }
         }
