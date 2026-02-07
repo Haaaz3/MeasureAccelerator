@@ -1,73 +1,135 @@
-# React + TypeScript + Vite
+# MeasureAccelerator
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A comprehensive platform for developing, validating, and deploying clinical quality measures (CQMs). MeasureAccelerator accelerates measure development through AI-assisted workflows, reusable component libraries, and multi-format code generation.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Measure Development
+- **AI-Powered Ingestion** - Import measure specifications from PDF/Word documents with automatic extraction of populations, value sets, and timing requirements
+- **Visual Logic Editor** - Intuitive tree-based editor for measure population criteria with drag-and-drop reordering
+- **Deep Edit Mode** - Advanced editing with component merging, per-sibling operator control, and bulk operations
 
-## React Compiler
+### Component Library
+- **Reusable Components** - Build a library of validated, reusable measure logic blocks
+- **Atomic & Composite Types** - Single value set components or complex combinations with AND/OR logic
+- **Version Management** - Track changes with full version history and approval workflows
+- **Usage Analytics** - See which measures use each component
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Value Set Management
+- **Code Editing** - Add, remove, and modify codes within value sets
+- **Multiple Value Sets** - Support for components with multiple combined value sets
+- **Bulk Import** - Import codes from CSV or Excel files
+- **VSAC Integration** - Reference value sets by OID
 
-## Expanding the ESLint configuration
+### Validation & Testing
+- **Test Patient Generation** - Create synthetic patients for various scenarios
+- **Evaluation Traces** - Step-by-step execution traces showing how patients are evaluated
+- **Population Results** - Clear pass/fail indicators for each population
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Code Generation
+- **CQL** - Generate Clinical Quality Language for FHIR-based systems
+- **HDI SQL** - Generate BigQuery SQL for Health Data Intelligence platforms
+- **FHIR Measure** - Export as FHIR R4 Measure resources
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Quick Start
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Prerequisites
+- Node.js 18+
+- npm or yarn
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/Haaaz3/MeasureAccelerator.git
+cd MeasureAccelerator
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The application will be available at `http://localhost:5173`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Build for Production
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+Output will be in the `dist` directory.
+
+## Documentation
+
+- **[Product Guide](PRODUCT_GUIDE.md)** - User documentation with workflows and best practices
+- **[Technical Specifications](TECH_SPECS.md)** - Architecture, data models, and API documentation
+
+## Technology Stack
+
+- **React 18** - UI framework
+- **TypeScript** - Type-safe development
+- **Vite** - Build tool and dev server
+- **Zustand** - State management with persistence
+- **Tailwind CSS** - Styling
+- **PDF.js** - Document parsing
+
+## Project Structure
+
+```
+src/
+├── components/           # React UI components
+│   ├── layout/          # App shell
+│   ├── library/         # Component library UI
+│   ├── measure/         # Measure editing
+│   ├── validation/      # Testing UI
+│   ├── valueset/        # Value set management
+│   └── settings/        # Configuration
+├── services/            # Business logic
+│   ├── aiExtractor.ts   # AI-powered extraction
+│   ├── cqlGenerator.ts  # CQL generation
+│   ├── hdiSqlGenerator.ts # SQL generation
+│   └── ...
+├── stores/              # Zustand state stores
+├── types/               # TypeScript definitions
+└── constants/           # Static data
+```
+
+## Key Concepts
+
+### Universal Measure Spec (UMS)
+The internal canonical representation of a clinical quality measure, aligned with FHIR R4 and CQL standards. Contains:
+- Measure metadata (title, ID, version, steward)
+- Population definitions (IPP, denominator, numerator, exclusions)
+- Value set references with codes
+- Timing requirements
+
+### Component Library
+Reusable building blocks for measure logic:
+- **Atomic Components** - Single value set + timing (e.g., "Office Visit during Measurement Period")
+- **Composite Components** - Combinations with AND/OR logic (e.g., "Qualifying Encounter" = Office OR Home OR Telehealth)
+
+### Population Types (FHIR-aligned)
+- `initial-population` - Starting population for the measure
+- `denominator` - Subset meeting denominator criteria
+- `denominator-exclusion` - Excluded from denominator
+- `denominator-exception` - Exception to denominator
+- `numerator` - Meets numerator criteria
+- `numerator-exclusion` - Excluded from numerator
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is proprietary software. All rights reserved.
+
+## Support
+
+For issues and feature requests, please use the [GitHub Issues](https://github.com/Haaaz3/MeasureAccelerator/issues) page.
