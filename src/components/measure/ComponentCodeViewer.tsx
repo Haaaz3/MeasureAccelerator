@@ -24,19 +24,17 @@ import {
 import type { DataElement } from '../../types/ums';
 import type {
   CodeOutputFormat,
-  CodeOverride,
   CodeEditNote,
   ComponentCodeState,
 } from '../../types/componentCode';
 
 import {
-  createCodeEditNote,
-  createCodeOverride,
   formatNoteTimestamp,
   getAllNotesForComponent,
 } from '../../types/componentCode';
 
 import { generateComponentCode } from '../../services/componentCodeGenerator';
+import { useComponentCodeStore } from '../../stores/componentCodeStore';
 
 // ============================================================================
 // Sub-Components
@@ -276,35 +274,16 @@ export const ComponentCodeViewer = ({
   const handleSaveCode = () => {
     if (noteContent.trim().length < 10) return;
 
-    const note = createCodeEditNote(
-      noteContent,
+    // Save directly to Zustand store (not via props which may not persist)
+    const store = useComponentCodeStore.getState();
+    store.saveCodeOverride(
+      codeState.componentId,
       codeState.selectedFormat,
-      'User',
-      'other',
-      currentOverride?.code || generatedResult.code
+      editedCode,
+      noteContent,
+      currentOverride?.code || generatedResult.code,
+      'other'
     );
-
-    const newOverride: CodeOverride = currentOverride
-      ? {
-          ...currentOverride,
-          code: editedCode,
-          updatedAt: new Date().toISOString(),
-          notes: [...currentOverride.notes, note],
-        }
-      : createCodeOverride(
-          codeState.selectedFormat,
-          editedCode,
-          generatedResult.code,
-          note
-        );
-
-    onCodeStateChange({
-      ...codeState,
-      overrides: {
-        ...codeState.overrides,
-        [codeState.selectedFormat]: newOverride,
-      },
-    });
 
     setIsEditing(false);
     setEditedCode('');
@@ -314,12 +293,9 @@ export const ComponentCodeViewer = ({
   const handleRevertToGenerated = () => {
     if (!currentOverride) return;
 
-    const { [codeState.selectedFormat]: _, ...remainingOverrides } = codeState.overrides;
-
-    onCodeStateChange({
-      ...codeState,
-      overrides: remainingOverrides,
-    });
+    // Revert directly in Zustand store
+    const store = useComponentCodeStore.getState();
+    store.revertToGenerated(codeState.componentId, codeState.selectedFormat);
   };
 
   const handleCopyCode = async () => {
