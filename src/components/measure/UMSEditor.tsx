@@ -79,6 +79,8 @@ export function UMSEditor() {
   const [editedTitle, setEditedTitle] = useState('');
   const [editedMeasureId, setEditedMeasureId] = useState('');
   const [editedProgram, setEditedProgram] = useState<string>('');
+  const [editedDescription, setEditedDescription] = useState('');
+  const [showFullDescription, setShowFullDescription] = useState(false);
 
   // Shared edit warning state
   const [showSharedEditWarning, setShowSharedEditWarning] = useState(false);
@@ -314,6 +316,7 @@ export function UMSEditor() {
     setEditedTitle(measure.metadata.title);
     setEditedMeasureId(measure.metadata.measureId);
     setEditedProgram(measure.metadata.program || '');
+    setEditedDescription(measure.metadata.description || '');
     setIsEditingMetadata(true);
   };
 
@@ -325,6 +328,7 @@ export function UMSEditor() {
         title: editedTitle.trim() || measure.metadata.title,
         measureId: editedMeasureId.trim() || measure.metadata.measureId,
         program: (editedProgram as typeof measure.metadata.program) || measure.metadata.program,
+        description: editedDescription.trim(),
       },
     });
     setIsEditingMetadata(false);
@@ -337,6 +341,7 @@ export function UMSEditor() {
     setEditedTitle('');
     setEditedMeasureId('');
     setEditedProgram('');
+    setEditedDescription('');
   };
 
   const handleDragStart = (id: string) => {
@@ -555,123 +560,211 @@ export function UMSEditor() {
 
           {/* Header */}
           <div className="mb-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                {isEditingMetadata ? (
-                  <div className="space-y-3">
-                    {/* Program/Catalogue */}
-                    <div>
-                      <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Program / Catalogue</label>
-                      <select
-                        value={editedProgram}
-                        onChange={(e) => setEditedProgram(e.target.value)}
-                        className="w-48 px-2 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                      >
-                        <option value="">Select program...</option>
-                        {MEASURE_PROGRAMS.map(p => (
-                          <option key={p.value} value={p.value}>{p.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {/* Measure ID */}
-                    <div>
-                      <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Measure ID</label>
-                      <input
-                        type="text"
-                        value={editedMeasureId}
-                        onChange={(e) => setEditedMeasureId(e.target.value)}
-                        placeholder="e.g., CMS128v13"
-                        className="w-48 px-2 py-1.5 text-sm rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                      />
-                    </div>
-                    {/* Title */}
-                    <div>
-                      <label className="block text-xs font-medium text-[var(--text-muted)] mb-1">Measure Name</label>
-                      <input
-                        type="text"
-                        value={editedTitle}
-                        onChange={(e) => setEditedTitle(e.target.value)}
-                        placeholder="Measure title"
-                        className="w-full max-w-md px-3 py-2 text-lg font-bold rounded-lg border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleSaveMetadata}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg bg-[var(--accent)] text-white hover:opacity-90 transition-opacity flex items-center gap-1.5"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        Save
-                      </button>
-                      <button
-                        onClick={handleCancelEditingMetadata}
-                        className="px-3 py-1.5 text-sm font-medium rounded-lg text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-secondary)] transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
+            {isEditingMetadata ? (
+              <div className="w-full space-y-4">
+                {/* Row 1: Programme + Measure ID + Action Buttons */}
+                <div className="flex items-end gap-4">
+                  {/* Programme */}
+                  <div className="w-48">
+                    <label className="block text-xs text-[var(--text-muted)] mb-1">Program / Catalogue</label>
+                    <select
+                      value={editedProgram}
+                      onChange={(e) => setEditedProgram(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    >
+                      <option value="">Select...</option>
+                      {MEASURE_PROGRAMS.map(p => (
+                        <option key={p.value} value={p.value}>{p.label}</option>
+                      ))}
+                    </select>
                   </div>
-                ) : (
-                  <div className="group cursor-pointer" onClick={handleStartEditingMetadata}>
-                    <div className="flex items-center gap-3 mb-2">
-                      {measure.metadata.program && (
-                        <span className="px-2 py-0.5 text-xs font-medium bg-purple-500/15 text-purple-400 rounded">
-                          {MEASURE_PROGRAMS.find(p => p.value === measure.metadata.program)?.label || measure.metadata.program}
-                        </span>
-                      )}
-                      <span className="px-2 py-1 text-sm font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded">
-                        {measure.metadata.measureId}
-                      </span>
-                      <ComplexityBadge level={calculateMeasureComplexity(measure.populations)} />
-                      <span className="opacity-0 group-hover:opacity-100 text-xs text-[var(--text-muted)] flex items-center gap-1 transition-opacity">
-                        <Edit3 className="w-3 h-3" />
-                        Click to edit
-                      </span>
-                    </div>
-                    <h1 className="text-xl font-bold text-[var(--text)]">{measure.metadata.title}</h1>
-                    <p className="text-sm text-[var(--text-muted)] mt-1">{measure.metadata.description}</p>
-                  </div>
-                )}
-              </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setActiveTab('components')}
-                  className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
-                  title="Browse the Component Library"
-                >
-                  <LibraryIcon className="w-4 h-4" />
-                  Browse Library
-                </button>
-                <button
-                  onClick={handleDeepModeToggle}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
-                    deepMode ? 'bg-purple-500/15 text-purple-400' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text)]'
-                  }`}
-                  title="Enable advanced logic editing: reorder, delete, merge components"
-                >
-                  <Settings2 className="w-4 h-4" />
-                  Deep Edit Mode
-                </button>
-                <button
-                  onClick={() => approveAllLowComplexity(measure.id)}
-                  className="px-3 py-2 bg-[var(--success-light)] text-[var(--success)] rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-80 transition-all"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Auto-approve Low Complexity
-                </button>
-                {corrections.length > 0 && (
+                  {/* Measure ID */}
+                  <div className="w-48">
+                    <label className="block text-xs text-[var(--text-muted)] mb-1">Measure ID</label>
+                    <input
+                      type="text"
+                      value={editedMeasureId}
+                      onChange={(e) => setEditedMeasureId(e.target.value)}
+                      placeholder="CMS128v13"
+                      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                    />
+                  </div>
+
+                  {/* Spacer pushes buttons right */}
+                  <div className="flex-1" />
+
+                  {/* Action buttons */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveTab('components')}
+                      className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
+                      title="Browse the Component Library"
+                    >
+                      <LibraryIcon className="w-4 h-4" />
+                      Browse Library
+                    </button>
+                    <button
+                      onClick={handleDeepModeToggle}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                        deepMode ? 'bg-purple-500/15 text-purple-400' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                      title="Enable advanced logic editing: reorder, delete, merge components"
+                    >
+                      <Settings2 className="w-4 h-4" />
+                      Deep Edit Mode
+                    </button>
+                    <button
+                      onClick={() => approveAllLowComplexity(measure.id)}
+                      className="px-3 py-2 bg-[var(--success-light)] text-[var(--success)] rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-80 transition-all"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Auto-approve
+                    </button>
+                    {corrections.length > 0 && (
+                      <button
+                        onClick={handleExportCorrections}
+                        className="px-3 py-2 bg-purple-500/15 text-purple-400 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-purple-500/25 transition-colors"
+                        title="Export corrections for AI training"
+                      >
+                        <Download className="w-4 h-4" />
+                        Export ({corrections.length})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Row 2: Measure Name — full width */}
+                <div>
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">Measure Name</label>
+                  <input
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    placeholder="e.g., Cervical Cancer Screening"
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text)] text-lg font-semibold focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  />
+                </div>
+
+                {/* Row 3: Description — full width textarea */}
+                <div>
+                  <label className="block text-xs text-[var(--text-muted)] mb-1">Description</label>
+                  <textarea
+                    value={editedDescription}
+                    onChange={(e) => setEditedDescription(e.target.value)}
+                    rows={3}
+                    placeholder="Measure description..."
+                    className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text)] text-sm resize-y focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                  />
+                </div>
+
+                {/* Row 4: Save / Cancel */}
+                <div className="flex items-center gap-3">
                   <button
-                    onClick={handleExportCorrections}
-                    className="px-3 py-2 bg-purple-500/15 text-purple-400 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-purple-500/25 transition-colors"
-                    title="Export corrections for AI training"
+                    onClick={handleSaveMetadata}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity"
                   >
-                    <Download className="w-4 h-4" />
-                    Export ({corrections.length})
+                    <Save className="w-4 h-4" />
+                    Save
                   </button>
-                )}
+                  <button
+                    onClick={handleCancelEditingMetadata}
+                    className="px-4 py-2 rounded-lg text-[var(--text-muted)] text-sm hover:text-[var(--text)] hover:bg-[var(--bg-secondary)] transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex items-start justify-between gap-4">
+                {/* Left side: Metadata (clickable to edit) */}
+                <div className="flex-1 group cursor-pointer" onClick={handleStartEditingMetadata}>
+                  {/* Row 1: Badges */}
+                  <div className="flex items-center gap-3 mb-2">
+                    {measure.metadata.program && (
+                      <span className="px-2 py-0.5 text-xs font-medium bg-purple-500/15 text-purple-400 rounded">
+                        {MEASURE_PROGRAMS.find(p => p.value === measure.metadata.program)?.label || measure.metadata.program}
+                      </span>
+                    )}
+                    <span className="px-2 py-1 text-sm font-medium bg-[var(--accent-light)] text-[var(--accent)] rounded">
+                      {measure.metadata.measureId}
+                    </span>
+                    <ComplexityBadge level={calculateMeasureComplexity(measure.populations)} />
+                    <span className="opacity-0 group-hover:opacity-100 text-xs text-[var(--text-muted)] flex items-center gap-1 transition-opacity">
+                      <Edit3 className="w-3 h-3" />
+                      Click to edit
+                    </span>
+                  </div>
+
+                  {/* Measure Name */}
+                  <h1 className="text-xl font-bold text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
+                    {measure.metadata.title}
+                  </h1>
+
+                  {/* Description with show more/less */}
+                  {measure.metadata.description && (
+                    <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                      <p className="text-sm text-[var(--text-muted)] leading-relaxed max-w-3xl">
+                        {showFullDescription || measure.metadata.description.length <= 150
+                          ? measure.metadata.description
+                          : `${measure.metadata.description.slice(0, 150)}...`
+                        }
+                      </p>
+                      {measure.metadata.description.length > 150 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowFullDescription(prev => !prev);
+                          }}
+                          className="text-xs text-[var(--accent)] mt-1 hover:underline"
+                        >
+                          {showFullDescription ? 'Show less' : 'Show more'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Right side: Action buttons */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    onClick={() => setActiveTab('components')}
+                    className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
+                    title="Browse the Component Library"
+                  >
+                    <LibraryIcon className="w-4 h-4" />
+                    Browse Library
+                  </button>
+                  <button
+                    onClick={handleDeepModeToggle}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
+                      deepMode ? 'bg-purple-500/15 text-purple-400' : 'bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                    }`}
+                    title="Enable advanced logic editing: reorder, delete, merge components"
+                  >
+                    <Settings2 className="w-4 h-4" />
+                    Deep Edit Mode
+                  </button>
+                  <button
+                    onClick={() => approveAllLowComplexity(measure.id)}
+                    className="px-3 py-2 bg-[var(--success-light)] text-[var(--success)] rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-80 transition-all"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Auto-approve Low Complexity
+                  </button>
+                  {corrections.length > 0 && (
+                    <button
+                      onClick={handleExportCorrections}
+                      className="px-3 py-2 bg-purple-500/15 text-purple-400 rounded-lg text-sm font-medium flex items-center gap-2 hover:bg-purple-500/25 transition-colors"
+                      title="Export corrections for AI training"
+                    >
+                      <Download className="w-4 h-4" />
+                      Export ({corrections.length})
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Progress bar */}
             <div className="mt-4 p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
