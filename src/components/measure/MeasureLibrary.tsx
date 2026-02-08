@@ -1,5 +1,5 @@
-import { useState, useCallback, useMemo, useRef } from 'react';
-import { Upload, FileText, Trash2, Clock, CheckCircle, AlertTriangle, Lock, Unlock, Shield, Brain, Zap, ChevronDown, Send, Edit3, Plus, Copy, X } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { Upload, FileText, Trash2, Clock, CheckCircle, AlertTriangle, Lock, Unlock, Shield, Brain, Zap, ChevronDown, Send, Edit3, Plus, Copy, X, ArrowUp, ArrowDown, Building2, Filter } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
@@ -8,7 +8,17 @@ import { MeasureCreator } from './MeasureCreator';
 import type { UniversalMeasureSpec, MeasureStatus } from '../../types/ums';
 
 type StatusTab = 'all' | 'in_progress' | 'published';
-type ProgramFilter = 'all' | 'MIPS_CQM' | 'eCQM' | 'HEDIS' | 'QOF' | 'Registry' | 'Custom';
+type MeasureProgram = 'MIPS_CQM' | 'eCQM' | 'HEDIS' | 'QOF' | 'Registry' | 'Custom';
+type SortDirection = 'asc' | 'desc';
+
+const PROGRAM_LABELS: Record<MeasureProgram, string> = {
+  'MIPS_CQM': 'MIPS CQM',
+  'eCQM': 'eCQM',
+  'HEDIS': 'HEDIS',
+  'QOF': 'QOF',
+  'Registry': 'Registry',
+  'Custom': 'Custom',
+};
 
 // Helper to reset review status recursively
 function resetReviewStatus(obj: any): any {
@@ -47,9 +57,35 @@ export function MeasureLibrary() {
   const processingRef = useRef(false);
   const batchCounterRef = useRef({ index: 0, total: 0 });
 
-  // Filtering state
+  // Filtering and sorting state
   const [statusTab, setStatusTab] = useState<StatusTab>('all');
-  const [programFilter, setProgramFilter] = useState<ProgramFilter>('all');
+  const [selectedPrograms, setSelectedPrograms] = useState<Set<MeasureProgram>>(new Set());
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [showProgramDropdown, setShowProgramDropdown] = useState(false);
+  const programDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close program dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (programDropdownRef.current && !programDropdownRef.current.contains(e.target as Node)) {
+        setShowProgramDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleProgramToggle = (program: MeasureProgram) => {
+    setSelectedPrograms(prev => {
+      const next = new Set(prev);
+      if (next.has(program)) {
+        next.delete(program);
+      } else {
+        next.add(program);
+      }
+      return next;
+    });
+  };
 
   // Get store's setActiveTab for navigation
   const { setActiveTab } = useMeasureStore();
@@ -246,24 +282,32 @@ export function MeasureLibrary() {
     }
   };
 
-  // Filter measures based on status tab and program filter
+  // Filter and sort measures
   const filteredMeasures = useMemo(() => {
-    return measures.filter((m) => {
+    let result = measures.filter((m) => {
       // Status filter
       const status = m.status || 'in_progress'; // Default to in_progress for legacy measures
       if (statusTab !== 'all' && status !== statusTab) return false;
 
-      // Program filter
-      if (programFilter !== 'all' && m.metadata.program !== programFilter) return false;
+      // Program filter (multi-select)
+      if (selectedPrograms.size > 0 && !selectedPrograms.has(m.metadata.program as MeasureProgram)) return false;
 
       return true;
     });
-  }, [measures, statusTab, programFilter]);
+
+    // Sort by name (alphabetically)
+    result = [...result].sort((a, b) => {
+      const comparison = a.metadata.title.localeCompare(b.metadata.title);
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [measures, statusTab, selectedPrograms, sortDirection]);
 
   // Get unique programs for filter dropdown
   const availablePrograms = useMemo(() => {
-    const programs = new Set(measures.map(m => m.metadata.program));
-    return Array.from(programs);
+    const programs = new Set(measures.map(m => m.metadata.program).filter(Boolean));
+    return Array.from(programs) as MeasureProgram[];
   }, [measures]);
 
   // Count measures by status
@@ -535,22 +579,96 @@ export function MeasureLibrary() {
             </button>
           </div>
 
-          {/* Program Filter */}
-          {availablePrograms.length > 1 && (
-            <div className="relative">
-              <select
-                value={programFilter}
-                onChange={(e) => setProgramFilter(e.target.value as ProgramFilter)}
-                className="px-4 py-2 pr-8 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] appearance-none cursor-pointer focus:outline-none focus:border-[var(--accent)]"
+          {/* Program Filter (Multi-select) */}
+          {availablePrograms.length > 0 && (
+            <div className="relative" ref={programDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setShowProgramDropdown(!showProgramDropdown)}
+                className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm cursor-pointer transition-colors focus:outline-none ${
+                  selectedPrograms.size > 0
+                    ? 'bg-[var(--accent-light)] border-[var(--accent)]/40 text-[var(--accent)]'
+                    : 'bg-[var(--bg-secondary)] border-[var(--border)] text-[var(--text)]'
+                }`}
               >
-                <option value="all">All Programs</option>
-                {availablePrograms.map(program => (
-                  <option key={program} value={program}>{program.replace('_', ' ')}</option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-dim)] pointer-events-none" />
+                <Building2 className="w-3.5 h-3.5" />
+                <span className="whitespace-nowrap">
+                  {selectedPrograms.size === 0
+                    ? 'All Programs'
+                    : selectedPrograms.size === 1
+                      ? PROGRAM_LABELS[Array.from(selectedPrograms)[0]] || Array.from(selectedPrograms)[0]
+                      : `${selectedPrograms.size} Programs`}
+                </span>
+                {selectedPrograms.size > 0 ? (
+                  <X
+                    className="w-3.5 h-3.5 ml-0.5 hover:text-[var(--text)]"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPrograms(new Set());
+                    }}
+                  />
+                ) : (
+                  <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+                )}
+              </button>
+
+              {showProgramDropdown && (
+                <div className="absolute top-full left-0 mt-1 z-50 bg-[var(--bg-elevated,var(--bg))] border border-[var(--border)] rounded-lg shadow-lg py-1 min-w-[160px]">
+                  {availablePrograms.map((program) => {
+                    const isSelected = selectedPrograms.has(program);
+                    return (
+                      <button
+                        key={program}
+                        type="button"
+                        onClick={() => handleProgramToggle(program)}
+                        className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors ${
+                          isSelected
+                            ? 'text-[var(--accent)] bg-[var(--accent-light)]'
+                            : 'text-[var(--text)] hover:bg-[var(--bg-tertiary)]'
+                        }`}
+                      >
+                        <span
+                          className={`w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 ${
+                            isSelected
+                              ? 'bg-[var(--accent)] border-[var(--accent)]'
+                              : 'border-[var(--border)]'
+                          }`}
+                        >
+                          {isSelected && (
+                            <CheckCircle className="w-3 h-3 text-white" />
+                          )}
+                        </span>
+                        {PROGRAM_LABELS[program] || program}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
+
+          {/* Sort Direction Toggle */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-[var(--text-dim)]">Sort:</span>
+            <button
+              type="button"
+              onClick={() => setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-sm text-[var(--text)] hover:border-[var(--accent)] transition-colors"
+              title={sortDirection === 'asc' ? 'A → Z' : 'Z → A'}
+            >
+              {sortDirection === 'asc' ? (
+                <>
+                  <ArrowUp className="w-3.5 h-3.5" />
+                  A → Z
+                </>
+              ) : (
+                <>
+                  <ArrowDown className="w-3.5 h-3.5" />
+                  Z → A
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Measures Grid */}
@@ -587,7 +705,7 @@ export function MeasureLibrary() {
             <FileText className="w-16 h-16 mx-auto mb-4 opacity-30" />
             <p>No measures match the current filter</p>
             <button
-              onClick={() => { setStatusTab('all'); setProgramFilter('all'); }}
+              onClick={() => { setStatusTab('all'); setSelectedPrograms(new Set()); }}
               className="mt-2 text-sm text-[var(--accent)] hover:text-[var(--accent-hover)]"
             >
               Clear filters
