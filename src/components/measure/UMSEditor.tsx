@@ -37,6 +37,7 @@ export function UMSEditor() {
     linkMeasureComponents,
     initializeWithSampleData,
     getComponent,
+    addComponent,
     rebuildUsageIndex,
     syncComponentToMeasures,
     mergeComponents,
@@ -128,6 +129,11 @@ export function UMSEditor() {
     return null;
   };
 
+  // TODO: Wire SharedEditWarning for value set changes, not just timing edits.
+  // Currently SharedEditWarning is only shown for timing edits. Value set code
+  // changes (addCodeToValueSet, removeCodeFromValueSet) should also check if the
+  // affected DataElements link to shared library components and prompt the user.
+
   // Wrapped timing save that checks for shared components
   const handleTimingSaveWithWarning = (componentId: string, modified: TimingConstraint) => {
     const element = findElementById(componentId);
@@ -214,39 +220,75 @@ export function UMSEditor() {
   const handleSharedEditCreateVersion = () => {
     if (!pendingEdit || !measure) return;
 
-    // Apply the edit only to this measure's element
+    const originalComponent = pendingEdit.libraryComponent;
+
+    // 1. Create a NEW library component (forked from original)
+    const newComponentId = `${originalComponent.id}-fork-${Date.now()}`;
+    const forkedComponent: LibraryComponent = {
+      ...originalComponent,
+      id: newComponentId,
+      name: `${originalComponent.name} (${measure.metadata.measureId})`,
+      usage: {
+        measureIds: [measure.metadata.measureId],
+        usageCount: 1,
+        lastUsedAt: new Date().toISOString(),
+      },
+      versionInfo: {
+        ...originalComponent.versionInfo,
+        versionId: `${originalComponent.versionInfo.versionId}-fork`,
+        status: 'draft' as const,
+        versionHistory: [
+          ...originalComponent.versionInfo.versionHistory,
+          {
+            versionId: `${originalComponent.versionInfo.versionId}-fork`,
+            status: 'draft' as const,
+            createdAt: new Date().toISOString(),
+            createdBy: 'user',
+            changeDescription: `Forked from "${originalComponent.name}" for ${measure.metadata.measureId}`,
+          },
+        ],
+      },
+      metadata: {
+        ...originalComponent.metadata,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+
+    // 2. Add the forked component to the library
+    addComponent(forkedComponent);
+
+    // 3. Apply the edit to this measure's element
     if (pendingEdit.type === 'timing') {
       updateTimingOverride(measure.id, pendingEdit.elementId, pendingEdit.value as TimingConstraint | null);
     } else {
       updateTimingWindow(measure.id, pendingEdit.elementId, pendingEdit.value as TimingWindow | null);
     }
 
-    // Clear the library link for this element (fork it)
-    // This is done by updating the element to remove libraryComponentId
-    const clearLibraryLink = (node: any): any => {
+    // 4. Update the DataElement to link to the NEW component
+    const updateLibraryLink = (node: any): any => {
       if (!node) return node;
       if (node.id === pendingEdit.elementId) {
-        const { libraryComponentId: _, ...rest } = node;
-        return rest;
+        return { ...node, libraryComponentId: newComponentId };
       }
       if (node.children) {
-        return { ...node, children: node.children.map(clearLibraryLink) };
+        return { ...node, children: node.children.map(updateLibraryLink) };
       }
       if (node.criteria) {
-        return { ...node, criteria: clearLibraryLink(node.criteria) };
+        return { ...node, criteria: updateLibraryLink(node.criteria) };
       }
       return node;
     };
 
-    const updatedPopulations = measure.populations.map(clearLibraryLink);
+    const updatedPopulations = measure.populations.map(updateLibraryLink);
     updateMeasure(measure.id, { populations: updatedPopulations });
 
-    // Rebuild usage index to reflect the unlinked element
+    // 5. Rebuild usage index to reflect the change
     rebuildUsageIndex(measures);
 
     setShowSharedEditWarning(false);
     setPendingEdit(null);
-    setSuccess(`Created local version for this measure only`);
+    setSuccess(`Created new library component "${forkedComponent.name}" for this measure`);
     setTimeout(() => setSuccess(null), 3000);
   };
 
