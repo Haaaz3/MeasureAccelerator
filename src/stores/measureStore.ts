@@ -19,7 +19,7 @@ import { syncAgeConstraints } from '../utils/constraintSync';
 import { calculateDataElementComplexity } from '../services/complexityCalculator';
 import { migrateMeasure, needsMigration } from '../utils/measureMigration';
 
-export type CodeOutputFormat = 'cql' | 'hdi' | 'synapse' | 'sql';
+export type CodeOutputFormat = 'cql' | 'synapse';
 
 interface MeasureState {
   // Measures library

@@ -7,6 +7,7 @@ import { validateHDISQL, type SQLValidationResult as HDISQLValidationResult } fr
 import type { SQLGenerationResult, SQLGenerationConfig } from '../../types/hdiDataModels';
 import { InlineErrorBanner } from '../shared/ErrorBoundary';
 import { applyCQLOverrides, applySQLOverrides, getOverrideCountForMeasure, getOverridesForMeasure } from '../../services/codeOverrideHelper';
+import { useComponentCodeStore } from '../../stores/componentCodeStore';
 
 export function CodeGeneration() {
   const { selectedCodeFormat, setSelectedCodeFormat, setActiveTab } = useMeasureStore();
@@ -23,10 +24,10 @@ export function CodeGeneration() {
   const [validationResult, setValidationResult] = useState<CQLValidationResult | null>(null);
   const [generationResult, setGenerationResult] = useState<CQLGenerationResult | null>(null);
 
-  // HDI SQL state
-  const [hdiResult, setHdiResult] = useState<SQLGenerationResult | null>(null);
-  const [hdiValidation, setHdiValidation] = useState<HDISQLValidationResult | null>(null);
-  const [isValidatingHDI, setIsValidatingHDI] = useState(false);
+  // Synapse SQL state
+  const [synapseResult, setSynapseResult] = useState<SQLGenerationResult | null>(null);
+  const [synapseValidation, setSynapseValidation] = useState<HDISQLValidationResult | null>(null);
+  const [isValidatingSynapse, setIsValidatingSynapse] = useState(false);
 
   // Generation error state
   const [generationError, setGenerationError] = useState<string | null>(null);
@@ -43,11 +44,9 @@ export function CodeGeneration() {
   const overrideCount = useMemo(() => {
     if (!measure) return 0;
     // Map format to CodeOutputFormat for override lookup
-    const formatMap: Record<string, 'cql' | 'sql-standard' | 'sql-snowflake' | undefined> = {
+    const formatMap: Record<string, 'cql' | 'synapse-sql' | undefined> = {
       'cql': 'cql',
-      'hdi': 'sql-snowflake', // HDI uses snowflake-style SQL
-      'synapse': 'sql-snowflake',
-      'sql': 'sql-standard',
+      'synapse': 'synapse-sql',
     };
     return getOverrideCountForMeasure(measure, formatMap[format]);
   }, [measure, format]);
@@ -151,11 +150,11 @@ export function CodeGeneration() {
   useEffect(() => {
     const code = format === 'cql' && generationResult?.cql
       ? generationResult.cql
-      : format === 'hdi' && hdiResult?.sql
-      ? hdiResult.sql
+      : format === 'synapse' && synapseResult?.sql
+      ? synapseResult.sql
       : '';
     performSearch(searchQuery, code);
-  }, [searchQuery, generationResult?.cql, hdiResult?.sql, format, performSearch]);
+  }, [searchQuery, generationResult?.cql, synapseResult?.sql, format, performSearch]);
 
   // Helper to highlight search matches in code
   const highlightCode = useCallback((code: string): React.ReactNode => {
@@ -230,9 +229,9 @@ export function CodeGeneration() {
     }
   }, [measure, format]);
 
-  // Generate HDI SQL when format is 'hdi'
+  // Generate Synapse SQL when format is 'synapse'
   useEffect(() => {
-    if (measure && format === 'hdi') {
+    if (measure && format === 'synapse') {
       try {
         setGenerationError(null);
         const result = generateHDISQL(measure, {
@@ -252,7 +251,7 @@ export function CodeGeneration() {
 
         // Apply code overrides if any exist
         if (result.success && result.sql) {
-          const { code: modifiedSql, overrideCount: appliedOverrides } = applySQLOverrides(result.sql, measure, 'hdi');
+          const { code: modifiedSql, overrideCount: appliedOverrides } = applySQLOverrides(result.sql, measure, 'synapse-sql');
           result.sql = modifiedSql;
 
           // Add warning about overrides if any were applied
@@ -261,17 +260,17 @@ export function CodeGeneration() {
           }
         }
 
-        setHdiResult(result);
-        setHdiValidation(null);
+        setSynapseResult(result);
+        setSynapseValidation(null);
 
         // Check for generation-level errors
         if (!result.success && result.errors && result.errors.length > 0) {
-          setGenerationError(`Cannot generate HDI SQL: ${result.errors.join(', ')}`);
+          setGenerationError(`Cannot generate Synapse SQL: ${result.errors.join(', ')}`);
         }
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error during HDI SQL generation';
-        setGenerationError(`HDI SQL generation failed: ${errorMessage}`);
-        setHdiResult(null);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error during Synapse SQL generation';
+        setGenerationError(`Synapse SQL generation failed: ${errorMessage}`);
+        setSynapseResult(null);
       }
     }
   }, [measure, format]);
@@ -300,8 +299,8 @@ export function CodeGeneration() {
   }
 
   const handleCopy = async () => {
-    const code = format === 'hdi' && hdiResult?.sql
-      ? hdiResult.sql
+    const code = format === 'synapse' && synapseResult?.sql
+      ? synapseResult.sql
       : getGeneratedCode(measure, format);
     await navigator.clipboard.writeText(code);
     setCopied(true);
@@ -322,7 +321,7 @@ export function CodeGeneration() {
           setGenerationError(`Cannot generate CQL: ${result.errors.join(', ')}`);
         }
       }
-      if (measure && format === 'hdi') {
+      if (measure && format === 'synapse') {
         const result = generateHDISQL(measure, {
           ...DEFAULT_HDI_CONFIG,
           measurementPeriod: measure.metadata.measurementPeriod ? {
@@ -337,11 +336,11 @@ export function CodeGeneration() {
             'HEALTHE INTENT Results',
           ],
         });
-        setHdiResult(result);
-        setHdiValidation(null);
+        setSynapseResult(result);
+        setSynapseValidation(null);
 
         if (!result.success && result.errors && result.errors.length > 0) {
-          setGenerationError(`Cannot generate HDI SQL: ${result.errors.join(', ')}`);
+          setGenerationError(`Cannot generate Synapse SQL: ${result.errors.join(', ')}`);
         }
       }
     } catch (err) {
@@ -352,9 +351,9 @@ export function CodeGeneration() {
     setTimeout(() => setIsGenerating(false), 500);
   };
 
-  const handleValidateHDI = () => {
-    if (!hdiResult?.sql) return;
-    setIsValidatingHDI(true);
+  const handleValidateSynapse = () => {
+    if (!synapseResult?.sql) return;
+    setIsValidatingSynapse(true);
     try {
       const config: SQLGenerationConfig = {
         ...DEFAULT_HDI_CONFIG,
@@ -363,10 +362,10 @@ export function CodeGeneration() {
           end: measure.metadata.measurementPeriod.end || '',
         } : undefined,
       };
-      const result = validateHDISQL(hdiResult.sql, config);
-      setHdiValidation(result);
+      const result = validateHDISQL(synapseResult.sql, config);
+      setSynapseValidation(result);
     } catch (err) {
-      setHdiValidation({
+      setSynapseValidation({
         valid: false,
         score: 0,
         errors: [{ severity: 'error', code: 'VALIDATION_ERROR', message: err instanceof Error ? err.message : 'Validation failed' }],
@@ -374,7 +373,7 @@ export function CodeGeneration() {
         suggestions: [],
       });
     } finally {
-      setIsValidatingHDI(false);
+      setIsValidatingSynapse(false);
     }
   };
 
@@ -452,17 +451,58 @@ export function CodeGeneration() {
           <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
             <div className="flex items-start gap-3">
               <Edit3 className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1">
                 <h3 className="font-medium text-amber-500">Manual Overrides Applied</h3>
                 <p className="text-sm text-amber-500/80 mt-1">
                   {overrideCount} component(s) using manually overridden code. These edits will be included in the generated output with their associated notes.
                 </p>
-                <button
-                  onClick={() => useMeasureStore.getState().setActiveTab('editor')}
-                  className="mt-3 px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20"
-                >
-                  View in Editor
-                </button>
+                <div className="flex items-center gap-2 mt-3">
+                  <button
+                    onClick={() => {
+                      // Find the [OVERRIDDEN] marker in the code and scroll to it
+                      if (codeRef.current) {
+                        const codeText = codeRef.current.textContent || '';
+                        const overriddenIndex = codeText.indexOf('[OVERRIDDEN]');
+                        if (overriddenIndex !== -1) {
+                          // Find the span containing OVERRIDDEN and scroll to it
+                          const codeElement = codeRef.current;
+                          const searchText = '[OVERRIDDEN]';
+
+                          // Highlight the override section
+                          setSearchQuery(searchText);
+
+                          // Scroll to the first match
+                          setTimeout(() => {
+                            const highlightedSpan = codeElement.querySelector('.bg-amber-400\\/30');
+                            if (highlightedSpan) {
+                              highlightedSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }
+                          }, 100);
+                        }
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
+                  >
+                    <Search className="w-4 h-4" />
+                    Find in Code
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Navigate to UMS Editor and select the first overridden component
+                      const overrides = measure ? getOverridesForMeasure(measure) : null;
+                      if (overrides && overrides.overrideInfos.length > 0) {
+                        const firstOverride = overrides.overrideInfos[0];
+                        // Set the component as inspecting in the code store
+                        useComponentCodeStore.getState().setInspectingComponent(firstOverride.componentId);
+                      }
+                      setActiveTab('editor');
+                    }}
+                    className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
+                  >
+                    <Edit3 className="w-4 h-4" />
+                    View in UMS Editor
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -474,9 +514,7 @@ export function CodeGeneration() {
           <div className="flex gap-2">
             {[
               { id: 'cql' as const, label: 'CQL', icon: FileCode },
-              { id: 'hdi' as const, label: 'HDI SQL', icon: Server },
               { id: 'synapse' as const, label: 'Synapse SQL', icon: Database },
-              { id: 'sql' as const, label: 'Standard SQL', icon: Code },
             ].map((f) => (
               <button
                 key={f.id}
@@ -544,23 +582,23 @@ export function CodeGeneration() {
                   {isValidating ? 'Validating...' : validationResult?.valid ? 'Valid' : 'Validate CQL'}
                 </button>
               )}
-              {format === 'hdi' && (
+              {format === 'synapse' && (
                 <button
-                  onClick={handleValidateHDI}
-                  disabled={isValidatingHDI || !hdiResult?.success}
+                  onClick={handleValidateSynapse}
+                  disabled={isValidatingSynapse || !synapseResult?.success}
                   className="px-3 py-1.5 text-sm bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg flex items-center gap-2 hover:bg-[var(--bg)] transition-colors disabled:opacity-50"
-                  title="Validate HDI SQL pattern compliance"
+                  title="Validate Synapse SQL pattern compliance"
                 >
-                  {isValidatingHDI ? (
+                  {isValidatingSynapse ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : hdiValidation?.valid ? (
+                  ) : synapseValidation?.valid ? (
                     <CheckCircle className="w-4 h-4 text-[var(--success)]" />
-                  ) : hdiValidation ? (
+                  ) : synapseValidation ? (
                     <XCircle className="w-4 h-4 text-[var(--danger)]" />
                   ) : (
                     <CheckCircle className="w-4 h-4" />
                   )}
-                  {isValidatingHDI ? 'Validating...' : hdiValidation ? `Score: ${hdiValidation.score}/100` : 'Validate HDI'}
+                  {isValidatingSynapse ? 'Validating...' : synapseValidation ? `Score: ${synapseValidation.score}/100` : 'Validate'}
                 </button>
               )}
               <button
@@ -640,8 +678,8 @@ export function CodeGeneration() {
                 {(() => {
                   const code = format === 'cql' && generationResult?.cql
                     ? generationResult.cql
-                    : format === 'hdi' && hdiResult?.sql
-                    ? hdiResult.sql
+                    : format === 'synapse' && synapseResult?.sql
+                    ? synapseResult.sql
                     : getGeneratedCode(measure, format);
                   return searchQuery && searchResults.length > 0 ? highlightCode(code) : code;
                 })()}
@@ -691,12 +729,12 @@ export function CodeGeneration() {
           })()
         )}
 
-        {/* HDI SQL Generation Warnings */}
-        {format === 'hdi' && hdiResult && (
+        {/* Synapse SQL Generation Warnings */}
+        {format === 'synapse' && synapseResult && (
           (() => {
             // Collect warnings from generation result and embedded in code
-            const resultWarnings = hdiResult.warnings || [];
-            const embeddedWarnings = hdiResult.sql ? extractEmbeddedWarnings(hdiResult.sql) : [];
+            const resultWarnings = synapseResult.warnings || [];
+            const embeddedWarnings = synapseResult.sql ? extractEmbeddedWarnings(synapseResult.sql) : [];
             const allWarnings = [...new Set([...resultWarnings, ...embeddedWarnings])];
 
             if (allWarnings.length === 0) return null;
@@ -789,33 +827,33 @@ export function CodeGeneration() {
           </div>
         )}
 
-        {/* HDI Validation Results */}
-        {format === 'hdi' && hdiValidation && (
+        {/* Synapse SQL Validation Results */}
+        {format === 'synapse' && synapseValidation && (
           <div className={`mt-6 p-4 rounded-xl border ${
-            hdiValidation.valid
+            synapseValidation.valid
               ? 'bg-[var(--success)]/5 border-[var(--success)]/30'
               : 'bg-[var(--danger)]/5 border-[var(--danger)]/30'
           }`}>
             <div className="flex items-center gap-2 mb-3">
-              {hdiValidation.valid ? (
+              {synapseValidation.valid ? (
                 <>
                   <CheckCircle className="w-5 h-5 text-[var(--success)]" />
-                  <h3 className="text-sm font-medium text-[var(--success)]">HDI SQL Validation Passed</h3>
-                  <span className="ml-auto text-sm font-mono text-[var(--success)]">Score: {hdiValidation.score}/100</span>
+                  <h3 className="text-sm font-medium text-[var(--success)]">Synapse SQL Validation Passed</h3>
+                  <span className="ml-auto text-sm font-mono text-[var(--success)]">Score: {synapseValidation.score}/100</span>
                 </>
               ) : (
                 <>
                   <XCircle className="w-5 h-5 text-[var(--danger)]" />
-                  <h3 className="text-sm font-medium text-[var(--danger)]">HDI SQL Validation Issues Found</h3>
-                  <span className="ml-auto text-sm font-mono text-[var(--danger)]">Score: {hdiValidation.score}/100</span>
+                  <h3 className="text-sm font-medium text-[var(--danger)]">Synapse SQL Validation Issues Found</h3>
+                  <span className="ml-auto text-sm font-mono text-[var(--danger)]">Score: {synapseValidation.score}/100</span>
                 </>
               )}
             </div>
 
-            {hdiValidation.errors.length > 0 && (
+            {synapseValidation.errors.length > 0 && (
               <div className="space-y-2 mb-3">
-                <h4 className="text-xs font-medium text-[var(--danger)] uppercase tracking-wider">Errors ({hdiValidation.errors.length})</h4>
-                {hdiValidation.errors.map((error, i) => (
+                <h4 className="text-xs font-medium text-[var(--danger)] uppercase tracking-wider">Errors ({synapseValidation.errors.length})</h4>
+                {synapseValidation.errors.map((error, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-[var(--danger)]">
                     <XCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     <div>
@@ -830,10 +868,10 @@ export function CodeGeneration() {
               </div>
             )}
 
-            {hdiValidation.warnings.length > 0 && (
+            {synapseValidation.warnings.length > 0 && (
               <div className="space-y-2 mb-3">
-                <h4 className="text-xs font-medium text-[var(--warning)] uppercase tracking-wider">Warnings ({hdiValidation.warnings.length})</h4>
-                {hdiValidation.warnings.map((warning, i) => (
+                <h4 className="text-xs font-medium text-[var(--warning)] uppercase tracking-wider">Warnings ({synapseValidation.warnings.length})</h4>
+                {synapseValidation.warnings.map((warning, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-[var(--warning)]">
                     <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                     <div>
@@ -848,10 +886,10 @@ export function CodeGeneration() {
               </div>
             )}
 
-            {hdiValidation.suggestions.length > 0 && (
+            {synapseValidation.suggestions.length > 0 && (
               <div className="space-y-1">
                 <h4 className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">Suggestions</h4>
-                {hdiValidation.suggestions.map((suggestion, i) => (
+                {synapseValidation.suggestions.map((suggestion, i) => (
                   <p key={i} className="text-sm text-[var(--text-muted)]">{suggestion}</p>
                 ))}
               </div>
@@ -859,18 +897,18 @@ export function CodeGeneration() {
           </div>
         )}
 
-        {/* HDI Generation Metadata */}
-        {format === 'hdi' && hdiResult && (
+        {/* Synapse SQL Generation Metadata */}
+        {format === 'synapse' && synapseResult && (
           <div className="mt-4 p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
             <div className="flex items-center gap-4 text-xs text-[var(--text-muted)]">
-              <span>Predicates: <strong className="text-[var(--text)]">{hdiResult.metadata.predicateCount}</strong></span>
-              <span>Data Models: <strong className="text-[var(--text)]">{hdiResult.metadata.dataModelsUsed.join(', ') || 'none'}</strong></span>
-              <span>Complexity: <strong className="text-[var(--text)]">{hdiResult.metadata.estimatedComplexity}</strong></span>
-              {hdiResult.warnings.length > 0 && (
-                <span className="text-[var(--warning)]">{hdiResult.warnings.length} warning(s)</span>
+              <span>Predicates: <strong className="text-[var(--text)]">{synapseResult.metadata.predicateCount}</strong></span>
+              <span>Data Models: <strong className="text-[var(--text)]">{synapseResult.metadata.dataModelsUsed.join(', ') || 'none'}</strong></span>
+              <span>Complexity: <strong className="text-[var(--text)]">{synapseResult.metadata.estimatedComplexity}</strong></span>
+              {synapseResult.warnings.length > 0 && (
+                <span className="text-[var(--warning)]">{synapseResult.warnings.length} warning(s)</span>
               )}
-              {hdiResult.errors.length > 0 && (
-                <span className="text-[var(--danger)]">{hdiResult.errors.length} error(s)</span>
+              {synapseResult.errors.length > 0 && (
+                <span className="text-[var(--danger)]">{synapseResult.errors.length} error(s)</span>
               )}
             </div>
           </div>
@@ -916,15 +954,15 @@ export function CodeGeneration() {
                 {generationResult.metadata.definitionCount} CQL definitions generated
               </li>
             )}
-            {format === 'hdi' && hdiResult && (
+            {format === 'synapse' && synapseResult && (
               <>
                 <li className="flex items-start gap-2">
                   <span className="text-[var(--accent)] mt-0.5">•</span>
-                  HDI SQL: {hdiResult.metadata.predicateCount} predicates across {hdiResult.metadata.dataModelsUsed.length} data models
+                  Synapse SQL: {synapseResult.metadata.predicateCount} predicates across {synapseResult.metadata.dataModelsUsed.length} data models
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="text-[var(--accent)] mt-0.5">•</span>
-                  Target: Snowflake / HealtheIntent Data Warehouse (CTE pattern with ONT, DEMOG, PRED_*)
+                  Target: Azure Synapse / T-SQL (CTE pattern with ONT, DEMOG, PRED_*)
                 </li>
               </>
             )}

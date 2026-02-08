@@ -77,8 +77,7 @@ export function getOverridesForMeasure(
   const allNotes: CodeEditNote[] = [];
   const overridesByFormat: Record<CodeOutputFormat, number> = {
     'cql': 0,
-    'sql-standard': 0,
-    'sql-snowflake': 0,
+    'synapse-sql': 0,
   };
 
   for (const componentId of componentIds) {
@@ -221,16 +220,58 @@ export function applyCQLOverrides(
     return { code: generatedCQL, overrideCount: 0 };
   }
 
-  // Prepend override header
-  const header = generateOverrideHeader(measure, 'cql');
-  let modifiedCode = header + generatedCQL;
+  let modifiedCode = generatedCQL;
+  let replacementsMade = 0;
 
-  // Note: For more sophisticated injection, we'd need to parse the CQL
-  // and replace specific define statements. For now, we prepend the header
-  // which documents all overrides. The ComponentCodeViewer already handles
-  // per-component override display in the UMS Editor.
+  // For each override, try to replace the corresponding define statement
+  for (const info of summary.overrideInfos) {
+    const override = info.override;
+    const componentDesc = info.componentDescription;
+
+    // Build the override block with notes as comments
+    const noteComments = override.notes
+      .map(note => formatNoteForCodeComment(note, 'cql'))
+      .join('\n');
+
+    const overrideBlock = noteComments
+      ? `${noteComments}\n// [OVERRIDDEN]\n${override.code}`
+      : `// [OVERRIDDEN]\n${override.code}`;
+
+    // Try to find and replace the define statement for this component
+    // Look for: define "ComponentName":
+    const definePattern = new RegExp(
+      `(define\\s+"${escapeRegExp(componentDesc)}"\\s*:\\s*)(.*?)(?=\\n\\s*\\n|\\ndefine\\s|$)`,
+      's'
+    );
+
+    if (definePattern.test(modifiedCode)) {
+      modifiedCode = modifiedCode.replace(definePattern, overrideBlock);
+      replacementsMade++;
+    } else {
+      // If we can't find the exact define, append override to the end
+      // with a clear marker
+      modifiedCode += `\n\n// ========================================\n`;
+      modifiedCode += `// OVERRIDE for: ${componentDesc}\n`;
+      modifiedCode += `// ========================================\n`;
+      modifiedCode += overrideBlock;
+      replacementsMade++;
+    }
+  }
+
+  // Prepend summary header if any overrides were applied
+  if (replacementsMade > 0) {
+    const header = generateOverrideHeader(measure, 'cql');
+    modifiedCode = header + modifiedCode;
+  }
 
   return { code: modifiedCode, overrideCount: summary.totalOverrides };
+}
+
+/**
+ * Escape special regex characters in a string
+ */
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**
@@ -239,19 +280,58 @@ export function applyCQLOverrides(
 export function applySQLOverrides(
   generatedSQL: string,
   measure: UniversalMeasureSpec,
-  format: 'sql-standard' | 'sql-snowflake' | 'hdi'
+  format: 'synapse-sql' | 'hdi'
 ): { code: string; overrideCount: number } {
-  // Map 'hdi' to a valid CodeOutputFormat for lookup
-  const lookupFormat: CodeOutputFormat = format === 'hdi' ? 'sql-snowflake' : format;
+  // Map 'hdi' to synapse-sql for lookup (both use Synapse/T-SQL style)
+  const lookupFormat: CodeOutputFormat = 'synapse-sql';
   const summary = getOverridesForMeasure(measure, lookupFormat);
 
   if (summary.totalOverrides === 0) {
     return { code: generatedSQL, overrideCount: 0 };
   }
 
-  // Prepend override header
-  const header = generateOverrideHeader(measure, lookupFormat);
-  let modifiedCode = header + generatedSQL;
+  let modifiedCode = generatedSQL;
+  let replacementsMade = 0;
+
+  // For each override, try to replace the corresponding CTE or section
+  for (const info of summary.overrideInfos) {
+    const override = info.override;
+    const componentDesc = info.componentDescription;
+
+    // Build the override block with notes as comments
+    const noteComments = override.notes
+      .map(note => formatNoteForCodeComment(note, lookupFormat))
+      .join('\n');
+
+    const overrideBlock = noteComments
+      ? `${noteComments}\n-- [OVERRIDDEN]\n${override.code}`
+      : `-- [OVERRIDDEN]\n${override.code}`;
+
+    // Try to find and replace a CTE or predicate block for this component
+    // Look for patterns like: PRED_* as ( or -- ComponentName
+    const ctePattern = new RegExp(
+      `(--\\s*${escapeRegExp(componentDesc)}\\s*\\n[^)]*as\\s*\\([^)]*\\))`,
+      'si'
+    );
+
+    if (ctePattern.test(modifiedCode)) {
+      modifiedCode = modifiedCode.replace(ctePattern, overrideBlock);
+      replacementsMade++;
+    } else {
+      // Append override section at end
+      modifiedCode += `\n\n-- ========================================\n`;
+      modifiedCode += `-- OVERRIDE for: ${componentDesc}\n`;
+      modifiedCode += `-- ========================================\n`;
+      modifiedCode += overrideBlock;
+      replacementsMade++;
+    }
+  }
+
+  // Prepend summary header if any overrides were applied
+  if (replacementsMade > 0) {
+    const header = generateOverrideHeader(measure, lookupFormat);
+    modifiedCode = header + modifiedCode;
+  }
 
   return { code: modifiedCode, overrideCount: summary.totalOverrides };
 }

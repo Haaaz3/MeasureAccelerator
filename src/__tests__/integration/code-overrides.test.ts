@@ -122,7 +122,7 @@ describe('Code Overrides', () => {
       const { measure } = createTestMeasure({ withComponents: false });
       const originalSql = 'SELECT * FROM patients';
 
-      const { code, overrideCount } = applySQLOverrides(originalSql, measure, 'sql-standard');
+      const { code, overrideCount } = applySQLOverrides(originalSql, measure, 'synapse-sql');
 
       expect(overrideCount).toBe(0);
       expect(code).toBe(originalSql);
@@ -140,10 +140,10 @@ describe('Code Overrides', () => {
         return;
       }
 
-      // Save a SQL override (using sql-snowflake which is what HDI uses)
+      // Save a SQL override (using synapse-sql which is what HDI uses)
       useComponentCodeStore.getState().saveCodeOverride(
         firstElementId,
-        'sql-snowflake',
+        'synapse-sql',
         'SELECT * FROM modified_table',
         'Changed table name',
         'SELECT * FROM original_table'
@@ -193,7 +193,7 @@ describe('Code Overrides', () => {
       // Save SQL override for second component
       useComponentCodeStore.getState().saveCodeOverride(
         id2,
-        'sql-standard',
+        'synapse-sql',
         '-- SQL override',
         'SQL note',
         '-- Original'
@@ -205,8 +205,8 @@ describe('Code Overrides', () => {
       // CQL only should be 1
       expect(getOverrideCountForMeasure(measure, 'cql')).toBe(1);
 
-      // SQL only should be 1
-      expect(getOverrideCountForMeasure(measure, 'sql-standard')).toBe(1);
+      // Synapse SQL only should be 1
+      expect(getOverrideCountForMeasure(measure, 'synapse-sql')).toBe(1);
     });
   });
 
@@ -254,13 +254,13 @@ describe('Code Overrides', () => {
 
       useComponentCodeStore.getState().saveCodeOverride(
         firstElementId,
-        'sql-standard',
+        'synapse-sql',
         '-- Override',
         'Note content',
         '-- Original'
       );
 
-      const header = generateOverrideHeader(measure, 'sql-standard');
+      const header = generateOverrideHeader(measure, 'synapse-sql');
 
       expect(header).toContain('--');
       expect(header).toContain('MANUAL OVERRIDES APPLIED');

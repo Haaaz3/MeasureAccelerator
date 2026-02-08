@@ -17,8 +17,8 @@ export interface SQLGenerationConfig {
   ontologyContexts: string[];
   /** Whether to exclude SNAPSHOT and ARCHIVE populations */
   excludeSnapshotsAndArchives: boolean;
-  /** SQL dialect for output (snowflake, standard) */
-  dialect: 'snowflake' | 'standard';
+  /** SQL dialect for output (synapse for Azure Synapse / T-SQL) */
+  dialect: 'synapse';
   /** Include inline comments in generated SQL */
   includeComments: boolean;
   /** Measurement period for temporal calculations */

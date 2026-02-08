@@ -57,7 +57,7 @@ export const DEFAULT_HDI_CONFIG: SQLGenerationConfig = {
   populationId: '${POPULATION_ID}', // Placeholder for parameterization
   ontologyContexts: ['HEALTHE INTENT Demographics'],
   excludeSnapshotsAndArchives: true,
-  dialect: 'snowflake',
+  dialect: 'synapse',
   includeComments: true,
 };
 

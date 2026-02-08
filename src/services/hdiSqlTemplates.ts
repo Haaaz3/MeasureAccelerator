@@ -52,13 +52,12 @@ ONT as (
 // ============================================================================
 
 export function generateDemographicsCTE(config: SQLGenerationConfig): string {
-  const ageCalc = config.dialect === 'snowflake'
-    ? `datediff(year, P.birth_date, current_date())
-      - case
-        when to_char(current_date, 'MMDD') < to_char(P.birth_date, 'MMDD') then 1
-        else 0
-      end as age_in_years`
-    : `DATE_PART('year', AGE(current_date, P.birth_date)) as age_in_years`;
+  // Synapse/T-SQL age calculation
+  const ageCalc = `DATEDIFF(YEAR, P.birth_date, GETDATE())
+      - CASE
+        WHEN FORMAT(GETDATE(), 'MMdd') < FORMAT(P.birth_date, 'MMdd') THEN 1
+        ELSE 0
+      END as age_in_years`;
 
   return `--
 -- Retrieve demographics for all persons along with relevant terminology concepts.
@@ -207,7 +206,7 @@ ${alias} as (
     , 'Medication' as data_model
     , null as identifier
     , MC.ipsd as clinical_start_date
-    , dateadd(day, ${cdsConfig.windowDays}, MC.ipsd) as clinical_end_date
+    , DATEADD(DAY, ${cdsConfig.windowDays}, MC.ipsd) as clinical_end_date
     , '${cdsConfig.rateLabel.replace(/'/g, "''")}' as description
   from MED_COVERAGE MC
   where
@@ -232,14 +231,13 @@ export function generateDemographicsPredicateCTE(
   if (predicate.age) {
     if (predicate.age.indexEvent) {
       // Age calculated relative to an index event date (e.g., IPSD)
+      // Synapse/T-SQL age calculation
       const ie = predicate.age.indexEvent;
-      const ageExpr = config.dialect === 'snowflake'
-        ? `datediff(year, D.birth_date, I.${ie.dateColumn})
-      - case
-        when to_char(I.${ie.dateColumn}, 'MMDD') < to_char(D.birth_date, 'MMDD') then 1
-        else 0
-      end`
-        : `DATE_PART('year', AGE(I.${ie.dateColumn}, D.birth_date))`;
+      const ageExpr = `DATEDIFF(YEAR, D.birth_date, I.${ie.dateColumn})
+      - CASE
+        WHEN FORMAT(I.${ie.dateColumn}, 'MMdd') < FORMAT(D.birth_date, 'MMdd') THEN 1
+        ELSE 0
+      END`;
 
       if (predicate.age.min !== undefined) {
         conditions.push(`${ageExpr} >= ${predicate.age.min}`);
@@ -394,10 +392,10 @@ export function generateConditionPredicateCTE(
     if (ie) {
       // Index-event-relative timing (e.g., "within 60 days of IPSD")
       if (ie.daysBefore) {
-        conditions.push(`C.effective_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
+        conditions.push(`C.effective_date >= DATEADD(DAY, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
       if (ie.daysAfter) {
-        conditions.push(`C.effective_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
+        conditions.push(`C.effective_date <= DATEADD(DAY, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
     } else {
       if (predicate.timing.effectiveDateRange) {
@@ -409,16 +407,10 @@ export function generateConditionPredicateCTE(
         }
       }
       if (predicate.timing.lookbackYears) {
-        const dateFunc = config.dialect === 'snowflake'
-          ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
-          : `current_date - interval '${predicate.timing.lookbackYears} years'`;
-        conditions.push(`C.effective_date >= ${dateFunc}`);
+        conditions.push(`C.effective_date >= DATEADD(YEAR, -${predicate.timing.lookbackYears}, GETDATE())`);
       }
       if (predicate.timing.lookbackDays) {
-        const dateFunc = config.dialect === 'snowflake'
-          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-        conditions.push(`C.effective_date >= ${dateFunc}`);
+        conditions.push(`C.effective_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
       }
     }
   }
@@ -522,16 +514,10 @@ export function generateResultPredicateCTE(
       }
     }
     if (predicate.timing.lookbackYears) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackYears} years'`;
-      conditions.push(`R.service_date >= ${dateFunc}`);
+      conditions.push(`R.service_date >= DATEADD(YEAR, -${predicate.timing.lookbackYears}, GETDATE())`);
     }
     if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`R.service_date >= ${dateFunc}`);
+      conditions.push(`R.service_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
     }
   }
 
@@ -593,16 +579,10 @@ export function generateProcedurePredicateCTE(
       }
     }
     if (predicate.timing.lookbackYears) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackYears} years'`;
-      conditions.push(`PR.performed_date >= ${dateFunc}`);
+      conditions.push(`PR.performed_date >= DATEADD(YEAR, -${predicate.timing.lookbackYears}, GETDATE())`);
     }
     if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`PR.performed_date >= ${dateFunc}`);
+      conditions.push(`PR.performed_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
     }
   }
 
@@ -674,10 +654,10 @@ export function generateMedicationPredicateCTE(
     if (ie) {
       // Index-event-relative timing (e.g., "105 days prior to IPSD")
       if (ie.daysBefore) {
-        conditions.push(`M.effective_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
+        conditions.push(`M.effective_date >= DATEADD(DAY, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
       if (ie.daysAfter) {
-        conditions.push(`M.effective_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
+        conditions.push(`M.effective_date <= DATEADD(DAY, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
       // For exclusion predicates that need "before index event"
       // If daysBefore is set but no daysAfter, also cap at the index event date
@@ -694,10 +674,7 @@ export function generateMedicationPredicateCTE(
         }
       }
       if (predicate.timing.lookbackDays) {
-        const dateFunc = config.dialect === 'snowflake'
-          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-        conditions.push(`M.effective_date >= ${dateFunc}`);
+        conditions.push(`M.effective_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
       }
     }
   }
@@ -764,16 +741,10 @@ export function generateImmunizationPredicateCTE(
       }
     }
     if (predicate.timing.lookbackYears) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(year, -${predicate.timing.lookbackYears}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackYears} years'`;
-      conditions.push(`I.administration_date >= ${dateFunc}`);
+      conditions.push(`I.administration_date >= DATEADD(YEAR, -${predicate.timing.lookbackYears}, GETDATE())`);
     }
     if (predicate.timing.lookbackDays) {
-      const dateFunc = config.dialect === 'snowflake'
-        ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-        : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-      conditions.push(`I.administration_date >= ${dateFunc}`);
+      conditions.push(`I.administration_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
     }
   }
 
@@ -838,10 +809,10 @@ export function generateEncounterPredicateCTE(
     if (ie) {
       // Index-event-relative timing
       if (ie.daysBefore) {
-        conditions.push(`E.service_date >= dateadd(day, -${ie.daysBefore}, I.${ie.dateColumn})`);
+        conditions.push(`E.service_date >= DATEADD(DAY, -${ie.daysBefore}, I.${ie.dateColumn})`);
       }
       if (ie.daysAfter) {
-        conditions.push(`E.service_date <= dateadd(day, ${ie.daysAfter}, I.${ie.dateColumn})`);
+        conditions.push(`E.service_date <= DATEADD(DAY, ${ie.daysAfter}, I.${ie.dateColumn})`);
       }
     } else {
       if (predicate.timing.serviceDateRange) {
@@ -853,10 +824,7 @@ export function generateEncounterPredicateCTE(
         }
       }
       if (predicate.timing.lookbackDays) {
-        const dateFunc = config.dialect === 'snowflake'
-          ? `dateadd(day, -${predicate.timing.lookbackDays}, current_date())`
-          : `current_date - interval '${predicate.timing.lookbackDays} days'`;
-        conditions.push(`E.service_date >= ${dateFunc}`);
+        conditions.push(`E.service_date >= DATEADD(DAY, -${predicate.timing.lookbackDays}, GETDATE())`);
       }
     }
   }

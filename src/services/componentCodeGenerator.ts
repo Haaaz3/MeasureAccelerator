@@ -3,8 +3,7 @@
  *
  * Generates code for individual UMS components (DataElements) in multiple formats:
  * - CQL (Clinical Quality Language)
- * - Standard SQL
- * - Snowflake SQL
+ * - Synapse SQL (T-SQL compatible)
  *
  * Supports code overrides with mandatory notes that appear in generated output.
  */
@@ -150,10 +149,10 @@ function generateCQLForClause(
 }
 
 // ============================================================================
-// SQL Code Generation (Standard)
+// SQL Code Generation (Synapse SQL / T-SQL)
 // ============================================================================
 
-function generateStandardSQLForDataElement(
+function generateSynapseSQLForDataElement(
   element: DataElement,
   populationId: string = '${POPULATION_ID}'
 ): string {
@@ -163,97 +162,12 @@ function generateStandardSQLForDataElement(
 
   const lookback = detectLookbackPeriod(element.description, element.valueSet?.name);
 
+  // T-SQL/Synapse uses DATEADD function
   let dateClause = '';
   if (lookback?.years) {
-    dateClause = `AND ${alias}.effective_date >= current_date - interval '${lookback.years} years'`;
+    dateClause = `AND ${alias}.effective_date >= DATEADD(YEAR, -${lookback.years}, GETDATE())`;
   } else if (lookback?.days) {
-    dateClause = `AND ${alias}.effective_date >= current_date - interval '${lookback.days} days'`;
-  }
-
-  switch (element.type) {
-    case 'procedure':
-      return `-- ${vsName}
-SELECT DISTINCT ${alias}.empi_id
-FROM ph_f_procedure ${alias}
-WHERE ${alias}.population_id = '${populationId}'
-  AND EXISTS (
-    SELECT 1 FROM valueset_codes VS
-    WHERE VS.valueset_oid = '${vsOid}'
-      AND VS.code = ${alias}.procedure_code
-  )
-  ${dateClause ? dateClause.replace('effective_date', 'performed_date') : ''}`;
-
-    case 'diagnosis':
-      return `-- ${vsName}
-SELECT DISTINCT ${alias}.empi_id
-FROM ph_f_condition ${alias}
-WHERE ${alias}.population_id = '${populationId}'
-  AND ${element.negation ? 'NOT ' : ''}EXISTS (
-    SELECT 1 FROM valueset_codes VS
-    WHERE VS.valueset_oid = '${vsOid}'
-      AND VS.code = ${alias}.condition_code
-  )
-  ${dateClause}`;
-
-    case 'encounter':
-      return `-- ${vsName}
-SELECT DISTINCT ${alias}.empi_id
-FROM ph_f_encounter ${alias}
-WHERE ${alias}.population_id = '${populationId}'
-  AND EXISTS (
-    SELECT 1 FROM valueset_codes VS
-    WHERE VS.valueset_oid = '${vsOid}'
-      AND VS.code = ${alias}.encounter_type_code
-  )`;
-
-    case 'observation':
-      return `-- ${vsName}
-SELECT DISTINCT ${alias}.empi_id
-FROM ph_f_result ${alias}
-WHERE ${alias}.population_id = '${populationId}'
-  AND EXISTS (
-    SELECT 1 FROM valueset_codes VS
-    WHERE VS.valueset_oid = '${vsOid}'
-      AND VS.code = ${alias}.result_code
-  )
-  ${dateClause ? dateClause.replace('effective_date', 'service_date') : ''}`;
-
-    case 'demographic':
-      if (element.thresholds?.ageMin !== undefined || element.thresholds?.ageMax !== undefined) {
-        const min = element.thresholds.ageMin ?? 0;
-        const max = element.thresholds.ageMax ?? 150;
-        return `-- Age ${min}-${max}
-SELECT DISTINCT empi_id
-FROM DEMOG
-WHERE age_in_years >= ${min}
-  AND age_in_years <= ${max}`;
-      }
-      return `-- Demographic: ${element.description}`;
-
-    default:
-      return `-- ${element.type}: ${element.description}`;
-  }
-}
-
-// ============================================================================
-// SQL Code Generation (Snowflake)
-// ============================================================================
-
-function generateSnowflakeSQLForDataElement(
-  element: DataElement,
-  populationId: string = '${POPULATION_ID}'
-): string {
-  const vsName = element.valueSet?.name || element.description || 'ValueSet';
-  const vsOid = element.valueSet?.oid || 'UNKNOWN_OID';
-  const alias = element.type.toUpperCase().substring(0, 4);
-
-  const lookback = detectLookbackPeriod(element.description, element.valueSet?.name);
-
-  let dateClause = '';
-  if (lookback?.years) {
-    dateClause = `AND ${alias}.effective_date >= dateadd(year, -${lookback.years}, current_date())`;
-  } else if (lookback?.days) {
-    dateClause = `AND ${alias}.effective_date >= dateadd(day, -${lookback.days}, current_date())`;
+    dateClause = `AND ${alias}.effective_date >= DATEADD(DAY, -${lookback.days}, GETDATE())`;
   }
 
   switch (element.type) {
@@ -367,11 +281,8 @@ export function generateComponentCode(
     case 'cql':
       code = generateCQLForDataElement(element);
       break;
-    case 'sql-standard':
-      code = generateStandardSQLForDataElement(element, populationId);
-      break;
-    case 'sql-snowflake':
-      code = generateSnowflakeSQLForDataElement(element, populationId);
+    case 'synapse-sql':
+      code = generateSynapseSQLForDataElement(element, populationId);
       break;
     default:
       code = `// Unsupported format: ${format}`;

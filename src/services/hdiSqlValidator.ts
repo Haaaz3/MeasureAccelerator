@@ -64,20 +64,12 @@ const HDI_PATTERNS = {
     'ph_d_person',
   ],
 
-  // Snowflake-specific patterns
-  SNOWFLAKE_DATE_FUNCS: [
-    'datediff',
-    'dateadd',
-    'current_date()',
-    "to_char\\(.*'MMDD'\\)",
-  ],
-
-  // Standard SQL date patterns
-  STANDARD_DATE_FUNCS: [
-    'DATE_PART',
-    'AGE\\(',
-    'current_date',
-    'interval',
+  // Synapse/T-SQL date patterns
+  SYNAPSE_DATE_FUNCS: [
+    'DATEDIFF',
+    'DATEADD',
+    'GETDATE\\(\\)',
+    "FORMAT\\(.*'MMdd'\\)",
   ],
 };
 
@@ -262,40 +254,28 @@ function validatePredicateColumns(
 
 function validateDialectFunctions(
   sql: string,
-  dialect: 'snowflake' | 'standard',
+  dialect: 'synapse',
   _errors: ValidationIssue[],
   warnings: ValidationIssue[]
 ): void {
-  if (dialect === 'snowflake') {
-    // Check for non-Snowflake patterns
-    if (sql.includes("interval '") || sql.includes('AGE(')) {
-      warnings.push({
-        severity: 'warning',
-        code: 'DIALECT_MISMATCH',
-        message: 'SQL contains standard SQL syntax but dialect is set to Snowflake',
-        suggestion: 'Use Snowflake functions: datediff(), dateadd() instead of interval/AGE()',
-      });
-    }
+  // Check for non-Synapse/T-SQL patterns
+  if (sql.includes("interval '") || sql.includes('AGE(') || sql.includes('current_date()')) {
+    warnings.push({
+      severity: 'warning',
+      code: 'DIALECT_MISMATCH',
+      message: 'SQL contains non-Synapse syntax',
+      suggestion: 'Use Synapse/T-SQL functions: DATEDIFF(), DATEADD(), GETDATE()',
+    });
+  }
 
-    // Check for correct Snowflake date calculation
-    if (!sql.includes('current_date()') && sql.includes('current_date')) {
-      warnings.push({
-        severity: 'warning',
-        code: 'SNOWFLAKE_SYNTAX',
-        message: 'Snowflake requires current_date() with parentheses',
-        suggestion: 'Change "current_date" to "current_date()"',
-      });
-    }
-  } else {
-    // Check for Snowflake-specific patterns in standard SQL
-    if (sql.includes('current_date()') || /datediff\s*\(/i.test(sql)) {
-      warnings.push({
-        severity: 'warning',
-        code: 'DIALECT_MISMATCH',
-        message: 'SQL contains Snowflake-specific syntax but dialect is set to standard',
-        suggestion: 'Use standard SQL: DATE_PART, interval, AGE()',
-      });
-    }
+  // Check for correct T-SQL date function usage
+  if (sql.includes('current_date') && !sql.includes('GETDATE()')) {
+    warnings.push({
+      severity: 'warning',
+      code: 'SYNAPSE_SYNTAX',
+      message: 'Use GETDATE() instead of current_date for T-SQL compatibility',
+      suggestion: 'Change "current_date" to "GETDATE()"',
+    });
   }
 }
 

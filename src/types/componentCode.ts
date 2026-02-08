@@ -2,20 +2,26 @@
  * Component Code Types
  *
  * Types for code viewing, editing, and override tracking with mandatory notes.
- * Supports CQL, Standard SQL, and Snowflake SQL output formats.
+ * Supports CQL and Synapse SQL output formats.
  */
 
 // ============================================================================
 // Code Output Formats
 // ============================================================================
 
-export type CodeOutputFormat = 'cql' | 'sql-standard' | 'sql-snowflake';
+export type CodeOutputFormat = 'cql' | 'synapse-sql';
 
 export const CODE_OUTPUT_FORMATS: { value: CodeOutputFormat; label: string }[] = [
   { value: 'cql', label: 'CQL' },
-  { value: 'sql-standard', label: 'Standard SQL' },
-  { value: 'sql-snowflake', label: 'Snowflake SQL' },
+  { value: 'synapse-sql', label: 'Synapse SQL' },
 ];
+
+/**
+ * Get the display label for a code output format
+ */
+export function getFormatLabel(format: CodeOutputFormat): string {
+  return CODE_OUTPUT_FORMATS.find(f => f.value === format)?.label ?? format;
+}
 
 // ============================================================================
 // Code Edit Notes (Git-style comments)
@@ -216,6 +222,7 @@ export function formatNoteTimestamp(isoTimestamp: string): string {
 
 export function formatNoteForCodeComment(note: CodeEditNote, format: CodeOutputFormat): string {
   const timestamp = formatNoteTimestamp(note.timestamp);
+  // CQL uses // comments, SQL uses -- comments
   const prefix = format === 'cql' ? '//' : '--';
   const changeTypeLabel = note.changeType ? ` [${note.changeType}]` : '';
 

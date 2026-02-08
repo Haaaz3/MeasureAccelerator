@@ -53,8 +53,7 @@ const FormatSelector = ({
 }: FormatSelectorProps) => {
   const formats: { value: CodeOutputFormat; label: string }[] = [
     { value: 'cql', label: 'CQL' },
-    { value: 'sql-standard', label: 'Standard SQL' },
-    { value: 'sql-snowflake', label: 'Snowflake SQL' },
+    { value: 'synapse-sql', label: 'Synapse SQL' },
   ];
 
   return (
