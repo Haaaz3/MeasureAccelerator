@@ -176,6 +176,15 @@ function extractPredicatesFromUMS(
   }
 
   // Process each population
+  if (!measure.populations || measure.populations.length === 0) {
+    return {
+      measureId: measure.metadata.measureId || 'unknown',
+      config,
+      predicates,
+      populations,
+    };
+  }
+
   for (const population of measure.populations) {
     const popPredicates: string[] = [];
 
@@ -279,6 +288,11 @@ function extractFromLogicalClause(
   const predicates: DataModelPredicate[] = [];
   const predicateAliases: string[] = [];
 
+  // Handle null/undefined clause or children
+  if (!clause || !clause.children || clause.children.length === 0) {
+    return { predicates, predicateAliases };
+  }
+
   for (const child of clause.children) {
     if ('operator' in child && 'children' in child && !('type' in child)) {
       // Nested LogicalClause (has operator + children, but no DataElement 'type')
@@ -307,13 +321,23 @@ function dataElementToPredicate(
   generateAlias: (prefix: string) => string,
   valueSets: ValueSetReference[]
 ): DataModelPredicate | null {
+  if (!element) {
+    console.warn('Null data element passed to dataElementToPredicate');
+    return null;
+  }
+
   // Find value set if referenced
   const valueSet = element.valueSet?.id
-    ? valueSets.find(vs => vs.id === element.valueSet?.id)
+    ? valueSets?.find(vs => vs?.id === element.valueSet?.id)
     : undefined;
 
   const valueSetOid = valueSet?.oid;
   const valueSetName = valueSet?.name || element.valueSet?.name;
+
+  // Warn if value set has no codes defined
+  if (valueSet && (!valueSet.codes || valueSet.codes.length === 0)) {
+    console.warn(`Value set "${valueSetName || valueSetOid}" has no codes defined`);
+  }
 
   // Build codes object if we have value set info
   const codes = valueSetOid || valueSetName
@@ -482,6 +506,10 @@ function generatePredicateCTE(
   predicate: DataModelPredicate,
   config: SQLGenerationConfig
 ): string {
+  if (!predicate) {
+    return '-- WARNING: Null predicate encountered';
+  }
+
   switch (predicate.type) {
     case 'demographics':
       return generateDemographicsPredicateCTE(predicate as DemographicsPredicate, config);
@@ -497,8 +525,17 @@ function generatePredicateCTE(
       return generateImmunizationPredicateCTE(predicate as ImmunizationPredicate, config);
     case 'encounter':
       return generateEncounterPredicateCTE(predicate as EncounterPredicate, config);
-    default:
-      throw new Error(`Unknown predicate type: ${(predicate as any).type}`);
+    default: {
+      // Handle unknown types gracefully with a placeholder CTE
+      // Use type assertion since TypeScript narrows to 'never' after exhaustive cases
+      const unknownPred = predicate as unknown as { type?: string; alias?: string };
+      const unknownType = unknownPred.type || 'unknown';
+      const alias = unknownPred.alias || 'UNKNOWN_PRED';
+      return `-- WARNING: Unknown predicate type "${unknownType}" - generating placeholder
+${alias} as (
+  select distinct empi_id from DEMOG -- Placeholder for unsupported type: ${unknownType}
+)`;
+    }
   }
 }
 

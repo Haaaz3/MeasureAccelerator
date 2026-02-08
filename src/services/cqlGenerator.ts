@@ -103,7 +103,7 @@ export function generateCQL(measure: UniversalMeasureSpec): CQLGenerationResult 
 
     // Generate CQL sections
     const header = generateHeader(measure, libraryName, version);
-    const valueSets = generateValueSetDeclarations(measure.valueSets);
+    const valueSets = generateValueSetDeclarations(measure.valueSets, warnings);
     const parameters = generateParameters(measure);
     const helperDefinitions = generateHelperDefinitions(measure);
     const populationDefinitions = generatePopulationDefinitions(measure);
@@ -132,8 +132,8 @@ export function generateCQL(measure: UniversalMeasureSpec): CQLGenerationResult 
       metadata: {
         libraryName,
         version,
-        populationCount: measure.populations.length,
-        valueSetCount: measure.valueSets.length,
+        populationCount: measure.populations?.length ?? 0,
+        valueSetCount: measure.valueSets?.length ?? 0,
         definitionCount,
       },
     };
@@ -204,8 +204,10 @@ function generateHeader(
 
 /**
  * Generate value set declarations
+ * @param valueSets - Value sets to declare
+ * @param warnings - Array to collect warnings about value sets with no codes
  */
-function generateValueSetDeclarations(valueSets: ValueSetReference[]): string {
+function generateValueSetDeclarations(valueSets: ValueSetReference[], warnings: string[] = []): string {
   if (!valueSets || valueSets.length === 0) {
     return '// No value sets defined\n';
   }
@@ -213,11 +215,22 @@ function generateValueSetDeclarations(valueSets: ValueSetReference[]): string {
   const lines: string[] = ['// Value Sets'];
 
   for (const vs of valueSets) {
+    if (!vs) continue; // Skip null/undefined entries
+
     const url = vs.url || (vs.oid ? `http://cts.nlm.nih.gov/fhir/ValueSet/${vs.oid}` : null);
     if (url) {
-      lines.push(`valueset "${sanitizeIdentifier(vs.name)}": '${url}'`);
+      // Check if value set has no codes defined
+      const hasCodes = vs.codes && vs.codes.length > 0;
+      if (!hasCodes) {
+        lines.push(`valueset "${sanitizeIdentifier(vs.name)}": '${url}'`);
+        lines.push(`  /* WARNING: Value set "${vs.name}" has no codes defined - may need expansion */`);
+        warnings.push(`Value set "${vs.name}" has no codes defined`);
+      } else {
+        lines.push(`valueset "${sanitizeIdentifier(vs.name)}": '${url}'`);
+      }
     } else {
       lines.push(`// valueset "${sanitizeIdentifier(vs.name)}": 'OID_NOT_SPECIFIED'`);
+      warnings.push(`Value set "${vs.name}" has no OID or URL specified`);
     }
   }
 
@@ -265,9 +278,9 @@ define "Patient Gender Valid":
   }
 
   // Qualifying encounters helper
-  const hasEncounterCriteria = measure.populations.some(pop =>
-    hasDataElementType(pop.criteria, 'encounter')
-  );
+  const hasEncounterCriteria = measure.populations?.some(pop =>
+    pop.criteria && hasDataElementType(pop.criteria, 'encounter')
+  ) ?? false;
   if (hasEncounterCriteria) {
     lines.push(`
 define "Qualifying Encounter During Measurement Period":
@@ -595,7 +608,9 @@ define "Numerator":`,
     const criteriaExpr = generateCriteriaExpression(pop.criteria, measure);
     lines.push('  ' + criteriaExpr);
   } else {
-    lines.push('  true // TODO: Define numerator criteria');
+    // No numerator criteria defined - generate placeholder with warning comment
+    lines.push('  /* WARNING: No numerator criteria defined in measure specification */');
+    lines.push('  true');
   }
 
   return lines.join('\n');
@@ -663,9 +678,21 @@ function generateDataElementExpression(
   element: DataElement,
   measure: UniversalMeasureSpec
 ): string {
+  if (!element) {
+    return '/* WARNING: Null data element encountered */\n  true';
+  }
+
+  // Handle missing valueSet gracefully
+  const hasValueSet = element.valueSet?.name || element.valueSet?.id;
+  if (!hasValueSet && element.type !== 'demographic') {
+    // No value set specified for a non-demographic element
+    const desc = element.description || `${element.type} criterion`;
+    return `/* WARNING: No value set defined for "${desc}" */\n  true`;
+  }
+
   const vsName = element.valueSet?.name
     ? sanitizeIdentifier(element.valueSet.name)
-    : 'Value Set';
+    : 'Unspecified Value Set';
 
   const timing = generateTimingExpression(element.timingRequirements);
 
