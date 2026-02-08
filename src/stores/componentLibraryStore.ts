@@ -649,7 +649,8 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
         const usageMap = new Map<string, Set<string>>();
 
         for (const measure of measures) {
-          const measureId = measure.metadata?.measureId || measure.id;
+          // Use measure.id (internal store ID), not metadata.measureId (display ID like CMS130)
+          const measureId = measure.id;
           for (const pop of measure.populations) {
             if (!pop.criteria) continue;
             const linked = collectLinkedElements(pop.criteria as LogicalClause | DataElement);

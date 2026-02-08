@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useMeasureStore } from '../../stores/measureStore';
+import { useComponentCodeStore } from '../../stores/componentCodeStore';
+import type { LogicalClause, DataElement } from '../../types/ums';
 import { getComplexityColor, getComplexityDots } from '../../services/complexityCalculator';
 import type { AtomicComponent, CompositeComponent } from '../../types/componentLibrary';
 
@@ -70,7 +72,7 @@ function formatDate(dateStr: string): string {
 export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetailProps) {
   const { getComponent, approve, archiveComponentVersion, addComponent } =
     useComponentLibraryStore();
-  const { measures, setActiveMeasure, setActiveTab } = useMeasureStore();
+  const { measures, setActiveMeasure } = useMeasureStore();
 
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
@@ -80,10 +82,53 @@ export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetai
   // Create a lookup map for measure names
   const measureLookup = new Map(measures.map(m => [m.id, m]));
 
-  // Navigate to a measure in the UMS Editor
+  // Helper to find a DataElement in the criteria tree that links to a library component
+  const findElementByLibraryComponentId = (
+    node: LogicalClause | DataElement | null,
+    libraryComponentId: string
+  ): string | null => {
+    if (!node) return null;
+
+    // Check if this is a DataElement with the matching libraryComponentId
+    if ('type' in node && (node as DataElement).libraryComponentId === libraryComponentId) {
+      return (node as DataElement).id;
+    }
+
+    // If it's a clause, search children
+    if ('children' in node && (node as LogicalClause).children) {
+      for (const child of (node as LogicalClause).children) {
+        const found = findElementByLibraryComponentId(child as LogicalClause | DataElement, libraryComponentId);
+        if (found) return found;
+      }
+    }
+
+    return null;
+  };
+
+  // Navigate to a measure in the UMS Editor and select the specific component
   const handleNavigateToMeasure = (measureId: string) => {
+    const measure = measureLookup.get(measureId);
+    if (!measure) return;
+
+    // Find the DataElement in this measure that links to the current library component
+    let targetElementId: string | null = null;
+    for (const population of measure.populations) {
+      if (population.criteria) {
+        targetElementId = findElementByLibraryComponentId(
+          population.criteria as LogicalClause | DataElement,
+          componentId
+        );
+        if (targetElementId) break;
+      }
+    }
+
+    // Set the inspecting component ID so UMS Editor will select it
+    if (targetElementId) {
+      useComponentCodeStore.getState().setInspectingComponent(targetElementId);
+    }
+
+    // Navigate to the measure
     setActiveMeasure(measureId);
-    setActiveTab('editor');
   };
 
   // ------------------------------------------------------------------
