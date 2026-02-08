@@ -15,8 +15,10 @@ import {
   ChevronUp,
   AlertTriangle,
   Code,
+  ExternalLink,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
+import { useMeasureStore } from '../../stores/measureStore';
 import { getComplexityColor, getComplexityDots } from '../../services/complexityCalculator';
 import type { AtomicComponent, CompositeComponent } from '../../types/componentLibrary';
 
@@ -68,11 +70,21 @@ function formatDate(dateStr: string): string {
 export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetailProps) {
   const { getComponent, approve, archiveComponentVersion, addComponent } =
     useComponentLibraryStore();
+  const { measures, setActiveMeasure, setActiveTab } = useMeasureStore();
 
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
 
   const component = getComponent(componentId);
+
+  // Create a lookup map for measure names
+  const measureLookup = new Map(measures.map(m => [m.id, m]));
+
+  // Navigate to a measure in the UMS Editor
+  const handleNavigateToMeasure = (measureId: string) => {
+    setActiveMeasure(measureId);
+    setActiveTab('editor');
+  };
 
   // ------------------------------------------------------------------
   // Handlers
@@ -284,15 +296,30 @@ export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetai
             {component.usage.usageCount === 1 ? 'measure' : 'measures'}
           </p>
           {component.usage.measureIds.length > 0 && (
-            <ul className="mt-2 space-y-1">
-              {component.usage.measureIds.map((measureId) => (
-                <li
-                  key={measureId}
-                  className="text-xs text-[var(--accent)] font-mono truncate"
-                >
-                  {measureId}
-                </li>
-              ))}
+            <ul className="mt-2 space-y-1.5">
+              {component.usage.measureIds.map((measureId) => {
+                const measure = measureLookup.get(measureId);
+                const displayName = measure?.metadata?.title || measureId;
+                const displayId = measure?.metadata?.measureId || measureId;
+                return (
+                  <li key={measureId}>
+                    <button
+                      onClick={() => handleNavigateToMeasure(measureId)}
+                      className="flex items-center gap-2 text-left w-full group hover:bg-[var(--bg-tertiary)] rounded px-2 py-1.5 -mx-2 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-medium text-[var(--accent)] block truncate group-hover:text-[var(--accent-hover)]">
+                          {displayId}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)] block truncate group-hover:text-[var(--text)]">
+                          {displayName}
+                        </span>
+                      </div>
+                      <ExternalLink size={12} className="text-[var(--text-dim)] group-hover:text-[var(--accent)] flex-shrink-0" />
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

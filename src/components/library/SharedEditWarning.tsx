@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { AlertTriangle, ArrowRight, Copy, X, FileText } from 'lucide-react';
+import { useMeasureStore } from '../../stores/measureStore';
 
 // ============================================================================
 // Types
@@ -29,6 +30,10 @@ export default function SharedEditWarning({
   onCancel,
 }: SharedEditWarningProps) {
   const [selectedChoice, setSelectedChoice] = useState<EditChoice>('update_all');
+  const { measures } = useMeasureStore();
+
+  // Create a lookup map for measure names
+  const measureLookup = new Map(measures.map(m => [m.id, m]));
 
   const handleContinue = () => {
     if (selectedChoice === 'update_all') {
@@ -112,18 +117,28 @@ export default function SharedEditWarning({
                 backgroundColor: 'var(--bg-primary)',
               }}
             >
-              {measureIds.map((measureId) => (
-                <div
-                  key={measureId}
-                  className="flex items-center gap-2.5 px-4 py-2.5"
-                  style={{ borderColor: 'var(--border)' }}
-                >
-                  <FileText size={14} style={{ color: 'var(--text-secondary)' }} />
-                  <span className="text-sm truncate" style={{ color: 'var(--text)' }}>
-                    {measureId}
-                  </span>
-                </div>
-              ))}
+              {measureIds.map((measureId) => {
+                const measure = measureLookup.get(measureId);
+                const displayName = measure?.metadata?.title || measureId;
+                const displayId = measure?.metadata?.measureId || measureId;
+                return (
+                  <div
+                    key={measureId}
+                    className="flex items-center gap-2.5 px-4 py-2.5"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    <FileText size={14} style={{ color: 'var(--text-secondary)' }} />
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium truncate block" style={{ color: 'var(--accent)' }}>
+                        {displayId}
+                      </span>
+                      <span className="text-xs truncate block" style={{ color: 'var(--text-secondary)' }}>
+                        {displayName}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
