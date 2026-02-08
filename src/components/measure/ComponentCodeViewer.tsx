@@ -231,6 +231,15 @@ export const ComponentCodeViewer = ({
   const [noteContent, setNoteContent] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // === DIAGNOSTIC LOGGING ===
+  console.log('=== CODE VIEWER ===');
+  console.log('Props element.id:', element?.id);
+  console.log('Props element.description:', element?.description);
+  console.log('codeState.componentId:', codeState?.componentId);
+  console.log('codeState received:', JSON.stringify(codeState));
+  console.log('Override for current format:', JSON.stringify(codeState?.overrides?.[codeState.selectedFormat]));
+  console.log('=== END CODE VIEWER ===');
+
   const currentOverride = codeState.overrides[codeState.selectedFormat];
 
   // Generate code for current format
@@ -276,6 +285,14 @@ export const ComponentCodeViewer = ({
 
   const handleSaveCode = () => {
     if (noteContent.trim().length < 10) return;
+
+    // === DIAGNOSTIC LOGGING ===
+    console.log('=== SAVING OVERRIDE ===');
+    console.log('Saving to element.id:', element.id);
+    console.log('Element description:', element.description);
+    console.log('Format:', codeState.selectedFormat);
+    console.log('Note content:', noteContent);
+    console.log('=== END SAVING OVERRIDE ===');
 
     // CRITICAL: Use element.id as the authoritative component ID, NOT codeState.componentId
     // This ensures overrides are always keyed to the correct DataElement
