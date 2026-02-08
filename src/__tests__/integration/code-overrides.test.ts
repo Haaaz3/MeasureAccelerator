@@ -267,6 +267,97 @@ describe('Code Overrides', () => {
     });
   });
 
+  describe('Component ID Isolation', () => {
+    it('overrides for one component do not appear on other components', () => {
+      const { measure } = createTestMeasure({ withComponents: false });
+
+      // Get two different component IDs
+      const firstPop = measure.populations[0];
+      const dataElements = firstPop.criteria?.children || [];
+
+      if (dataElements.length < 2) return;
+
+      const componentA = (dataElements[0] as any)?.id;
+      const componentB = (dataElements[1] as any)?.id;
+
+      if (!componentA || !componentB) return;
+
+      // Save override ONLY for component A
+      useComponentCodeStore.getState().saveCodeOverride(
+        componentA,
+        'cql',
+        '// Override for Component A',
+        'Note only for component A',
+        '// Original A'
+      );
+
+      // Component A should have the override
+      const stateA = useComponentCodeStore.getState().codeStates[componentA];
+      expect(stateA).toBeDefined();
+      expect(stateA?.overrides.cql?.isLocked).toBe(true);
+      expect(stateA?.overrides.cql?.notes[0].content).toBe('Note only for component A');
+
+      // Component B should have NO state at all (not created yet)
+      const stateB = useComponentCodeStore.getState().codeStates[componentB];
+      expect(stateB).toBeUndefined();
+
+      // Verify the componentId in state A is correct
+      expect(stateA?.componentId).toBe(componentA);
+    });
+
+    it('multiple overrides stay isolated to their respective components', () => {
+      const { measure } = createTestMeasure({ withComponents: false });
+
+      const firstPop = measure.populations[0];
+      const dataElements = firstPop.criteria?.children || [];
+
+      if (dataElements.length < 2) return;
+
+      const componentA = (dataElements[0] as any)?.id;
+      const componentB = (dataElements[1] as any)?.id;
+
+      if (!componentA || !componentB) return;
+
+      // Save overrides for BOTH components with different content
+      useComponentCodeStore.getState().saveCodeOverride(
+        componentA,
+        'cql',
+        '// Code A',
+        'Alpha note',
+        '// Original A'
+      );
+
+      useComponentCodeStore.getState().saveCodeOverride(
+        componentB,
+        'cql',
+        '// Code B',
+        'Beta note',
+        '// Original B'
+      );
+
+      const stateA = useComponentCodeStore.getState().codeStates[componentA];
+      const stateB = useComponentCodeStore.getState().codeStates[componentB];
+
+      // Component A has ONLY its own note
+      expect(stateA?.overrides.cql?.notes).toHaveLength(1);
+      expect(stateA?.overrides.cql?.notes[0].content).toBe('Alpha note');
+      expect(stateA?.overrides.cql?.code).toBe('// Code A');
+
+      // Component B has ONLY its own note
+      expect(stateB?.overrides.cql?.notes).toHaveLength(1);
+      expect(stateB?.overrides.cql?.notes[0].content).toBe('Beta note');
+      expect(stateB?.overrides.cql?.code).toBe('// Code B');
+
+      // They don't cross-contaminate
+      expect(stateA?.overrides.cql?.notes).not.toContainEqual(
+        expect.objectContaining({ content: 'Beta note' })
+      );
+      expect(stateB?.overrides.cql?.notes).not.toContainEqual(
+        expect.objectContaining({ content: 'Alpha note' })
+      );
+    });
+  });
+
   describe('Integration with code generation', () => {
     it('generated CQL reflects override count in summary', () => {
       const { measure } = createTestMeasure({ withComponents: false });

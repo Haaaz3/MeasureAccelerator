@@ -274,15 +274,14 @@ export const ComponentDetailPanel = ({
   const [isEditingTiming, setIsEditingTiming] = useState(false);
   const [isEditingTimingWindow, setIsEditingTimingWindow] = useState(false);
 
-  // Code state from store
-  const codeState = useComponentCodeStore((state) =>
-    state.getCodeState(element.id)
-  );
+  // Code state from store - read directly from codeStates, don't auto-create
+  const codeState = useComponentCodeStore((state) => state.codeStates[element.id]);
+  const defaultFormat = useComponentCodeStore((state) => state.defaultFormat);
   const setSelectedFormat = useComponentCodeStore((state) => state.setSelectedFormat);
 
-  // Derive notes
-  const allNotes = getAllNotesForComponent(codeState.overrides);
-  const hasOverride = Object.values(codeState.overrides).some(o => o?.isLocked);
+  // Derive notes - only from actual overrides for THIS component
+  const allNotes = codeState ? getAllNotesForComponent(codeState.overrides) : [];
+  const hasOverride = codeState ? Object.values(codeState.overrides).some(o => o?.isLocked) : false;
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
@@ -291,11 +290,21 @@ export const ComponentDetailPanel = ({
     }));
   };
 
-  // Handle code state changes
+  // Handle code state changes - use element.id as the authoritative source
   const handleCodeStateChange = (newState: ComponentCodeState) => {
-    if (newState.selectedFormat !== codeState.selectedFormat) {
+    const currentFormat = codeState?.selectedFormat ?? defaultFormat;
+    if (newState.selectedFormat !== currentFormat) {
       setSelectedFormat(element.id, newState.selectedFormat);
     }
+  };
+
+  // Create effective code state for the viewer - using element.id as the source of truth
+  const effectiveCodeState: ComponentCodeState = codeState ?? {
+    componentId: element.id,
+    overrides: {},
+    selectedFormat: defaultFormat,
+    isEditing: false,
+    pendingNote: '',
   };
 
   return (
@@ -536,7 +545,7 @@ export const ComponentDetailPanel = ({
           <div className="p-4 border-b border-[var(--border)]">
             <ComponentCodeViewer
               element={element}
-              codeState={codeState}
+              codeState={effectiveCodeState}
               onCodeStateChange={handleCodeStateChange}
             />
           </div>

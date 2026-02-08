@@ -62,6 +62,19 @@ export function UMSEditor() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
+  // Listen for inspectingComponentId from CodeGeneration's "View in UMS Editor" button
+  const inspectingComponentId = useComponentCodeStore((state) => state.inspectingComponentId);
+  const setInspectingComponent = useComponentCodeStore((state) => state.setInspectingComponent);
+
+  // When inspectingComponentId changes, select that node and clear the inspection state
+  useEffect(() => {
+    if (inspectingComponentId) {
+      setSelectedNode(inspectingComponentId);
+      // Clear the inspecting state so it doesn't persist
+      setInspectingComponent(null);
+    }
+  }, [inspectingComponentId, setInspectingComponent]);
+
   // Toggle merge selection for a component
   const toggleMergeSelection = (componentId: string) => {
     setSelectedForMerge(prev => {

@@ -40,8 +40,11 @@ interface ComponentCodeStore {
 
   // ========== Actions ==========
 
-  /** Get or create code state for a component */
-  getCodeState: (componentId: string) => ComponentCodeState;
+  /** Get existing code state for a component (returns undefined if none) */
+  getCodeState: (componentId: string) => ComponentCodeState | undefined;
+
+  /** Get or create code state for a component (creates if not exists) */
+  getOrCreateCodeState: (componentId: string) => ComponentCodeState;
 
   /** Set the selected format for a component */
   setSelectedFormat: (componentId: string, format: CodeOutputFormat) => void;
@@ -106,9 +109,15 @@ export const useComponentCodeStore = create<ComponentCodeStore>()(
       defaultFormat: 'cql',
       inspectingComponentId: null,
 
+      // Pure getter - no side effects, returns undefined if not found
       getCodeState: (componentId) => {
-        const state = get().codeStates[componentId];
-        if (state) return state;
+        return get().codeStates[componentId];
+      },
+
+      // Get or create - has side effects, use for initialization
+      getOrCreateCodeState: (componentId) => {
+        const existing = get().codeStates[componentId];
+        if (existing) return existing;
 
         // Create default state with global default format
         const newState = createDefaultComponentCodeState(componentId);
@@ -331,10 +340,10 @@ export const useComponentCodeStore = create<ComponentCodeStore>()(
 // ============================================================================
 
 /**
- * Hook to get code state for a specific component
+ * Hook to get code state for a specific component (may be undefined)
  */
-export function useComponentCodeState(componentId: string): ComponentCodeState {
-  return useComponentCodeStore((state) => state.getCodeState(componentId));
+export function useComponentCodeState(componentId: string): ComponentCodeState | undefined {
+  return useComponentCodeStore((state) => state.codeStates[componentId]);
 }
 
 /**

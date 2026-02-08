@@ -273,10 +273,11 @@ export const ComponentCodeViewer = ({
   const handleSaveCode = () => {
     if (noteContent.trim().length < 10) return;
 
-    // Save directly to Zustand store (not via props which may not persist)
+    // CRITICAL: Use element.id as the authoritative component ID, NOT codeState.componentId
+    // This ensures overrides are always keyed to the correct DataElement
     const store = useComponentCodeStore.getState();
     store.saveCodeOverride(
-      codeState.componentId,
+      element.id,  // Use element.id directly - source of truth
       codeState.selectedFormat,
       editedCode,
       noteContent,
@@ -292,9 +293,9 @@ export const ComponentCodeViewer = ({
   const handleRevertToGenerated = () => {
     if (!currentOverride) return;
 
-    // Revert directly in Zustand store
+    // CRITICAL: Use element.id as the authoritative component ID
     const store = useComponentCodeStore.getState();
-    store.revertToGenerated(codeState.componentId, codeState.selectedFormat);
+    store.revertToGenerated(element.id, codeState.selectedFormat);
   };
 
   const handleCopyCode = async () => {
