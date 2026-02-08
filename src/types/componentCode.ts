@@ -224,9 +224,10 @@ export function formatNoteForCodeComment(note: CodeEditNote, format: CodeOutputF
   const timestamp = formatNoteTimestamp(note.timestamp);
   // CQL uses // comments, SQL uses -- comments
   const prefix = format === 'cql' ? '//' : '--';
+  const formatLabel = getFormatLabel(format).toUpperCase();
   const changeTypeLabel = note.changeType ? ` [${note.changeType}]` : '';
 
-  return `${prefix} EDIT NOTE${changeTypeLabel} (${timestamp}): ${note.content}`;
+  return `${prefix} [EDIT NOTE - ${formatLabel}]${changeTypeLabel} (${timestamp}): ${note.content}`;
 }
 
 export function getAllNotesForComponent(

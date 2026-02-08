@@ -31,6 +31,7 @@ import type {
 import {
   formatNoteTimestamp,
   getAllNotesForComponent,
+  getFormatLabel,
 } from '../../types/componentCode';
 
 import { generateComponentCode } from '../../services/componentCodeGenerator';
@@ -107,7 +108,10 @@ const CodeNoteListInternal = ({ notes, maxVisible = 3 }: CodeNoteListInternalPro
             key={note.id}
             className="bg-[var(--bg-secondary)] rounded-lg p-3 text-sm"
           >
-            <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="px-1.5 py-0.5 bg-[var(--accent)]/10 text-[var(--accent)] text-[10px] rounded font-medium">
+                {getFormatLabel(note.format)}
+              </span>
               <Clock size={12} className="text-[var(--text-dim)]" />
               <span className="text-xs text-[var(--text-dim)]">
                 {formatNoteTimestamp(note.timestamp)}
@@ -321,7 +325,7 @@ export const ComponentCodeViewer = ({
           {currentOverride?.isLocked && (
             <span className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/10 text-amber-500 text-xs rounded-full">
               <Lock size={10} />
-              Overridden
+              {getFormatLabel(codeState.selectedFormat)} Override
             </span>
           )}
 

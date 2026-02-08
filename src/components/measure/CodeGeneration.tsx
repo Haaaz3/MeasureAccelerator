@@ -39,6 +39,7 @@ export function CodeGeneration() {
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
   const codeRef = useRef<HTMLPreElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const currentMatchRef = useRef<HTMLElement>(null);
 
   // Override count for current measure and format
   const overrideCount = useMemo(() => {
@@ -156,6 +157,16 @@ export function CodeGeneration() {
     performSearch(searchQuery, code);
   }, [searchQuery, generationResult?.cql, synapseResult?.sql, format, performSearch]);
 
+  // Scroll to current match when it changes
+  useEffect(() => {
+    if (currentMatchRef.current && searchResults.length > 0) {
+      currentMatchRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [currentSearchIndex, searchResults.length]);
+
   // Helper to highlight search matches in code
   const highlightCode = useCallback((code: string): React.ReactNode => {
     if (!searchQuery.trim() || searchResults.length === 0) {
@@ -179,6 +190,7 @@ export function CodeGeneration() {
       parts.push(
         <mark
           key={`match-${idx}`}
+          ref={isCurrentMatch ? currentMatchRef : undefined}
           className={`${isCurrentMatch ? 'bg-[var(--accent)] text-white' : 'bg-[var(--warning)]/40'} rounded px-0.5`}
         >
           {matchText}
@@ -459,17 +471,17 @@ export function CodeGeneration() {
                 <div className="flex items-center gap-2 mt-3">
                   <button
                     onClick={() => {
-                      // Find the [OVERRIDDEN] marker in the code and scroll to it
+                      // Find the language-specific OVERRIDE marker in the code and scroll to it
+                      // CQL uses "[CQL OVERRIDE]", Synapse SQL uses "[SYNAPSE SQL OVERRIDE]"
+                      const overrideMarker = format === 'cql' ? '[CQL OVERRIDE]' : '[SYNAPSE SQL OVERRIDE]';
                       if (codeRef.current) {
                         const codeText = codeRef.current.textContent || '';
-                        const overriddenIndex = codeText.indexOf('[OVERRIDDEN]');
+                        const overriddenIndex = codeText.indexOf(overrideMarker);
                         if (overriddenIndex !== -1) {
-                          // Find the span containing OVERRIDDEN and scroll to it
                           const codeElement = codeRef.current;
-                          const searchText = '[OVERRIDDEN]';
 
                           // Highlight the override section
-                          setSearchQuery(searchText);
+                          setSearchQuery(overrideMarker);
 
                           // Scroll to the first match
                           setTimeout(() => {
@@ -624,6 +636,16 @@ export function CodeGeneration() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (e.shiftKey) {
+                      navigateSearch('prev');
+                    } else {
+                      navigateSearch('next');
+                    }
+                  }
+                }}
                 placeholder="Search in code... (Enter for next, Shift+Enter for prev)"
                 className="flex-1 bg-transparent text-sm text-[var(--text)] placeholder-[var(--text-dim)] outline-none"
               />

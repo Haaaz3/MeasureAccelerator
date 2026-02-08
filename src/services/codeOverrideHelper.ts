@@ -9,7 +9,7 @@
 import { useComponentCodeStore } from '../stores/componentCodeStore';
 import type { UniversalMeasureSpec, DataElement, LogicalClause } from '../types/ums';
 import type { CodeOutputFormat, CodeEditNote, CodeOverride } from '../types/componentCode';
-import { formatNoteForCodeComment } from '../types/componentCode';
+import { formatNoteForCodeComment, getFormatLabel } from '../types/componentCode';
 
 // ============================================================================
 // Types
@@ -185,15 +185,16 @@ export function generateOverrideHeader(
   if (summary.totalOverrides === 0) return '';
 
   const commentPrefix = format === 'cql' ? '//' : '--';
+  const formatLabel = getFormatLabel(format).toUpperCase();
   const lines: string[] = [];
 
   lines.push(`${commentPrefix} ========================================`);
-  lines.push(`${commentPrefix} MANUAL OVERRIDES APPLIED: ${summary.totalOverrides} component(s)`);
+  lines.push(`${commentPrefix} ${formatLabel} OVERRIDES APPLIED: ${summary.totalOverrides} component(s)`);
   lines.push(`${commentPrefix} ========================================`);
 
   for (const info of summary.overrideInfos) {
     lines.push(`${commentPrefix}`);
-    lines.push(`${commentPrefix} [OVERRIDE] ${info.componentDescription}`);
+    lines.push(`${commentPrefix} [${formatLabel} OVERRIDE] ${info.componentDescription}`);
 
     for (const note of info.override.notes) {
       lines.push(formatNoteForCodeComment(note, format));
@@ -234,8 +235,8 @@ export function applyCQLOverrides(
       .join('\n');
 
     const overrideBlock = noteComments
-      ? `${noteComments}\n// [OVERRIDDEN]\n${override.code}`
-      : `// [OVERRIDDEN]\n${override.code}`;
+      ? `${noteComments}\n// [CQL OVERRIDE]\n${override.code}`
+      : `// [CQL OVERRIDE]\n${override.code}`;
 
     // Try to find and replace the define statement for this component
     // Look for: define "ComponentName":
@@ -251,7 +252,7 @@ export function applyCQLOverrides(
       // If we can't find the exact define, append override to the end
       // with a clear marker
       modifiedCode += `\n\n// ========================================\n`;
-      modifiedCode += `// OVERRIDE for: ${componentDesc}\n`;
+      modifiedCode += `// [CQL OVERRIDE] ${componentDesc}\n`;
       modifiedCode += `// ========================================\n`;
       modifiedCode += overrideBlock;
       replacementsMade++;
@@ -304,8 +305,8 @@ export function applySQLOverrides(
       .join('\n');
 
     const overrideBlock = noteComments
-      ? `${noteComments}\n-- [OVERRIDDEN]\n${override.code}`
-      : `-- [OVERRIDDEN]\n${override.code}`;
+      ? `${noteComments}\n-- [SYNAPSE SQL OVERRIDE]\n${override.code}`
+      : `-- [SYNAPSE SQL OVERRIDE]\n${override.code}`;
 
     // Try to find and replace a CTE or predicate block for this component
     // Look for patterns like: PRED_* as ( or -- ComponentName
@@ -320,7 +321,7 @@ export function applySQLOverrides(
     } else {
       // Append override section at end
       modifiedCode += `\n\n-- ========================================\n`;
-      modifiedCode += `-- OVERRIDE for: ${componentDesc}\n`;
+      modifiedCode += `-- [SYNAPSE SQL OVERRIDE] ${componentDesc}\n`;
       modifiedCode += `-- ========================================\n`;
       modifiedCode += overrideBlock;
       replacementsMade++;

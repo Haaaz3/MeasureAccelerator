@@ -110,8 +110,9 @@ describe('Code Overrides', () => {
       const { code, overrideCount } = applyCQLOverrides(originalCql, measure);
 
       expect(overrideCount).toBe(1);
-      expect(code).toContain('MANUAL OVERRIDES APPLIED');
-      expect(code).toContain('[OVERRIDE]');
+      expect(code).toContain('CQL OVERRIDES APPLIED');
+      expect(code).toContain('[CQL OVERRIDE]');
+      expect(code).toContain('[EDIT NOTE - CQL]');
       expect(code).toContain('Test override note');
       expect(code).toContain(originalCql); // Original code should still be there
     });
@@ -153,8 +154,8 @@ describe('Code Overrides', () => {
       const { code, overrideCount } = applySQLOverrides(originalSql, measure, 'hdi');
 
       expect(overrideCount).toBe(1);
-      expect(code).toContain('-- MANUAL OVERRIDES APPLIED');
-      expect(code).toContain('-- [OVERRIDE]');
+      expect(code).toContain('-- SYNAPSE SQL OVERRIDES APPLIED');
+      expect(code).toContain('-- [SYNAPSE SQL OVERRIDE]');
     });
   });
 
@@ -239,8 +240,8 @@ describe('Code Overrides', () => {
       const header = generateOverrideHeader(measure, 'cql');
 
       expect(header).toContain('//');
-      expect(header).toContain('MANUAL OVERRIDES APPLIED');
-      expect(header).toContain('[OVERRIDE]');
+      expect(header).toContain('CQL OVERRIDES APPLIED');
+      expect(header).toContain('[CQL OVERRIDE]');
     });
 
     it('generates SQL-style comments for SQL format', () => {
@@ -263,7 +264,7 @@ describe('Code Overrides', () => {
       const header = generateOverrideHeader(measure, 'synapse-sql');
 
       expect(header).toContain('--');
-      expect(header).toContain('MANUAL OVERRIDES APPLIED');
+      expect(header).toContain('SYNAPSE SQL OVERRIDES APPLIED');
     });
   });
 
@@ -385,7 +386,7 @@ describe('Code Overrides', () => {
       const { code, overrideCount } = applyCQLOverrides(result1.cql, measure);
 
       expect(overrideCount).toBe(1);
-      expect(code).toContain('MANUAL OVERRIDES APPLIED');
+      expect(code).toContain('CQL OVERRIDES APPLIED');
       expect(code).toContain('Customized for specific use case');
     });
   });
