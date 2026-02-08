@@ -7,6 +7,7 @@ import { CodeGeneration } from './components/measure/CodeGeneration';
 import { ValueSetManager } from './components/valueset/ValueSetManager';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { LibraryBrowser } from './components/library/LibraryBrowser';
+import { ErrorBoundary } from './components/shared/ErrorBoundary';
 
 function App() {
   const { activeTab } = useMeasureStore();
@@ -16,12 +17,32 @@ function App() {
       <Sidebar />
       <main className="flex-1 flex flex-col overflow-hidden">
         {activeTab === 'library' && <MeasureLibrary />}
-        {activeTab === 'valuesets' && <ValueSetManager />}
-        {activeTab === 'editor' && <UMSEditor />}
-        {activeTab === 'validation' && <ValidationTraceViewer />}
-        {activeTab === 'codegen' && <CodeGeneration />}
+        {activeTab === 'valuesets' && (
+          <ErrorBoundary fallbackName="Value Set Manager">
+            <ValueSetManager />
+          </ErrorBoundary>
+        )}
+        {activeTab === 'editor' && (
+          <ErrorBoundary fallbackName="Measure Editor">
+            <UMSEditor />
+          </ErrorBoundary>
+        )}
+        {activeTab === 'validation' && (
+          <ErrorBoundary fallbackName="Validation Viewer">
+            <ValidationTraceViewer />
+          </ErrorBoundary>
+        )}
+        {activeTab === 'codegen' && (
+          <ErrorBoundary fallbackName="Code Generation">
+            <CodeGeneration />
+          </ErrorBoundary>
+        )}
         {activeTab === 'settings' && <SettingsPage />}
-        {activeTab === 'components' && <LibraryBrowser />}
+        {activeTab === 'components' && (
+          <ErrorBoundary fallbackName="Component Library">
+            <LibraryBrowser />
+          </ErrorBoundary>
+        )}
       </main>
     </div>
   );

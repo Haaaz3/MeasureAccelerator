@@ -48,8 +48,6 @@ import {
   generateCumulativeDaysSupplyCTE,
 } from './hdiSqlTemplates';
 
-// Re-export for external use (e.g., building custom measure SQL mappings)
-export { generateIPSDCTE, generateMedCoverageCTE, generateCumulativeDaysSupplyCTE };
 
 // ============================================================================
 // Default Configuration
@@ -756,97 +754,3 @@ function estimateComplexity(mapping: MeasureSQLMapping): 'low' | 'medium' | 'hig
   return 'high';
 }
 
-// ============================================================================
-// Validation Functions
-// ============================================================================
-
-/**
- * Validate generated SQL syntax (basic checks)
- */
-export function validateHDISQLBasic(sql: string): { valid: boolean; errors: string[] } {
-  const errors: string[] = [];
-
-  // Check for balanced parentheses
-  const openParens = (sql.match(/\(/g) || []).length;
-  const closeParens = (sql.match(/\)/g) || []).length;
-  if (openParens !== closeParens) {
-    errors.push(`Unbalanced parentheses: ${openParens} open, ${closeParens} close`);
-  }
-
-  // Check for unclosed quotes
-  const singleQuotes = (sql.match(/'/g) || []).length;
-  if (singleQuotes % 2 !== 0) {
-    errors.push('Unclosed single quote detected');
-  }
-
-  // Check for required CTEs
-  if (!sql.includes('ONT as')) {
-    errors.push('Missing ONT (Ontology) CTE');
-  }
-  if (!sql.includes('DEMOG as')) {
-    errors.push('Missing DEMOG (Demographics) CTE');
-  }
-
-  // Check for SELECT statement
-  if (!/select\s+/i.test(sql)) {
-    errors.push('No SELECT statement found');
-  }
-
-  return {
-    valid: errors.length === 0,
-    errors,
-  };
-}
-
-/**
- * Format SQL for readability
- */
-export function formatHDISQL(sql: string): string {
-  let formatted = sql
-    .replace(/\bselect\b/gi, '\nSELECT')
-    .replace(/\bfrom\b/gi, '\nFROM')
-    .replace(/\bwhere\b/gi, '\nWHERE')
-    .replace(/\band\b/gi, '\n  AND')
-    .replace(/\bor\b/gi, '\n  OR')
-    .replace(/\bleft join\b/gi, '\nLEFT JOIN')
-    .replace(/\binner join\b/gi, '\nINNER JOIN')
-    .replace(/\bunion\b/gi, '\nUNION')
-    .replace(/\bintersect\b/gi, '\nINTERSECT')
-    .replace(/\bexcept\b/gi, '\nEXCEPT');
-
-  return formatted.trim();
-}
-
-// ============================================================================
-// Convenience Exports
-// ============================================================================
-
-/**
- * Generate SQL with custom ontology contexts
- */
-export function generateHDISQLWithContexts(
-  measure: UniversalMeasureSpec,
-  ontologyContexts: string[],
-  populationId: string
-): SQLGenerationResult {
-  return generateHDISQL(measure, {
-    ontologyContexts,
-    populationId,
-  });
-}
-
-/**
- * Generate SQL for a specific population only
- */
-export function generatePopulationSQL(
-  measure: UniversalMeasureSpec,
-  populationType: 'initial-population' | 'denominator' | 'numerator',
-  config: Partial<SQLGenerationConfig> = {}
-): SQLGenerationResult {
-  const filteredMeasure: UniversalMeasureSpec = {
-    ...measure,
-    populations: measure.populations.filter(p => p.type === populationType),
-  };
-
-  return generateHDISQL(filteredMeasure, config);
-}

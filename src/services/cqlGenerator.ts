@@ -970,31 +970,3 @@ function parseTranslatorWarnings(data: any): CQLValidationWarning[] {
   return [];
 }
 
-// ============================================================================
-// Export Functions
-// ============================================================================
-
-/**
- * Generate CQL and optionally validate it
- */
-export async function generateAndValidateCQL(
-  measure: UniversalMeasureSpec,
-  validate: boolean = false,
-  serviceUrl?: string
-): Promise<{
-  generation: CQLGenerationResult;
-  validation?: CQLValidationResult;
-}> {
-  const generation = generateCQL(measure);
-
-  if (!validate || !generation.success) {
-    return { generation };
-  }
-
-  const validation = await validateCQL(generation.cql, serviceUrl);
-
-  return {
-    generation,
-    validation,
-  };
-}

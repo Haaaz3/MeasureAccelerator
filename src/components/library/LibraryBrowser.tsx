@@ -28,6 +28,7 @@ import type {
 } from '../../types/componentLibrary';
 import { ComponentDetail } from './ComponentDetail';
 import ComponentEditor from './ComponentEditor';
+import { ErrorBoundary } from '../shared/ErrorBoundary';
 
 const CATEGORIES: { key: ComponentCategory | 'all'; label: string }[] = [
   { key: 'all', label: 'All Components' },
@@ -364,11 +365,13 @@ export function LibraryBrowser() {
             {/* Detail Panel (slide in from right) */}
             {selectedComponentId && (
               <div className="w-[420px] flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-secondary)] overflow-y-auto animate-slide-in-right">
-                <ComponentDetail
-                  componentId={selectedComponentId}
-                  onClose={handleCloseDetail}
-                  onEdit={(id) => setEditingComponent(id)}
-                />
+                <ErrorBoundary fallbackName="Component Detail">
+                  <ComponentDetail
+                    componentId={selectedComponentId}
+                    onClose={handleCloseDetail}
+                    onEdit={(id) => setEditingComponent(id)}
+                  />
+                </ErrorBoundary>
               </div>
             )}
           </div>
@@ -377,11 +380,13 @@ export function LibraryBrowser() {
 
       {/* Editor Modal */}
       {editingComponentId && (
-        <ComponentEditor
-          componentId={editingComponentId === 'new' ? undefined : editingComponentId}
-          onSave={handleCloseEditor}
-          onClose={handleCloseEditor}
-        />
+        <ErrorBoundary fallbackName="Component Editor">
+          <ComponentEditor
+            componentId={editingComponentId === 'new' ? undefined : editingComponentId}
+            onSave={handleCloseEditor}
+            onClose={handleCloseEditor}
+          />
+        </ErrorBoundary>
       )}
     </div>
   );

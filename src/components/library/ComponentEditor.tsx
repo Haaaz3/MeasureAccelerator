@@ -21,6 +21,7 @@ import { createAtomicComponent, createCompositeComponent } from '../../services/
 import type { TimingOperator, ComponentCategory } from '../../types/componentLibrary';
 import type { CodeReference } from '../../types/ums';
 import SharedEditWarning from './SharedEditWarning';
+import { InlineErrorBanner } from '../shared/ErrorBoundary';
 
 // ============================================================================
 // Types
@@ -151,6 +152,9 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
   );
   const [childSearch, setChildSearch] = useState('');
 
+  // Error state for inline error display
+  const [error, setError] = useState<string | null>(null);
+
   // --------------------------------------------------------------------------
   // Derived: Available children for composite
   // --------------------------------------------------------------------------
@@ -275,18 +279,26 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
           return;
         }
 
-        updateComponent(existingComponent.id, updates);
-        // Sync changes to any linked measures (including codes)
-        if (existingComponent.usage.usageCount >= 1) {
-          const result = syncComponentToMeasures(
-            existingComponent.id,
-            { changeDescription: 'Component updated', name: component.name, timing: component.timing, negation: component.negation, codes },
-            measures,
-            batchUpdateMeasures,
-          );
-          if (!result.success) {
-            console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+        try {
+          updateComponent(existingComponent.id, updates);
+          // Sync changes to any linked measures (including codes)
+          if (existingComponent.usage.usageCount >= 1) {
+            const result = syncComponentToMeasures(
+              existingComponent.id,
+              { changeDescription: 'Component updated', name: component.name, timing: component.timing, negation: component.negation, codes },
+              measures,
+              batchUpdateMeasures,
+            );
+            if (!result.success) {
+              console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+              setError(`Failed to sync changes: ${result.error}`);
+              return;
+            }
           }
+        } catch (err) {
+          console.error('[ComponentEditor] Save failed:', err);
+          setError(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          return;
         }
       } else {
         addComponent(component);
@@ -405,6 +417,15 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
             <X size={20} />
           </button>
         </div>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Error Banner                                                     */}
+        {/* ---------------------------------------------------------------- */}
+        {error && (
+          <div className="px-6 pt-4">
+            <InlineErrorBanner message={error} onDismiss={() => setError(null)} />
+          </div>
+        )}
 
         {/* ---------------------------------------------------------------- */}
         {/* Scrollable Body                                                  */}
@@ -989,21 +1010,33 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
           measureIds={existingComponent.usage.measureIds}
           onUpdateAll={() => {
             if (pendingChanges) {
-              updateComponent(existingComponent.id, pendingChanges);
-              // Propagate changes to all linked measures
-              const changes = {
-                changeDescription: 'Component updated across all measures',
-                name: pendingChanges.name,
-                timing: pendingChanges.timing,
-                negation: pendingChanges.negation,
-                operator: pendingChanges.operator,
-                children: pendingChanges.children,
-              };
-              const result = syncComponentToMeasures(existingComponent.id, changes, measures, batchUpdateMeasures);
-              if (!result.success) {
-                console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+              try {
+                updateComponent(existingComponent.id, pendingChanges);
+                // Propagate changes to all linked measures
+                const changes = {
+                  changeDescription: 'Component updated across all measures',
+                  name: pendingChanges.name,
+                  timing: pendingChanges.timing,
+                  negation: pendingChanges.negation,
+                  operator: pendingChanges.operator,
+                  children: pendingChanges.children,
+                };
+                const result = syncComponentToMeasures(existingComponent.id, changes, measures, batchUpdateMeasures);
+                if (!result.success) {
+                  console.error('[ComponentEditor] Failed to sync component to measures:', result.error);
+                  setError(`Failed to sync changes: ${result.error}`);
+                  setShowSharedWarning(false);
+                  setPendingChanges(null);
+                  return;
+                }
+                rebuildUsageIndex(measures);
+              } catch (err) {
+                console.error('[ComponentEditor] Update all failed:', err);
+                setError(`Update failed: ${err instanceof Error ? err.message : String(err)}`);
+                setShowSharedWarning(false);
+                setPendingChanges(null);
+                return;
               }
-              rebuildUsageIndex(measures);
             }
             setShowSharedWarning(false);
             setPendingChanges(null);

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, Fragment } from 'react';
 import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck, GripVertical, Loader2, Combine, Square, CheckSquare } from 'lucide-react';
+import { InlineErrorBanner } from '../shared/ErrorBoundary';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
@@ -55,6 +56,9 @@ export function UMSEditor() {
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [mergeName, setMergeName] = useState('');
   const [selectedForMerge, setSelectedForMerge] = useState<Set<string>>(new Set());
+
+  // Error state for inline error display
+  const [error, setError] = useState<string | null>(null);
 
   // Toggle merge selection for a component
   const toggleMergeSelection = (componentId: string) => {
@@ -271,6 +275,11 @@ export function UMSEditor() {
       {/* Main editor panel */}
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
+          {/* Error Banner */}
+          {error && (
+            <InlineErrorBanner message={error} onDismiss={() => setError(null)} />
+          )}
+
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm mb-4">
             <button
@@ -727,124 +736,130 @@ export function UMSEditor() {
                   onClick={() => {
                     if (!mergeName.trim() || selectedElements.length < 2) return;
 
-                    // Collect all value sets from selected elements (keep them separate)
-                    // Look up full value set data including codes from measure.valueSets
-                    const allValueSets: any[] = [];
-                    const seenOids = new Set<string>();
-                    const allCodeKeys = new Set<string>(); // Track all codes for deduplication
+                    try {
+                      // Collect all value sets from selected elements (keep them separate)
+                      // Look up full value set data including codes from measure.valueSets
+                      const allValueSets: any[] = [];
+                      const seenOids = new Set<string>();
+                      const allCodeKeys = new Set<string>(); // Track all codes for deduplication
 
-                    for (const el of selectedElements) {
-                      // Get value set references from element
-                      const elementVsRefs = el.valueSets || (el.valueSet ? [el.valueSet] : []);
+                      for (const el of selectedElements) {
+                        // Get value set references from element
+                        const elementVsRefs = el.valueSets || (el.valueSet ? [el.valueSet] : []);
 
-                      for (const vsRef of elementVsRefs) {
-                        const key = vsRef.oid || vsRef.id || vsRef.name;
-                        if (key && !seenOids.has(key)) {
-                          seenOids.add(key);
+                        for (const vsRef of elementVsRefs) {
+                          const key = vsRef.oid || vsRef.id || vsRef.name;
+                          if (key && !seenOids.has(key)) {
+                            seenOids.add(key);
 
-                          // Look up the full value set with codes from measure.valueSets
-                          const fullVs = measure.valueSets.find(
-                            mvs => mvs.id === vsRef.id || mvs.oid === vsRef.oid
-                          );
+                            // Look up the full value set with codes from measure.valueSets
+                            const fullVs = measure.valueSets.find(
+                              mvs => mvs.id === vsRef.id || mvs.oid === vsRef.oid
+                            );
 
-                          if (fullVs) {
-                            // Deduplicate codes across value sets
-                            const dedupedCodes = (fullVs.codes || []).filter(code => {
-                              const codeKey = `${code.system}|${code.code}`;
-                              if (allCodeKeys.has(codeKey)) {
-                                return false; // Skip duplicate
-                              }
-                              allCodeKeys.add(codeKey);
-                              return true;
-                            });
+                            if (fullVs) {
+                              // Deduplicate codes across value sets
+                              const dedupedCodes = (fullVs.codes || []).filter(code => {
+                                const codeKey = `${code.system}|${code.code}`;
+                                if (allCodeKeys.has(codeKey)) {
+                                  return false; // Skip duplicate
+                                }
+                                allCodeKeys.add(codeKey);
+                                return true;
+                              });
 
-                            allValueSets.push({
-                              ...fullVs,
-                              codes: dedupedCodes,
-                            });
-                          } else if (vsRef.codes && vsRef.codes.length > 0) {
-                            // Use element's value set if it has codes directly
-                            const dedupedCodes = vsRef.codes.filter((code: any) => {
-                              const codeKey = `${code.system}|${code.code}`;
-                              if (allCodeKeys.has(codeKey)) {
-                                return false;
-                              }
-                              allCodeKeys.add(codeKey);
-                              return true;
-                            });
+                              allValueSets.push({
+                                ...fullVs,
+                                codes: dedupedCodes,
+                              });
+                            } else if (vsRef.codes && vsRef.codes.length > 0) {
+                              // Use element's value set if it has codes directly
+                              const dedupedCodes = vsRef.codes.filter((code: any) => {
+                                const codeKey = `${code.system}|${code.code}`;
+                                if (allCodeKeys.has(codeKey)) {
+                                  return false;
+                                }
+                                allCodeKeys.add(codeKey);
+                                return true;
+                              });
 
-                            allValueSets.push({
-                              ...vsRef,
-                              codes: dedupedCodes,
-                            });
-                          } else {
-                            // Fallback: use the reference as-is
-                            allValueSets.push(vsRef);
+                              allValueSets.push({
+                                ...vsRef,
+                                codes: dedupedCodes,
+                              });
+                            } else {
+                              // Fallback: use the reference as-is
+                              allValueSets.push(vsRef);
+                            }
                           }
                         }
                       }
+
+                      // Create merged library component - pass the value sets with codes
+                      const mergedComp = mergeComponents(
+                        selectedElements.map((el: any) => el.libraryComponentId).filter(Boolean),
+                        mergeName.trim(),
+                        undefined, // description
+                        allValueSets // Pass value sets with codes for accurate data
+                      );
+
+                      // Keep the first element, remove the rest, update the first to point to merged component
+                      const firstElementId = selectedElements[0].id;
+                      const otherElementIds = new Set(selectedElements.slice(1).map((el: any) => el.id));
+
+                      const updateNode = (node: any): any => {
+                        if (!node) return node;
+                        if ('operator' in node && 'children' in node) {
+                          // Filter out the other merged elements and recurse
+                          const filteredChildren = node.children
+                            .filter((child: any) => !otherElementIds.has(child.id))
+                            .map(updateNode);
+                          return { ...node, children: filteredChildren };
+                        }
+                        // Update the first element to have merged description and all value sets
+                        if (node.id === firstElementId) {
+                          return {
+                            ...node,
+                            description: mergeName.trim(),
+                            libraryComponentId: mergedComp?.id,
+                            // Keep first value set for backward compatibility
+                            valueSet: allValueSets.length > 0 ? allValueSets[0] : node.valueSet,
+                            // Always store all value sets for consistency (even if just 1)
+                            valueSets: allValueSets.length > 0 ? allValueSets : undefined,
+                          };
+                        }
+                        return node;
+                      };
+
+                      const updatedPopulations = measure.populations.map(pop => ({
+                        ...pop,
+                        criteria: pop.criteria ? updateNode(pop.criteria) : pop.criteria,
+                      }));
+                      updateMeasure(measure.id, { populations: updatedPopulations });
+
+                      // Update references in OTHER measures that still point to archived components
+                      if (mergedComp) {
+                        const archivedIds = selectedElements
+                          .map((el: any) => el.libraryComponentId)
+                          .filter(Boolean) as string[];
+                        const otherMeasures = measures.filter(m => m.id !== measure.id);
+                        const result = updateMeasureReferencesAfterMerge(archivedIds, mergedComp.id, otherMeasures, batchUpdateMeasures);
+                        if (!result.success) {
+                          console.error('[UMSEditor] Failed to update measure references after merge:', result.error);
+                          setError(`Failed to update references: ${result.error}`);
+                        }
+
+                        // Rebuild usage index after merge to ensure consistency
+                        rebuildUsageIndex(measures);
+                      }
+
+                      setShowMergeDialog(false);
+                      setSelectedForMerge(new Set());
+                      setMergeName('');
+                    } catch (err) {
+                      console.error('[UMSEditor] Merge failed:', err);
+                      setError(`Merge failed: ${err instanceof Error ? err.message : String(err)}`);
                     }
-
-                    // Create merged library component - pass the value sets with codes
-                    const mergedComp = mergeComponents(
-                      selectedElements.map((el: any) => el.libraryComponentId).filter(Boolean),
-                      mergeName.trim(),
-                      undefined, // description
-                      allValueSets // Pass value sets with codes for accurate data
-                    );
-
-                    // Keep the first element, remove the rest, update the first to point to merged component
-                    const firstElementId = selectedElements[0].id;
-                    const otherElementIds = new Set(selectedElements.slice(1).map((el: any) => el.id));
-
-                    const updateNode = (node: any): any => {
-                      if (!node) return node;
-                      if ('operator' in node && 'children' in node) {
-                        // Filter out the other merged elements and recurse
-                        const filteredChildren = node.children
-                          .filter((child: any) => !otherElementIds.has(child.id))
-                          .map(updateNode);
-                        return { ...node, children: filteredChildren };
-                      }
-                      // Update the first element to have merged description and all value sets
-                      if (node.id === firstElementId) {
-                        return {
-                          ...node,
-                          description: mergeName.trim(),
-                          libraryComponentId: mergedComp?.id,
-                          // Keep first value set for backward compatibility
-                          valueSet: allValueSets.length > 0 ? allValueSets[0] : node.valueSet,
-                          // Always store all value sets for consistency (even if just 1)
-                          valueSets: allValueSets.length > 0 ? allValueSets : undefined,
-                        };
-                      }
-                      return node;
-                    };
-
-                    const updatedPopulations = measure.populations.map(pop => ({
-                      ...pop,
-                      criteria: pop.criteria ? updateNode(pop.criteria) : pop.criteria,
-                    }));
-                    updateMeasure(measure.id, { populations: updatedPopulations });
-
-                    // Update references in OTHER measures that still point to archived components
-                    if (mergedComp) {
-                      const archivedIds = selectedElements
-                        .map((el: any) => el.libraryComponentId)
-                        .filter(Boolean) as string[];
-                      const otherMeasures = measures.filter(m => m.id !== measure.id);
-                      const result = updateMeasureReferencesAfterMerge(archivedIds, mergedComp.id, otherMeasures, batchUpdateMeasures);
-                      if (!result.success) {
-                        console.error('[UMSEditor] Failed to update measure references after merge:', result.error);
-                      }
-
-                      // Rebuild usage index after merge to ensure consistency
-                      rebuildUsageIndex(measures);
-                    }
-
-                    setShowMergeDialog(false);
-                    setSelectedForMerge(new Set());
-                    setMergeName('');
                   }}
                   disabled={!mergeName.trim() || selectedElements.length < 2}
                   className="px-4 py-2 text-sm bg-purple-500 text-white rounded-lg font-medium hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1945,45 +1960,54 @@ function NodeDetailPanel({
     const apiKey = getActiveApiKey();
     const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
 
-    // Call AI
-    const response = await handleAIAssistantRequest(
-      userMessage,
-      context,
-      selectedProvider,
-      apiKey,
-      selectedModel,
-      customConfig
-    );
+    try {
+      // Call AI
+      const response = await handleAIAssistantRequest(
+        userMessage,
+        context,
+        selectedProvider,
+        apiKey,
+        selectedModel,
+        customConfig
+      );
 
-    setIsTyping(false);
+      setIsTyping(false);
 
-    if (response.action === 'error') {
+      if (response.action === 'error') {
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: `⚠️ ${response.error}`
+        }]);
+        return;
+      }
+
+      if (response.action === 'edit' && response.changes) {
+        // Show edit proposal with Apply/Dismiss buttons
+        const changes = response.changes;
+        const displayChanges = formatChangesForDisplay(context.currentComponent, changes, mpStart, mpEnd);
+        const changesText = displayChanges.map(c => `• **${c.field}:** ${c.from} → ${c.to}`).join('\n');
+
+        setChatHistory(prev => [...prev, {
+          role: 'assistant' as const,
+          content: `**Proposed changes:**\n\n${changesText}${response.explanation ? `\n\n${response.explanation}` : ''}`,
+          pendingEdit: {
+            changes: changes as NonNullable<AIAssistantResponse['changes']>,
+            explanation: response.explanation,
+          }
+        }]);
+      } else {
+        // Answer or clarification
+        setChatHistory(prev => [...prev, {
+          role: 'assistant',
+          content: response.response || 'I couldn\'t process that request.'
+        }]);
+      }
+    } catch (err) {
+      setIsTyping(false);
+      console.error('[UMSEditor] AI request failed:', err);
       setChatHistory(prev => [...prev, {
         role: 'assistant',
-        content: `⚠️ ${response.error}`
-      }]);
-      return;
-    }
-
-    if (response.action === 'edit' && response.changes) {
-      // Show edit proposal with Apply/Dismiss buttons
-      const changes = response.changes;
-      const displayChanges = formatChangesForDisplay(context.currentComponent, changes, mpStart, mpEnd);
-      const changesText = displayChanges.map(c => `• **${c.field}:** ${c.from} → ${c.to}`).join('\n');
-
-      setChatHistory(prev => [...prev, {
-        role: 'assistant' as const,
-        content: `**Proposed changes:**\n\n${changesText}${response.explanation ? `\n\n${response.explanation}` : ''}`,
-        pendingEdit: {
-          changes: changes as NonNullable<AIAssistantResponse['changes']>,
-          explanation: response.explanation,
-        }
-      }]);
-    } else {
-      // Answer or clarification
-      setChatHistory(prev => [...prev, {
-        role: 'assistant',
-        content: response.response || 'I couldn\'t process that request.'
+        content: `⚠️ Request failed: ${err instanceof Error ? err.message : String(err)}`
       }]);
     }
   };
