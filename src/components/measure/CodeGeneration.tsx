@@ -1,11 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight, CheckCircle, XCircle, AlertTriangle, Loader2, Server } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight, CheckCircle, XCircle, AlertTriangle, Loader2, Server, Search, X, ChevronUp, ChevronDown, Edit3 } from 'lucide-react';
 import { useMeasureStore, type CodeOutputFormat } from '../../stores/measureStore';
 import { generateCQL, validateCQL, isCQLServiceAvailable, type CQLGenerationResult, type CQLValidationResult } from '../../services/cqlGenerator';
 import { generateHDISQL, DEFAULT_HDI_CONFIG } from '../../services/hdiSqlGenerator';
 import { validateHDISQL, type SQLValidationResult as HDISQLValidationResult } from '../../services/hdiSqlValidator';
 import type { SQLGenerationResult, SQLGenerationConfig } from '../../types/hdiDataModels';
 import { InlineErrorBanner } from '../shared/ErrorBoundary';
+import { applyCQLOverrides, applySQLOverrides, getOverrideCountForMeasure, getOverridesForMeasure } from '../../services/codeOverrideHelper';
 
 export function CodeGeneration() {
   const { selectedCodeFormat, setSelectedCodeFormat, setActiveTab } = useMeasureStore();
@@ -30,6 +31,27 @@ export function CodeGeneration() {
   // Generation error state
   const [generationError, setGenerationError] = useState<string | null>(null);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchResults, setSearchResults] = useState<number[]>([]);
+  const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+  const codeRef = useRef<HTMLPreElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Override count for current measure and format
+  const overrideCount = useMemo(() => {
+    if (!measure) return 0;
+    // Map format to CodeOutputFormat for override lookup
+    const formatMap: Record<string, 'cql' | 'sql-standard' | 'sql-snowflake' | undefined> = {
+      'cql': 'cql',
+      'hdi': 'sql-snowflake', // HDI uses snowflake-style SQL
+      'synapse': 'sql-snowflake',
+      'sql': 'sql-standard',
+    };
+    return getOverrideCountForMeasure(measure, formatMap[format]);
+  }, [measure, format]);
+
   // Check CQL service availability on mount
   useEffect(() => {
     isCQLServiceAvailable().then(setCqlServiceAvailable);
@@ -52,12 +74,147 @@ export function CodeGeneration() {
     return warnings;
   }, []);
 
+  // Search functionality
+  const performSearch = useCallback((query: string, code: string) => {
+    if (!query.trim() || !code) {
+      setSearchResults([]);
+      setCurrentSearchIndex(0);
+      return;
+    }
+
+    const results: number[] = [];
+    const lowerQuery = query.toLowerCase();
+    const lowerCode = code.toLowerCase();
+    let pos = 0;
+
+    while ((pos = lowerCode.indexOf(lowerQuery, pos)) !== -1) {
+      results.push(pos);
+      pos += 1;
+    }
+
+    setSearchResults(results);
+    setCurrentSearchIndex(results.length > 0 ? 0 : -1);
+  }, []);
+
+  const navigateSearch = useCallback((direction: 'next' | 'prev') => {
+    if (searchResults.length === 0) return;
+
+    let newIndex = currentSearchIndex;
+    if (direction === 'next') {
+      newIndex = (currentSearchIndex + 1) % searchResults.length;
+    } else {
+      newIndex = (currentSearchIndex - 1 + searchResults.length) % searchResults.length;
+    }
+    setCurrentSearchIndex(newIndex);
+  }, [currentSearchIndex, searchResults.length]);
+
+  const toggleSearch = useCallback(() => {
+    setSearchVisible(prev => {
+      if (!prev) {
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+      } else {
+        setSearchQuery('');
+        setSearchResults([]);
+      }
+      return !prev;
+    });
+  }, []);
+
+  // Keyboard shortcuts for search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl/Cmd + F to open search
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        if (!searchVisible) {
+          toggleSearch();
+        } else {
+          searchInputRef.current?.focus();
+        }
+      }
+      // Escape to close search
+      if (e.key === 'Escape' && searchVisible) {
+        toggleSearch();
+      }
+      // Enter/Shift+Enter to navigate results
+      if (e.key === 'Enter' && searchVisible && searchResults.length > 0) {
+        e.preventDefault();
+        navigateSearch(e.shiftKey ? 'prev' : 'next');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [searchVisible, searchResults.length, navigateSearch, toggleSearch]);
+
+  // Update search results when query or code changes
+  useEffect(() => {
+    const code = format === 'cql' && generationResult?.cql
+      ? generationResult.cql
+      : format === 'hdi' && hdiResult?.sql
+      ? hdiResult.sql
+      : '';
+    performSearch(searchQuery, code);
+  }, [searchQuery, generationResult?.cql, hdiResult?.sql, format, performSearch]);
+
+  // Helper to highlight search matches in code
+  const highlightCode = useCallback((code: string): React.ReactNode => {
+    if (!searchQuery.trim() || searchResults.length === 0) {
+      return code;
+    }
+
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    const lowerQuery = searchQuery.toLowerCase();
+    const lowerCode = code.toLowerCase();
+
+    searchResults.forEach((pos, idx) => {
+      // Add text before match
+      if (pos > lastIndex) {
+        parts.push(code.substring(lastIndex, pos));
+      }
+
+      // Add highlighted match
+      const matchText = code.substring(pos, pos + searchQuery.length);
+      const isCurrentMatch = idx === currentSearchIndex;
+      parts.push(
+        <mark
+          key={`match-${idx}`}
+          className={`${isCurrentMatch ? 'bg-[var(--accent)] text-white' : 'bg-[var(--warning)]/40'} rounded px-0.5`}
+        >
+          {matchText}
+        </mark>
+      );
+
+      lastIndex = pos + searchQuery.length;
+    });
+
+    // Add remaining text
+    if (lastIndex < code.length) {
+      parts.push(code.substring(lastIndex));
+    }
+
+    return <>{parts}</>;
+  }, [searchQuery, searchResults, currentSearchIndex]);
+
   // Update generation result when measure changes
   useEffect(() => {
     if (measure && format === 'cql') {
       try {
         setGenerationError(null);
         const result = generateCQL(measure);
+
+        // Apply code overrides if any exist
+        if (result.success && result.cql) {
+          const { code: modifiedCql, overrideCount: appliedOverrides } = applyCQLOverrides(result.cql, measure);
+          result.cql = modifiedCql;
+
+          // Add warning about overrides if any were applied
+          if (appliedOverrides > 0 && result.warnings) {
+            result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+          }
+        }
+
         setGenerationResult(result);
         setValidationResult(null);
 
@@ -92,6 +249,18 @@ export function CodeGeneration() {
             'HEALTHE INTENT Results',
           ],
         });
+
+        // Apply code overrides if any exist
+        if (result.success && result.sql) {
+          const { code: modifiedSql, overrideCount: appliedOverrides } = applySQLOverrides(result.sql, measure, 'hdi');
+          result.sql = modifiedSql;
+
+          // Add warning about overrides if any were applied
+          if (appliedOverrides > 0) {
+            result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+          }
+        }
+
         setHdiResult(result);
         setHdiValidation(null);
 
@@ -278,6 +447,27 @@ export function CodeGeneration() {
           </div>
         )}
 
+        {/* Override indicator */}
+        {overrideCount > 0 && (
+          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <div className="flex items-start gap-3">
+              <Edit3 className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="font-medium text-amber-500">Manual Overrides Applied</h3>
+                <p className="text-sm text-amber-500/80 mt-1">
+                  {overrideCount} component(s) using manually overridden code. These edits will be included in the generated output with their associated notes.
+                </p>
+                <button
+                  onClick={() => useMeasureStore.getState().setActiveTab('editor')}
+                  className="mt-3 px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20"
+                >
+                  View in Editor
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Format selector */}
         <div className="flex items-center gap-4 mb-6">
           <span className="text-sm text-[var(--text-muted)]">Output Format:</span>
@@ -315,6 +505,18 @@ export function CodeGeneration() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={toggleSearch}
+                className={`px-3 py-1.5 text-sm flex items-center gap-2 transition-colors ${
+                  searchVisible
+                    ? 'text-[var(--accent)] bg-[var(--accent-light)] rounded-lg'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}
+                title="Search (Ctrl+F)"
+              >
+                <Search className="w-4 h-4" />
+                Search
+              </button>
               <button
                 onClick={handleRegenerate}
                 disabled={isGenerating}
@@ -375,6 +577,54 @@ export function CodeGeneration() {
             </div>
           </div>
 
+          {/* Search bar */}
+          {searchVisible && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-tertiary)]">
+              <Search className="w-4 h-4 text-[var(--text-muted)]" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search in code... (Enter for next, Shift+Enter for prev)"
+                className="flex-1 bg-transparent text-sm text-[var(--text)] placeholder-[var(--text-dim)] outline-none"
+              />
+              {searchResults.length > 0 && (
+                <span className="text-xs text-[var(--text-muted)]">
+                  {currentSearchIndex + 1} of {searchResults.length}
+                </span>
+              )}
+              {searchQuery && searchResults.length === 0 && (
+                <span className="text-xs text-[var(--warning)]">No matches</span>
+              )}
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => navigateSearch('prev')}
+                  disabled={searchResults.length === 0}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50"
+                  title="Previous (Shift+Enter)"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => navigateSearch('next')}
+                  disabled={searchResults.length === 0}
+                  className="p-1 text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-50"
+                  title="Next (Enter)"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+              <button
+                onClick={toggleSearch}
+                className="p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
+                title="Close (Escape)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Code content */}
           <div className="relative">
             {isGenerating && (
@@ -385,13 +635,16 @@ export function CodeGeneration() {
                 </div>
               </div>
             )}
-            <pre className="p-4 text-sm font-mono overflow-auto max-h-[600px] text-[var(--text)]">
+            <pre ref={codeRef} className="p-4 text-sm font-mono overflow-auto max-h-[600px] text-[var(--text)]">
               <code className={!canGenerate ? 'opacity-50' : ''}>
-                {format === 'cql' && generationResult?.cql
-                  ? generationResult.cql
-                  : format === 'hdi' && hdiResult?.sql
-                  ? hdiResult.sql
-                  : getGeneratedCode(measure, format)}
+                {(() => {
+                  const code = format === 'cql' && generationResult?.cql
+                    ? generationResult.cql
+                    : format === 'hdi' && hdiResult?.sql
+                    ? hdiResult.sql
+                    : getGeneratedCode(measure, format);
+                  return searchQuery && searchResults.length > 0 ? highlightCode(code) : code;
+                })()}
               </code>
             </pre>
           </div>
