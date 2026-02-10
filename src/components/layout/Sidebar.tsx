@@ -32,11 +32,11 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-[var(--sidebar-bg)] flex flex-col shadow-lg">
       {/* Logo */}
-      <div className="p-4 border-b border-[var(--sidebar-border)]">
+      <div className="p-4 border-b border-[var(--sidebar-border)] bg-[var(--sidebar-bg)]">
         <img
           src="/logo.png"
           alt="Algo Accelerator"
-          className="w-full h-auto max-h-14 object-contain"
+          className="w-full h-auto max-h-14 object-contain mix-blend-multiply"
         />
       </div>
 

@@ -1,5 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { Panel, Group as PanelGroup, Separator as PanelResizeHandle } from 'react-resizable-panels';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Search,
   Filter,
@@ -239,6 +238,36 @@ export function LibraryBrowser() {
     setEditingComponent(null);
   };
 
+  // Resizable panel state
+  const [detailPanelWidth, setDetailPanelWidth] = useState(420);
+  const isResizing = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    isResizing.current = true;
+    e.preventDefault();
+  }, []);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing.current || !containerRef.current) return;
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const newWidth = containerRect.right - e.clientX;
+      setDetailPanelWidth(Math.min(Math.max(newWidth, 300), 600));
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Page Header */}
@@ -386,11 +415,9 @@ export function LibraryBrowser() {
           </div>
 
           {/* Component Grid + Detail Panel */}
-          <div className="flex-1 flex overflow-hidden">
-            <PanelGroup orientation="horizontal" className="flex-1">
-              {/* Cards Grid */}
-              <Panel defaultSize={selectedComponentId ? 65 : 100} minSize={40}>
-                <div className="h-full overflow-y-auto p-6">
+          <div ref={containerRef} className="flex-1 flex overflow-hidden">
+            {/* Cards Grid */}
+            <div className="flex-1 overflow-y-auto p-6">
               {programFilteredComponents.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {programFilteredComponents.map((component) => (
@@ -435,27 +462,27 @@ export function LibraryBrowser() {
                   )}
                 </div>
               )}
-                </div>
-              </Panel>
+            </div>
 
-              {/* Detail Panel (slide in from right) */}
-              {selectedComponentId && (
-                <>
-                  <PanelResizeHandle className="w-1.5 bg-[var(--border)] hover:bg-[var(--accent)] active:bg-[var(--accent)] cursor-col-resize transition-colors" />
-                  <Panel defaultSize={35} minSize={25} maxSize={50}>
-                    <div className="h-full border-l border-[var(--border)] bg-[var(--bg-secondary)] overflow-y-auto">
-                      <ErrorBoundary fallbackName="Component Detail">
-                        <ComponentDetail
-                          componentId={selectedComponentId}
-                          onClose={handleCloseDetail}
-                          onEdit={(id) => setEditingComponent(id)}
-                        />
-                      </ErrorBoundary>
-                    </div>
-                  </Panel>
-                </>
-              )}
-            </PanelGroup>
+            {/* Detail Panel (slide in from right) */}
+            {selectedComponentId && (
+              <>
+                {/* Resize handle */}
+                <div
+                  onMouseDown={handleResizeStart}
+                  className="w-1.5 bg-[var(--border)] hover:bg-[var(--accent)] active:bg-[var(--accent)] cursor-col-resize transition-colors flex-shrink-0"
+                />
+                <div style={{ width: detailPanelWidth }} className="flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-secondary)] overflow-y-auto">
+                  <ErrorBoundary fallbackName="Component Detail">
+                    <ComponentDetail
+                      componentId={selectedComponentId}
+                      onClose={handleCloseDetail}
+                      onEdit={(id) => setEditingComponent(id)}
+                    />
+                  </ErrorBoundary>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
