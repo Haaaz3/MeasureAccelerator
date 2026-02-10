@@ -126,12 +126,19 @@ function LibraryCodeViewer({ component }: LibraryCodeViewerProps) {
   const LIBRARY_MEASURE_ID = 'library';
   const storeKey = getStoreKey(LIBRARY_MEASURE_ID, component.id);
 
-  const getOrCreateCodeState = useComponentCodeStore((state) => state.getOrCreateCodeState);
+  // Subscribe to code state from store
+  const codeState = useComponentCodeStore((state) => state.codeStates[storeKey]);
+  const defaultFormat = useComponentCodeStore((state) => state.defaultFormat);
+  const setSelectedFormat = useComponentCodeStore((state) => state.setSelectedFormat);
 
-  // Get or create code state for this library component
-  const codeState = useMemo(() => {
-    return getOrCreateCodeState(storeKey);
-  }, [getOrCreateCodeState, storeKey]);
+  // Create effective code state - fallback to default if not in store yet
+  const effectiveCodeState: ComponentCodeState = codeState ?? {
+    componentId: storeKey,
+    overrides: {},
+    selectedFormat: defaultFormat,
+    isEditing: false,
+    pendingNote: '',
+  };
 
   // Convert library component to DataElement for code generation
   const dataElement = useMemo(() => {
@@ -140,12 +147,11 @@ function LibraryCodeViewer({ component }: LibraryCodeViewerProps) {
 
   // Handle code state changes
   const handleCodeStateChange = useCallback((newState: ComponentCodeState) => {
-    const store = useComponentCodeStore.getState();
-    // Update the format selection
-    if (newState.selectedFormat !== codeState.selectedFormat) {
-      store.setSelectedFormat(storeKey, newState.selectedFormat);
+    // Update the format selection - this creates the state if it doesn't exist
+    if (newState.selectedFormat !== effectiveCodeState.selectedFormat) {
+      setSelectedFormat(storeKey, newState.selectedFormat);
     }
-  }, [storeKey, codeState.selectedFormat]);
+  }, [storeKey, effectiveCodeState.selectedFormat, setSelectedFormat]);
 
   return (
     <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
@@ -154,9 +160,10 @@ function LibraryCodeViewer({ component }: LibraryCodeViewerProps) {
         <span className="text-sm font-medium text-[var(--text)]">Generated Code</span>
       </div>
       <ComponentCodeViewer
+        key={component.id}  // Force remount when component changes to reset edit state
         element={dataElement}
         measureId={LIBRARY_MEASURE_ID}
-        codeState={codeState}
+        codeState={effectiveCodeState}
         onCodeStateChange={handleCodeStateChange}
         isLibraryLinked={false}
         className="border-0 rounded-none"

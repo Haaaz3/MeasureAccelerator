@@ -548,6 +548,7 @@ export const ComponentDetailPanel = ({
         {expandedSections.code && (
           <div className="p-4 border-b border-[var(--border)]">
             <ComponentCodeViewer
+              key={element.id}  // Force remount when element changes to reset edit state
               element={element}
               measureId={measureId}
               codeState={effectiveCodeState}
