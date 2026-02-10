@@ -52,7 +52,7 @@ export function Sidebar() {
               className={`
                 w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all
                 ${isActive
-                  ? 'bg-[var(--sidebar-bg-active)] text-white border-l-3 border-[var(--primary)]'
+                  ? 'bg-[var(--sidebar-bg-active)] text-[var(--text)] border-l-3 border-[var(--primary)]'
                   : 'text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-text)]'
                 }
               `}
@@ -111,13 +111,13 @@ export function Sidebar() {
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all
                     ${isActive
-                      ? 'bg-[var(--sidebar-bg-active)] text-white'
+                      ? 'bg-[var(--sidebar-bg-active)] text-[var(--text)]'
                       : 'text-[var(--sidebar-text-muted)] hover:bg-[var(--sidebar-bg-hover)] hover:text-[var(--sidebar-text)]'
                     }
                   `}
                   style={isActive ? { borderLeft: '3px solid var(--primary)' } : { paddingLeft: '15px' }}
                 >
-                  <ChevronRight className={`w-3 h-3 ${isActive ? 'text-white' : 'text-[var(--sidebar-text-muted)]'}`} />
+                  <ChevronRight className={`w-3 h-3 ${isActive ? 'text-[var(--primary)]' : 'text-[var(--sidebar-text-muted)]'}`} />
                   <item.icon className="w-4 h-4" />
                   <span className="flex-1 text-left">{item.label}</span>
                 </button>
