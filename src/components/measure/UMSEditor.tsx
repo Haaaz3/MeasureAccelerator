@@ -1489,7 +1489,7 @@ function PopulationSection({
   return (
     <div className={`rounded-xl overflow-hidden transition-colors bg-[var(--bg-secondary)] ${
       effectiveStatus === 'approved'
-        ? 'border-2 border-[var(--success)]/60'
+        ? 'border-2 border-[var(--success-border)]'
         : effectiveStatus === 'needs_revision' || effectiveStatus === 'flagged'
           ? 'border-2 border-amber-400/60'
           : 'border border-[var(--border)]'
@@ -1801,7 +1801,7 @@ function CriteriaNode({
             : isSelected
               ? 'border bg-[var(--accent-light)] border-[var(--accent)]/50'
               : element.reviewStatus === 'approved'
-                ? 'border-2 bg-[var(--bg-tertiary)] border-[var(--success)]/60 hover:border-[var(--success)]/80'
+                ? 'border-2 bg-[var(--bg-tertiary)] border-[var(--success-border)] hover:border-[var(--success)]'
                 : element.reviewStatus === 'needs_revision'
                   ? 'border-2 bg-[var(--bg-tertiary)] border-amber-400/60 hover:border-amber-400/80'
                   : 'border bg-[var(--bg-tertiary)] border-[var(--border)] hover:border-[var(--text-dim)]'
@@ -1983,12 +1983,12 @@ function CriteriaNode({
             }}
             className={`p-1.5 rounded transition-colors ${
               element.reviewStatus === 'approved'
-                ? 'bg-green-500/20 text-green-500 hover:bg-green-500/30'
+                ? 'bg-[var(--success-light)] text-[var(--success)] hover:bg-[var(--success-light)]'
                 : 'hover:bg-[var(--success-light)] text-[var(--text-dim)] hover:text-[var(--success)]'
             }`}
             title={element.reviewStatus === 'approved' ? 'Approved (click to unapprove)' : 'Approve'}
           >
-            <CheckCircle className={`w-4 h-4 ${element.reviewStatus === 'approved' ? 'fill-green-500/30' : ''}`} />
+            <CheckCircle className={`w-4 h-4 ${element.reviewStatus === 'approved' ? 'fill-[var(--success-light)]' : ''}`} />
           </button>
           <button
             onClick={(e) => {
@@ -2754,7 +2754,7 @@ function NodeDetailPanel({
             onClick={() => updateReviewStatus(measureId, node!.id, node.reviewStatus === 'approved' ? 'pending' : 'approved')}
             className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${
               node.reviewStatus === 'approved'
-                ? 'bg-green-500 text-white hover:bg-green-600'
+                ? 'bg-[var(--success)] text-white hover:opacity-90'
                 : 'bg-[var(--success-light)] text-[var(--success)] hover:opacity-80'
             }`}
           >

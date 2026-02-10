@@ -491,8 +491,8 @@ function BoundaryEditor({ boundary, onChange, label }: BoundaryEditorProps) {
             onClick={() => handleOffsetDirectionChange(boundary.offsetDirection === 'after' ? 'before' : 'after')}
             className={`px-1.5 py-0.5 text-xs font-bold rounded transition-colors ${
               boundary.offsetDirection === 'after'
-                ? 'bg-green-500/20 text-green-400'
-                : 'bg-red-500/20 text-red-400'
+                ? 'bg-[var(--success-light)] text-[var(--success)]'
+                : 'bg-[var(--danger-light)] text-[var(--danger)]'
             }`}
             title="Toggle before/after"
           >

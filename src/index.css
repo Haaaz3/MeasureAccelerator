@@ -18,17 +18,17 @@
   --bg-tertiary: #EFEFEF;
   --bg-elevated: #FFFFFF;
 
-  /* Header & Sidebar - Dark navigation (Redwood pattern) */
-  --header-bg: #201F1E;
-  --header-text: #FFFFFF;
-  --header-text-muted: #A0A0A4;
+  /* Header & Sidebar - Light theme */
+  --header-bg: #FFFFFF;
+  --header-text: #201F1E;
+  --header-text-muted: #6B6B6F;
 
-  --sidebar-bg: #201F1E;
-  --sidebar-bg-hover: #363636;
-  --sidebar-bg-active: #424242;
-  --sidebar-text: #FFFFFF;
-  --sidebar-text-muted: #A0A0A4;
-  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-bg: #F7F7F8;
+  --sidebar-bg-hover: #EFEFEF;
+  --sidebar-bg-active: #E8E8EA;
+  --sidebar-text: #201F1E;
+  --sidebar-text-muted: #6B6B6F;
+  --sidebar-border: #E0E0E3;
 
   /* Text - Dark on light */
   --text: #201F1E;

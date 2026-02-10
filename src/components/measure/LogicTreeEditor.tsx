@@ -187,12 +187,12 @@ const ElementNode = ({
           <div className="flex items-start gap-2">
             <span className={`
               flex-shrink-0 px-2 py-0.5 text-[10px] font-medium rounded uppercase
-              ${element.type === 'procedure' ? 'bg-purple-500/15 text-purple-400' :
-                element.type === 'diagnosis' ? 'bg-red-500/15 text-red-400' :
-                element.type === 'encounter' ? 'bg-green-500/15 text-green-400' :
-                element.type === 'observation' ? 'bg-cyan-500/15 text-cyan-400' :
-                element.type === 'medication' ? 'bg-orange-500/15 text-orange-400' :
-                'bg-gray-500/15 text-gray-400'}
+              ${element.type === 'procedure' ? 'bg-purple-100 text-purple-700' :
+                element.type === 'diagnosis' ? 'bg-red-100 text-red-700' :
+                element.type === 'encounter' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                element.type === 'observation' ? 'bg-cyan-100 text-cyan-700' :
+                element.type === 'medication' ? 'bg-orange-100 text-orange-700' :
+                'bg-gray-100 text-gray-600'}
             `}>
               {element.type}
             </span>
@@ -234,12 +234,12 @@ const ElementNode = ({
             )}
 
             {element.libraryComponentId ? (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-green-500/10 text-green-400 text-[10px] rounded-full">
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-[var(--success-light)] text-[var(--success)] text-[10px] rounded-full">
                 <Link2 size={10} />
                 Linked
               </span>
             ) : (
-              <span className="flex items-center gap-1 px-2 py-0.5 bg-gray-500/10 text-gray-400 text-[10px] rounded-full">
+              <span className="flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] rounded-full">
                 <Unlink size={10} />
                 Local
               </span>

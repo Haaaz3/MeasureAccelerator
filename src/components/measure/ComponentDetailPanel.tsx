@@ -348,12 +348,12 @@ export const ComponentDetailPanel = ({
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span className={`
               px-2 py-0.5 text-xs font-medium rounded uppercase
-              ${element.type === 'procedure' ? 'bg-purple-500/15 text-purple-400' :
-                element.type === 'diagnosis' ? 'bg-red-500/15 text-red-400' :
-                element.type === 'encounter' ? 'bg-green-500/15 text-green-400' :
-                element.type === 'observation' ? 'bg-cyan-500/15 text-cyan-400' :
-                element.type === 'medication' ? 'bg-orange-500/15 text-orange-400' :
-                'bg-gray-500/15 text-gray-400'}
+              ${element.type === 'procedure' ? 'bg-purple-100 text-purple-700' :
+                element.type === 'diagnosis' ? 'bg-red-100 text-red-700' :
+                element.type === 'encounter' ? 'bg-[var(--success-light)] text-[var(--success)]' :
+                element.type === 'observation' ? 'bg-cyan-100 text-cyan-700' :
+                element.type === 'medication' ? 'bg-orange-100 text-orange-700' :
+                'bg-gray-100 text-gray-600'}
             `}>
               {element.type}
             </span>
@@ -363,8 +363,8 @@ export const ComponentDetailPanel = ({
                 onClick={() => onNavigateToLibrary?.(element.libraryComponentId!)}
                 className="
                   flex items-center gap-1 px-2 py-0.5
-                  bg-green-500/10 text-green-400 text-xs rounded-full
-                  hover:bg-green-500/20
+                  bg-[var(--success-light)] text-[var(--success)] text-xs rounded-full
+                  hover:opacity-80
                 "
               >
                 <Link2 size={10} />
@@ -374,7 +374,7 @@ export const ComponentDetailPanel = ({
             ) : (
               <span className="
                 flex items-center gap-1 px-2 py-0.5
-                bg-gray-500/10 text-gray-400 text-xs rounded-full
+                bg-gray-100 text-gray-600 text-xs rounded-full
               ">
                 <Unlink size={10} />
                 Local
