@@ -1,6 +1,6 @@
-# MeasureAccelerator
+# AlgoAccelerator
 
-A comprehensive platform for developing, validating, and deploying clinical quality measures (CQMs). MeasureAccelerator accelerates measure development through AI-assisted workflows, reusable component libraries, and multi-format code generation.
+A comprehensive platform for developing, validating, and deploying clinical quality measures (CQMs). AlgoAccelerator accelerates measure development through AI-assisted workflows, reusable component libraries, and multi-format code generation.
 
 ## Features
 
@@ -41,8 +41,8 @@ A comprehensive platform for developing, validating, and deploying clinical qual
 
 ```bash
 # Clone the repository
-git clone https://github.com/Haaaz3/MeasureAccelerator.git
-cd MeasureAccelerator
+git clone https://github.com/Haaaz3/AlgoAccelerator.git
+cd AlgoAccelerator
 
 # Install dependencies
 npm install
@@ -132,4 +132,4 @@ This project is proprietary software. All rights reserved.
 
 ## Support
 
-For issues and feature requests, please use the [GitHub Issues](https://github.com/Haaaz3/MeasureAccelerator/issues) page.
+For issues and feature requests, please use the [GitHub Issues](https://github.com/Haaaz3/AlgoAccelerator/issues) page.

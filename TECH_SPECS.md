@@ -1,8 +1,8 @@
-# MeasureAccelerator Technical Specifications
+# AlgoAccelerator Technical Specifications
 
 ## Overview
 
-MeasureAccelerator is a comprehensive clinical quality measure development platform built with React, TypeScript, and Vite. It enables healthcare organizations to accelerate the creation, validation, and deployment of clinical quality measures (CQMs) through AI-assisted workflows, reusable component libraries, and multi-format code generation.
+AlgoAccelerator is a comprehensive clinical quality measure development platform built with React, TypeScript, and Vite. It enables healthcare organizations to accelerate the creation, validation, and deployment of clinical quality measures (CQMs) through AI-assisted workflows, reusable component libraries, and multi-format code generation.
 
 ## Technology Stack
 

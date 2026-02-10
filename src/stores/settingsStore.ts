@@ -179,7 +179,7 @@ export const useSettingsStore = create<SettingsState>()(
       },
     }),
     {
-      name: 'measure-accelerator-settings',
+      name: 'algo-accelerator-settings',
       partialize: (state) => ({
         selectedProvider: state.selectedProvider,
         selectedModel: state.selectedModel,

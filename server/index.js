@@ -1,5 +1,5 @@
 /**
- * Measure Accelerator API Server
+ * Algo Accelerator API Server
  *
  * Provides backend services for:
  * - VSAC (Value Set Authority Center) API integration
@@ -37,7 +37,7 @@ app.get('/health', (req, res) => {
 // API info
 app.get('/api', (req, res) => {
   res.json({
-    name: 'Measure Accelerator API',
+    name: 'Algo Accelerator API',
     version: '1.0.0',
     endpoints: {
       vsac: {
@@ -72,7 +72,7 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Measure Accelerator API running on port ${PORT}`);
+  console.log(`Algo Accelerator API running on port ${PORT}`);
   console.log(`Health check: http://localhost:${PORT}/health`);
   console.log(`API info: http://localhost:${PORT}/api`);
 });

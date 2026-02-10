@@ -1,8 +1,8 @@
-# MeasureAccelerator Product Guide
+# AlgoAccelerator Product Guide
 
 ## Introduction
 
-MeasureAccelerator is a powerful platform for developing, validating, and deploying clinical quality measures (CQMs). It streamlines the traditionally complex and time-consuming process of measure development through AI-assisted workflows, reusable component libraries, and automated code generation.
+AlgoAccelerator is a powerful platform for developing, validating, and deploying clinical quality measures (CQMs). It streamlines the traditionally complex and time-consuming process of measure development through AI-assisted workflows, reusable component libraries, and automated code generation.
 
 ### Who is this for?
 

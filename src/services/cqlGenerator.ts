@@ -175,7 +175,7 @@ function generateHeader(
     ` * Description: ${measure.metadata.description || 'No description provided'}`,
     ` *`,
     ` * Generated: ${new Date().toISOString()}`,
-    ` * Generator: MeasureAccelerator CQL Generator v1.0`,
+    ` * Generator: AlgoAccelerator CQL Generator v1.0`,
     ' */',
     '',
     `library ${libraryName} version '${version}'`,

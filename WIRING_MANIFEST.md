@@ -1,4 +1,4 @@
-# MeasureAccelerator Wiring Manifest
+# AlgoAccelerator Wiring Manifest
 
 A comprehensive map of how components, stores, and services connect and communicate throughout the application.
 

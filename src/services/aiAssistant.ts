@@ -240,7 +240,7 @@ function formatTimingForPrompt(timing: TimingWindowOverride): string {
 }
 
 export function buildSystemPrompt(context: AIAssistantContext): string {
-  return `You are an AI assistant embedded in MeasureAccelerator, a healthcare quality measure authoring tool. You help users edit and refine UMS (Unified Measure Schema) components.
+  return `You are an AI assistant embedded in AlgoAccelerator, a healthcare quality measure authoring tool. You help users edit and refine UMS (Unified Measure Schema) components.
 
 ## Current Context
 

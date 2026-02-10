@@ -1,8 +1,8 @@
-# MeasureAccelerator Product Specification
+# AlgoAccelerator Product Specification
 
 ## Executive Summary
 
-**MeasureAccelerator** transforms how healthcare organizations build clinical quality measures. Instead of spending weeks manually translating PDF specifications into code, teams can upload a document and get a working measure in minutes.
+**AlgoAccelerator** transforms how healthcare organizations build clinical quality measures. Instead of spending weeks manually translating PDF specifications into code, teams can upload a document and get a working measure in minutes.
 
 ### The Problem We Solve
 
@@ -15,7 +15,7 @@ Healthcare quality measures (like "% of diabetic patients with controlled blood 
 
 ### Our Solution
 
-MeasureAccelerator uses AI to automate this process:
+AlgoAccelerator uses AI to automate this process:
 1. **Upload** a measure specification (PDF, HTML, Excel)
 2. **AI extracts** all the clinical logic, codes, and requirements
 3. **Review & approve** the extracted content with human oversight
@@ -36,7 +36,7 @@ MeasureAccelerator uses AI to automate this process:
 
 ### Primary Users
 
-| Role | What They Do | How They Use MeasureAccelerator |
+| Role | What They Do | How They Use AlgoAccelerator |
 |------|--------------|--------------------------------|
 | **Internal Clinical Informaticist** | Translates clinical requirements into technical specs | Reviews AI extraction for clinical accuracy, validates patient logic |
 | **Quality Analyst** | Ensures measures meet reporting requirements | Uploads measure specs, tracks review progress, exports for reporting |
@@ -626,7 +626,7 @@ Each component tracks:
 
 ### FHIR R4 Alignment
 
-MeasureAccelerator follows the HL7 FHIR (Fast Healthcare Interoperability Resources) standard:
+AlgoAccelerator follows the HL7 FHIR (Fast Healthcare Interoperability Resources) standard:
 
 | FHIR Concept | How We Use It |
 |--------------|---------------|
@@ -772,4 +772,4 @@ This data feeds back to improve AI extraction accuracy over time.
 ---
 
 *Last Updated: January 2026*
-*MeasureAccelerator Product Specification v2.0*
+*AlgoAccelerator Product Specification v2.0*

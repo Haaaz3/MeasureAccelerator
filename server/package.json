@@ -1,7 +1,7 @@
 {
-  "name": "measure-accelerator-api",
+  "name": "algo-accelerator-api",
   "version": "1.0.0",
-  "description": "Backend API for Measure Accelerator",
+  "description": "Backend API for Algo Accelerator",
   "main": "index.js",
   "type": "module",
   "scripts": {
