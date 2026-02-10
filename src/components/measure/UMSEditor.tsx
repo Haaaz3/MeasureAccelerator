@@ -40,7 +40,7 @@ function cleanDescription(desc: string | undefined): string {
 }
 
 export function UMSEditor() {
-  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, moveComponentToIndex, setOperatorBetweenSiblings, deleteComponent, setActiveTab, syncAgeRange, updateTimingOverride, updateTimingWindow, updateMeasurementPeriod } = useMeasureStore();
+  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, moveComponentToIndex, setOperatorBetweenSiblings, deleteComponent, setActiveTab, syncAgeRange, updateTimingOverride, updateTimingWindow, updateMeasurementPeriod, updateDataElement } = useMeasureStore();
   const measure = getActiveMeasure();
   const {
     components: libraryComponents,
@@ -87,8 +87,8 @@ export function UMSEditor() {
   const [pendingEdit, setPendingEdit] = useState<{
     componentId: string;
     elementId: string;
-    type: 'timing' | 'timingWindow';
-    value: TimingConstraint | TimingWindow | null;
+    type: 'timing' | 'timingWindow' | 'description' | 'dataType' | 'negation' | 'valueSet' | 'other';
+    value: TimingConstraint | TimingWindow | Partial<DataElement> | null;
     libraryComponent: LibraryComponent;
   } | null>(null);
 
@@ -208,18 +208,31 @@ export function UMSEditor() {
   const handleSharedEditUpdateAll = () => {
     if (!pendingEdit || !measure) return;
 
-    // Apply the edit to this measure's element
-    if (pendingEdit.type === 'timing') {
-      updateTimingOverride(measure.id, pendingEdit.elementId, pendingEdit.value as TimingConstraint | null);
-    } else {
-      updateTimingWindow(measure.id, pendingEdit.elementId, pendingEdit.value as TimingWindow | null);
+    // Apply the edit to this measure's element based on type
+    switch (pendingEdit.type) {
+      case 'timing':
+        updateTimingOverride(measure.id, pendingEdit.elementId, pendingEdit.value as TimingConstraint | null);
+        break;
+      case 'timingWindow':
+        updateTimingWindow(measure.id, pendingEdit.elementId, pendingEdit.value as TimingWindow | null);
+        break;
+      case 'description':
+      case 'dataType':
+      case 'negation':
+      case 'valueSet':
+      case 'other':
+        // Generic update for other property changes
+        if (pendingEdit.value && typeof pendingEdit.value === 'object') {
+          updateDataElement(measure.id, pendingEdit.elementId, pendingEdit.value as Partial<DataElement>, 'description_changed', 'Shared component edit');
+        }
+        break;
     }
 
     // Sync the change to all measures using this library component
-    // Note: Timing changes are applied locally via updateTimingOverride above
+    // Note: Changes are applied locally via the above handlers
     // The syncComponentToMeasures updates the library component metadata
     const changes = {
-      changeDescription: `Timing updated across all measures (${pendingEdit.type})`,
+      changeDescription: `${pendingEdit.type} updated across all measures`,
     };
 
     const syncResult = syncComponentToMeasures(pendingEdit.componentId, changes, measures, batchUpdateMeasures);
@@ -276,11 +289,24 @@ export function UMSEditor() {
     // 2. Add the forked component to the library
     addComponent(forkedComponent);
 
-    // 3. Apply the edit to this measure's element
-    if (pendingEdit.type === 'timing') {
-      updateTimingOverride(measure.id, pendingEdit.elementId, pendingEdit.value as TimingConstraint | null);
-    } else {
-      updateTimingWindow(measure.id, pendingEdit.elementId, pendingEdit.value as TimingWindow | null);
+    // 3. Apply the edit to this measure's element based on type
+    switch (pendingEdit.type) {
+      case 'timing':
+        updateTimingOverride(measure.id, pendingEdit.elementId, pendingEdit.value as TimingConstraint | null);
+        break;
+      case 'timingWindow':
+        updateTimingWindow(measure.id, pendingEdit.elementId, pendingEdit.value as TimingWindow | null);
+        break;
+      case 'description':
+      case 'dataType':
+      case 'negation':
+      case 'valueSet':
+      case 'other':
+        // Generic update for other property changes
+        if (pendingEdit.value && typeof pendingEdit.value === 'object') {
+          updateDataElement(measure.id, pendingEdit.elementId, pendingEdit.value as Partial<DataElement>, 'description_changed', 'Forked for measure-specific edit');
+        }
+        break;
     }
 
     // 4. Update the DataElement to link to the NEW component

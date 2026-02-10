@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   X,
   Edit3,
@@ -16,13 +16,17 @@ import {
   AlertTriangle,
   Code,
   ExternalLink,
+  Code2,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useMeasureStore } from '../../stores/measureStore';
-import { useComponentCodeStore } from '../../stores/componentCodeStore';
-import type { LogicalClause, DataElement } from '../../types/ums';
+import { useComponentCodeStore, getStoreKey } from '../../stores/componentCodeStore';
+import type { LogicalClause, DataElement, ConfidenceLevel } from '../../types/ums';
 import { getComplexityColor, getComplexityDots } from '../../services/complexityCalculator';
 import type { AtomicComponent, CompositeComponent } from '../../types/componentLibrary';
+import { ComponentCodeViewer } from '../measure/ComponentCodeViewer';
+import type { ComponentCodeState } from '../../types/componentCode';
+import { createDefaultComponentCodeState } from '../../types/componentCode';
 
 // ============================================================================
 // Props
@@ -63,6 +67,102 @@ function formatDate(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+// ============================================================================
+// Library Component to DataElement Converter
+// ============================================================================
+
+/**
+ * Converts an AtomicComponent from the library to a DataElement
+ * so it can be used with the ComponentCodeViewer
+ */
+function libraryComponentToDataElement(component: AtomicComponent): DataElement {
+  // Map component metadata.category to DataElement type
+  const categoryToTypeMap: Record<string, DataElement['type']> = {
+    diagnoses: 'diagnosis',
+    procedures: 'procedure',
+    encounters: 'encounter',
+    observations: 'observation',
+    medications: 'medication',
+    demographics: 'demographic',
+    assessments: 'assessment',
+    immunizations: 'immunization',
+  };
+
+  const elementType = categoryToTypeMap[component.metadata.category] || 'assessment';
+
+  return {
+    id: component.id,
+    type: elementType,
+    description: component.name,
+    valueSet: component.valueSet ? {
+      id: component.valueSet.oid || component.id,
+      name: component.valueSet.name,
+      oid: component.valueSet.oid,
+      codes: component.valueSet.codes || [],
+      confidence: 'high' as ConfidenceLevel,
+      totalCodeCount: component.valueSet.codes?.length || 0,
+    } : undefined,
+    negation: component.negation,
+    // Convert library timing to DataElement timing format
+    // Timing is primarily used for code generation via the displayExpression
+    libraryComponentId: component.id,
+    reviewStatus: 'approved',
+    confidence: 'high' as ConfidenceLevel,
+  };
+}
+
+// ============================================================================
+// Library Code Viewer Sub-Component
+// ============================================================================
+
+interface LibraryCodeViewerProps {
+  component: AtomicComponent;
+}
+
+function LibraryCodeViewer({ component }: LibraryCodeViewerProps) {
+  // Use "library" as the measureId for library-scoped overrides
+  const LIBRARY_MEASURE_ID = 'library';
+  const storeKey = getStoreKey(LIBRARY_MEASURE_ID, component.id);
+
+  const getOrCreateCodeState = useComponentCodeStore((state) => state.getOrCreateCodeState);
+
+  // Get or create code state for this library component
+  const codeState = useMemo(() => {
+    return getOrCreateCodeState(storeKey);
+  }, [getOrCreateCodeState, storeKey]);
+
+  // Convert library component to DataElement for code generation
+  const dataElement = useMemo(() => {
+    return libraryComponentToDataElement(component);
+  }, [component]);
+
+  // Handle code state changes
+  const handleCodeStateChange = useCallback((newState: ComponentCodeState) => {
+    const store = useComponentCodeStore.getState();
+    // Update the format selection
+    if (newState.selectedFormat !== codeState.selectedFormat) {
+      store.setSelectedFormat(storeKey, newState.selectedFormat);
+    }
+  }, [storeKey, codeState.selectedFormat]);
+
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
+        <Code2 size={14} className="text-[var(--primary)]" />
+        <span className="text-sm font-medium text-[var(--text)]">Generated Code</span>
+      </div>
+      <ComponentCodeViewer
+        element={dataElement}
+        measureId={LIBRARY_MEASURE_ID}
+        codeState={codeState}
+        onCodeStateChange={handleCodeStateChange}
+        isLibraryLinked={false}
+        className="border-0 rounded-none"
+      />
+    </div>
+  );
 }
 
 // ============================================================================
@@ -389,6 +489,13 @@ export function ComponentDetail({ componentId, onClose, onEdit }: ComponentDetai
               ))}
             </div>
           </div>
+        )}
+
+        {/* -------------------------------------------------------------- */}
+        {/* Generated Code (Atomic Components Only)                       */}
+        {/* -------------------------------------------------------------- */}
+        {isAtomic && (
+          <LibraryCodeViewer component={component as AtomicComponent} />
         )}
       </div>
 
