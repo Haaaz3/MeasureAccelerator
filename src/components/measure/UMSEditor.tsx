@@ -2128,7 +2128,7 @@ function SelectedComponentDetailPanel({
 
   if (!element) {
     return (
-      <div className="w-[450px] flex items-center justify-center p-8 text-[var(--text-muted)] text-sm">
+      <div className="w-full flex items-center justify-center p-8 text-[var(--text-muted)] text-sm">
         Component not found. Select a data element to view code details.
       </div>
     );
@@ -2144,7 +2144,7 @@ function SelectedComponentDetailPanel({
       measureId={measureId}
       onClose={onClose}
       onNavigateToLibrary={onNavigateToLibrary}
-      className="w-[450px]"
+      className="w-full"
       mpStart={mpStart}
       mpEnd={mpEnd}
       onSaveTiming={onSaveTiming}
@@ -2542,7 +2542,7 @@ function NodeDetailPanel({
   };
 
   return (
-    <div className="w-[450px] border-l border-[var(--border)] bg-[var(--bg-secondary)] flex flex-col overflow-hidden">
+    <div className="w-full border-l border-[var(--border)] bg-[var(--bg-secondary)] flex flex-col overflow-hidden">
       <div className="sticky top-0 bg-[var(--bg-secondary)] border-b border-[var(--border)] p-4 flex items-center justify-between">
         <h3 className="font-semibold text-[var(--text)]">Edit Component</h3>
         <button onClick={onClose} className="p-1 hover:bg-[var(--bg-tertiary)] rounded">
