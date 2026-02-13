@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: algoaccel-backend
+
+  datasource:
+    url: jdbc:h2:file:./data/algoaccel;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.H2Dialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.algoaccel: INFO
+    org.springframework.security: WARN
+    org.hibernate.SQL: WARN
