@@ -732,8 +732,15 @@ function generateDataElementExpression(
 
 /**
  * Generate demographic expression
+ * Handles both age thresholds and patient sex checks
  */
 function generateDemographicExpression(element: DataElement): string {
+  // Handle patient sex check
+  if (element.genderValue) {
+    return `Patient.gender = '${element.genderValue}'`;
+  }
+
+  // Handle age thresholds
   if (element.thresholds) {
     const { ageMin, ageMax } = element.thresholds;
     if (ageMin !== undefined || ageMax !== undefined) {

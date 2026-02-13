@@ -24,6 +24,9 @@ export const NDC = 'http://hl7.org/fhir/sid/ndc';
 // Immunization code systems
 export const CVX = 'http://hl7.org/fhir/sid/cvx';
 
+// Administrative/Demographic code systems
+export const ADMINISTRATIVE_GENDER = 'http://hl7.org/fhir/administrative-gender';
+
 // All code systems for reference
 export const FHIR_CODE_SYSTEMS = {
   ICD10CM,
@@ -35,6 +38,7 @@ export const FHIR_CODE_SYSTEMS = {
   RXNORM,
   NDC,
   CVX,
+  ADMINISTRATIVE_GENDER,
 } as const;
 
 /**
@@ -55,6 +59,8 @@ export const CODE_SYSTEM_MAP: Record<string, string> = {
   'RXNORM': RXNORM,
   'CVX': CVX,
   'NDC': NDC,
+  'AdministrativeGender': ADMINISTRATIVE_GENDER,
+  'administrative-gender': ADMINISTRATIVE_GENDER,
 };
 
 /**
@@ -80,6 +86,8 @@ export function getCodeSystemDisplayName(uri: string): string {
       return 'NDC';
     case CVX:
       return 'CVX';
+    case ADMINISTRATIVE_GENDER:
+      return 'Administrative Gender';
     default:
       // If it's a short name, return as-is
       if (!uri.startsWith('http')) {

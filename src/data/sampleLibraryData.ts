@@ -62,7 +62,105 @@ export const sampleAtomics: Omit<AtomicComponent, 'complexity'>[] = [
       source: { origin: 'ecqi' },
     },
   },
-  
+
+  // Patient Sex: Female - Demographics
+  {
+    type: 'atomic',
+    id: 'patient-sex-female',
+    name: 'Patient Sex: Female',
+    description: 'Patient administrative gender is female (FHIR Patient.gender = "female"). Used for sex-specific measures like Breast Cancer Screening and Cervical Cancer Screening.',
+    resourceType: 'Patient',
+    genderValue: 'female',
+    valueSet: {
+      oid: '2.16.840.1.113883.4.642.3.1',
+      version: 'FHIR R4',
+      name: 'Administrative Gender',
+    },
+    timing: {
+      operator: 'during',
+      reference: 'Measurement Period',
+      displayExpression: 'N/A - Patient demographic',
+    },
+    negation: false,
+    versionInfo: {
+      versionId: '1.0',
+      versionHistory: [
+        {
+          versionId: '1.0',
+          status: 'approved',
+          createdAt: '2024-01-15T10:00:00Z',
+          createdBy: 'system',
+          changeDescription: 'Initial version - Patient sex demographic component',
+        },
+      ],
+      status: 'approved',
+      approvedBy: 'admin',
+      approvedAt: '2024-01-15T10:00:00Z',
+    },
+    usage: {
+      measureIds: [],
+      usageCount: 0,
+    },
+    metadata: {
+      createdAt: '2024-01-15T10:00:00Z',
+      createdBy: 'system',
+      updatedAt: '2024-01-15T10:00:00Z',
+      updatedBy: 'system',
+      category: 'demographics',
+      tags: ['sex', 'gender', 'female', 'demographic', 'patient'],
+      source: { origin: 'ecqi' },
+    },
+  },
+
+  // Patient Sex: Male - Demographics
+  {
+    type: 'atomic',
+    id: 'patient-sex-male',
+    name: 'Patient Sex: Male',
+    description: 'Patient administrative gender is male (FHIR Patient.gender = "male"). Used for sex-specific measures like Prostate Cancer Screening.',
+    resourceType: 'Patient',
+    genderValue: 'male',
+    valueSet: {
+      oid: '2.16.840.1.113883.4.642.3.1',
+      version: 'FHIR R4',
+      name: 'Administrative Gender',
+    },
+    timing: {
+      operator: 'during',
+      reference: 'Measurement Period',
+      displayExpression: 'N/A - Patient demographic',
+    },
+    negation: false,
+    versionInfo: {
+      versionId: '1.0',
+      versionHistory: [
+        {
+          versionId: '1.0',
+          status: 'approved',
+          createdAt: '2024-01-15T10:00:00Z',
+          createdBy: 'system',
+          changeDescription: 'Initial version - Patient sex demographic component',
+        },
+      ],
+      status: 'approved',
+      approvedBy: 'admin',
+      approvedAt: '2024-01-15T10:00:00Z',
+    },
+    usage: {
+      measureIds: [],
+      usageCount: 0,
+    },
+    metadata: {
+      createdAt: '2024-01-15T10:00:00Z',
+      createdBy: 'system',
+      updatedAt: '2024-01-15T10:00:00Z',
+      updatedBy: 'system',
+      category: 'demographics',
+      tags: ['sex', 'gender', 'male', 'demographic', 'patient'],
+      source: { origin: 'ecqi' },
+    },
+  },
+
   // Encounters - Low complexity
   {
     type: 'atomic',

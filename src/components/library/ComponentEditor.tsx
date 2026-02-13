@@ -67,9 +67,10 @@ const CATEGORIES: { value: ComponentCategory; label: string }[] = [
   { value: 'conditions', label: 'Conditions' },
   { value: 'procedures', label: 'Procedures' },
   { value: 'medications', label: 'Medications' },
-  { value: 'observations', label: 'Observations' },
+  { value: 'assessments', label: 'Assessments' },
+  { value: 'laboratory', label: 'Laboratory' },
+  { value: 'clinical-observations', label: 'Clinical Observations' },
   { value: 'exclusions', label: 'Exclusions' },
-  { value: 'other', label: 'Other' },
 ];
 
 // ============================================================================
@@ -98,6 +99,9 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
   const [name, setName] = useState(existingComponent?.name ?? '');
   const [category, setCategory] = useState<ComponentCategory>(
     existingComponent?.metadata.category ?? 'encounters'
+  );
+  const [categoryAutoAssigned, setCategoryAutoAssigned] = useState<boolean>(
+    existingComponent?.metadata.categoryAutoAssigned ?? false
   );
 
   // --------------------------------------------------------------------------
@@ -266,6 +270,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
           metadata: {
             ...existingComponent.metadata,
             category,
+            categoryAutoAssigned,
             tags,
             updatedAt: new Date().toISOString(),
             updatedBy: 'user',
@@ -336,6 +341,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
           metadata: {
             ...existingComponent.metadata,
             category,
+            categoryAutoAssigned,
             tags,
             updatedAt: new Date().toISOString(),
             updatedBy: 'user',
@@ -930,12 +936,25 @@ export default function ComponentEditor({ componentId, onSave, onClose }: Compon
 
           {/* Category (shared) */}
           <div>
-            <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text)' }}>
+            <label className="block text-sm font-medium mb-1.5 flex items-center gap-2" style={{ color: 'var(--text)' }}>
               Category
+              {categoryAutoAssigned && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-xs font-medium"
+                  style={{ backgroundColor: 'var(--info-bg)', color: 'var(--info-text)' }}
+                  title="Category was auto-assigned based on component properties"
+                >
+                  Auto
+                </span>
+              )}
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value as ComponentCategory)}
+              onChange={(e) => {
+                setCategory(e.target.value as ComponentCategory);
+                // Manually changing category clears the auto flag
+                setCategoryAutoAssigned(false);
+              }}
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
               style={{
                 backgroundColor: 'var(--bg-primary)',

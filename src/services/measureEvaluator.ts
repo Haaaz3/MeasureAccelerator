@@ -742,9 +742,24 @@ function evaluateDataElement(
 
   switch (element.type) {
     case 'demographic':
-      const ageResult = evaluateAgeRequirement(patient, element, mpStart, mpEnd);
-      met = ageResult.met;
-      facts.push(...ageResult.facts);
+      // Handle patient sex check
+      if (element.genderValue) {
+        const patientGender = patient.demographics.gender;
+        const genderMet = patientGender === element.genderValue;
+        met = genderMet;
+        facts.push({
+          code: 'sex',
+          display: genderMet
+            ? `Patient sex (${patientGender}) matches required (${element.genderValue})`
+            : `Patient sex (${patientGender}) does not match required (${element.genderValue})`,
+          source: 'demographics',
+        });
+      } else {
+        // Handle age requirement (original logic)
+        const ageResult = evaluateAgeRequirement(patient, element, mpStart, mpEnd);
+        met = ageResult.met;
+        facts.push(...ageResult.facts);
+      }
       break;
 
     case 'diagnosis':
@@ -1745,6 +1760,9 @@ function generateCqlSnippet(element: DataElement): string {
     case 'medication':
       return `["MedicationRequest": "${vsName}"] M where M.authoredOn during "Measurement Period"`;
     case 'demographic':
+      if (element.genderValue) {
+        return `Patient.gender = '${element.genderValue}'`;
+      }
       return `AgeInYearsAt(start of "Measurement Period") >= ${element.thresholds?.ageMin || 0} and AgeInYearsAt(start of "Measurement Period") <= ${element.thresholds?.ageMax || 120}`;
     default:
       return `// ${element.description}`;

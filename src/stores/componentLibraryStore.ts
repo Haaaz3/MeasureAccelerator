@@ -21,6 +21,7 @@ import type {
   TimingExpression,
 } from '../types/componentLibrary';
 import { calculateAtomicComplexity, calculateCompositeComplexity } from '../services/complexityCalculator';
+import { inferCategory } from '../utils/inferCategory';
 import {
   createNewVersion,
   archiveVersion,
@@ -205,16 +206,68 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
 
       // CRUD Actions
       addComponent: (component) =>
-        set((state) => ({
-          components: [...state.components, component],
-        })),
+        set((state) => {
+          // Auto-assign category if categoryAutoAssigned is not explicitly set
+          if (component.metadata.categoryAutoAssigned === undefined) {
+            const inferred = inferCategory(component);
+            component = {
+              ...component,
+              metadata: {
+                ...component.metadata,
+                category: inferred,
+                categoryAutoAssigned: true,
+              },
+            };
+          }
+          return {
+            components: [...state.components, component],
+          };
+        }),
 
       updateComponent: (id, updates) =>
-        set((state) => ({
-          components: state.components.map((c) =>
-            c.id === id ? ({ ...c, ...updates } as LibraryComponent) : c
-          ),
-        })),
+        set((state) => {
+          const existing = state.components.find((c) => c.id === id);
+          if (!existing) return state;
+
+          // If category is explicitly changed, clear auto flag
+          if (
+            updates.metadata?.category &&
+            updates.metadata.category !== existing.metadata.category
+          ) {
+            updates = {
+              ...updates,
+              metadata: {
+                ...updates.metadata,
+                categoryAutoAssigned: false,
+              },
+            };
+          }
+
+          // If component is auto-assigned and relevant fields changed, re-infer
+          // Only applicable for atomic components which have valueSet, resourceType, genderValue
+          if (
+            existing.metadata.categoryAutoAssigned &&
+            existing.type === 'atomic' &&
+            ('valueSet' in updates || 'resourceType' in updates || 'genderValue' in updates)
+          ) {
+            const merged = { ...existing, ...updates } as LibraryComponent;
+            const newCategory = inferCategory(merged);
+            updates = {
+              ...updates,
+              metadata: {
+                ...existing.metadata,
+                ...updates.metadata,
+                category: newCategory,
+              },
+            };
+          }
+
+          return {
+            components: state.components.map((c) =>
+              c.id === id ? ({ ...c, ...updates } as LibraryComponent) : c
+            ),
+          };
+        }),
 
       deleteComponent: (id) =>
         set((state) => ({
@@ -421,9 +474,10 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
               diagnosis: 'conditions',
               procedure: 'procedures',
               medication: 'medications',
-              observation: 'observations',
+              observation: 'clinical-observations',
+              assessment: 'assessments',
             };
-            const category: ComponentCategory = categoryMap[element.type] || 'other';
+            const category: ComponentCategory = categoryMap[element.type] || 'clinical-observations';
 
             const vsOid = element.valueSet?.oid || '';
             const vsName = element.valueSet?.name || element.description;

@@ -128,6 +128,18 @@ export interface AtomicComponent {
   /** Whether this is a negation (absence of, without) */
   negation: boolean;
 
+  /**
+   * QI-Core resource type this component targets (e.g., 'Patient' for demographics)
+   * Used by inferCategory() and code generators to determine the FHIR resource
+   */
+  resourceType?: import('./fhir-measure').QICoreResourceType;
+
+  /**
+   * For Patient sex components: the gender value to check
+   * Maps to FHIR Patient.gender with values 'male' or 'female'
+   */
+  genderValue?: 'male' | 'female';
+
   /** Auto-calculated complexity */
   complexity: ComponentComplexity;
 
@@ -281,6 +293,13 @@ export interface ComponentMetadata {
 
   /** Source of this component */
   source: ComponentSource;
+
+  /**
+   * True if category was auto-assigned by inferCategory(); false if manually set.
+   * When true, category may be re-inferred on component edit.
+   * When false (manual override), category is never re-inferred.
+   */
+  categoryAutoAssigned?: boolean;
 }
 
 export type ComponentCategory =
@@ -289,9 +308,10 @@ export type ComponentCategory =
   | 'conditions'
   | 'procedures'
   | 'medications'
-  | 'observations'
-  | 'exclusions'
-  | 'other';
+  | 'assessments'           // Screenings, surveys, questionnaires (e.g., PHQ-9)
+  | 'laboratory'            // Lab tests and results (e.g., HbA1c, LDL)
+  | 'clinical-observations' // Vitals, BMI, social determinants (fallback for Observation)
+  | 'exclusions';
 
 export interface ComponentSource {
   /** Where this originated */

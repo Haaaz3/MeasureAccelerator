@@ -34,9 +34,10 @@ const CATEGORIES: { value: ComponentCategory; label: string }[] = [
   { value: 'conditions', label: 'Conditions' },
   { value: 'procedures', label: 'Procedures' },
   { value: 'medications', label: 'Medications' },
-  { value: 'observations', label: 'Observations' },
+  { value: 'assessments', label: 'Assessments' },
+  { value: 'laboratory', label: 'Laboratory' },
+  { value: 'clinical-observations', label: 'Clinical Observations' },
   { value: 'exclusions', label: 'Exclusions' },
-  { value: 'other', label: 'Other' },
 ];
 
 // ============================================================================
@@ -88,7 +89,7 @@ export default function ImportMatcher({ onComplete, onCancel }: ImportMatcherPro
     for (const match of newComponents) {
       initial[match.incomingComponent.name] = {
         addToLibrary: true,
-        category: 'other',
+        category: 'clinical-observations',
       };
     }
     return initial;
@@ -348,7 +349,7 @@ export default function ImportMatcher({ onComplete, onCancel }: ImportMatcherPro
                       key={match.incomingComponent.name}
                       match={match}
                       addToLibrary={decision?.addToLibrary ?? true}
-                      category={decision?.category ?? 'other'}
+                      category={decision?.category ?? 'clinical-observations'}
                       onToggleLibrary={() => toggleAddToLibrary(match.incomingComponent.name)}
                       onCategoryChange={(cat) => setNewCategory(match.incomingComponent.name, cat)}
                     />

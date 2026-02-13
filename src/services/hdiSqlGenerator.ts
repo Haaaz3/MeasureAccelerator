@@ -401,16 +401,35 @@ function dataElementToPredicate(
         timing: extractTimingFromElement(element),
       } as EncounterPredicate & { codes?: any; timing?: any };
 
-    case 'demographic':
-      return {
+    case 'demographic': {
+      // Build demographics predicate with age and/or gender
+      const demoPredicate: DemographicsPredicate = {
         type: 'demographics',
         alias: generateAlias('DEMOG'),
         description: element.description || 'Demographic constraint',
-        age: element.thresholds ? {
+      };
+
+      // Handle age thresholds
+      if (element.thresholds && (element.thresholds.ageMin !== undefined || element.thresholds.ageMax !== undefined)) {
+        demoPredicate.age = {
           min: element.thresholds.ageMin,
           max: element.thresholds.ageMax,
-        } : undefined,
-      } as DemographicsPredicate;
+        };
+      }
+
+      // Handle patient sex (genderValue)
+      if (element.genderValue) {
+        const genderMap: Record<string, string[]> = {
+          male: ['FHIR Male', 'FHIR Male Gender Identity'],
+          female: ['FHIR Female', 'FHIR Female Gender Identity'],
+        };
+        demoPredicate.gender = {
+          include: genderMap[element.genderValue] || [],
+        };
+      }
+
+      return demoPredicate;
+    }
 
     default:
       console.warn(`Unsupported data element type for HDI SQL: ${element.type}`);

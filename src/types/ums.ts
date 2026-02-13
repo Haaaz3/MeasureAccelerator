@@ -487,6 +487,12 @@ export interface DataElement {
     comparator?: '>' | '>=' | '<' | '<=' | '=' | '!=';
   };
 
+  /**
+   * For demographic elements checking patient sex
+   * Maps to FHIR Patient.gender with values 'male' or 'female'
+   */
+  genderValue?: 'male' | 'female';
+
   /** When must this data element occur? */
   timingRequirements?: TimingRequirement[];
   /** @deprecated Use timingRequirements instead */

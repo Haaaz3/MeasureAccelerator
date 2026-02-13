@@ -8,7 +8,7 @@
  * accurate patient classification.
  */
 
-import { CPT, HCPCS, ICD10CM, SNOMEDCT, LOINC, CVX } from './fhirCodeSystems';
+import { CPT, HCPCS, ICD10CM, SNOMEDCT, LOINC, CVX, ADMINISTRATIVE_GENDER } from './fhirCodeSystems';
 
 export interface StandardValueSet {
   id: string;
@@ -505,6 +505,28 @@ export const DEMENTIA_VALUE_SET: StandardValueSet = {
 };
 
 // =============================================================================
+// DEMOGRAPHIC VALUE SETS
+// =============================================================================
+
+/**
+ * Administrative Gender - FHIR Value Set
+ * Used for Patient.gender demographic filtering in sex-specific measures
+ * (e.g., Breast Cancer Screening, Cervical Cancer Screening, Prostate measures)
+ */
+export const ADMINISTRATIVE_GENDER_VALUE_SET: StandardValueSet = {
+  id: 'administrative-gender',
+  oid: '2.16.840.1.113883.4.642.3.1',
+  name: 'Administrative Gender',
+  version: 'FHIR R4',
+  codes: [
+    { code: 'male', system: ADMINISTRATIVE_GENDER, display: 'Male' },
+    { code: 'female', system: ADMINISTRATIVE_GENDER, display: 'Female' },
+    { code: 'other', system: ADMINISTRATIVE_GENDER, display: 'Other' },
+    { code: 'unknown', system: ADMINISTRATIVE_GENDER, display: 'Unknown' },
+  ],
+};
+
+// =============================================================================
 // CHILDHOOD IMMUNIZATION STATUS (CMS117) VALUE SETS
 // =============================================================================
 
@@ -841,6 +863,9 @@ export function getValueSetByOID(oid: string): StandardValueSet | undefined {
  */
 export function getAllStandardValueSets(): StandardValueSet[] {
   return [
+    // Demographics
+    ADMINISTRATIVE_GENDER_VALUE_SET,
+    // CRC Screening
     COLONOSCOPY_VALUE_SET,
     FOBT_VALUE_SET,
     FIT_DNA_VALUE_SET,
@@ -848,10 +873,12 @@ export function getAllStandardValueSets(): StandardValueSet[] {
     CT_COLONOGRAPHY_VALUE_SET,
     COLORECTAL_CANCER_VALUE_SET,
     TOTAL_COLECTOMY_VALUE_SET,
+    // Exclusions
     HOSPICE_CARE_VALUE_SET,
     HOSPICE_CARE_AMBULATORY_VALUE_SET,
     FRAILTY_VALUE_SET,
     DEMENTIA_VALUE_SET,
+    // Immunizations
     ...getChildhoodImmunizationValueSets(),
   ];
 }

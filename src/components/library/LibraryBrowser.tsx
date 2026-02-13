@@ -43,9 +43,10 @@ const CATEGORIES: { key: ComponentCategory | 'all'; label: string }[] = [
   { key: 'conditions', label: 'Conditions' },
   { key: 'procedures', label: 'Procedures' },
   { key: 'medications', label: 'Medications' },
-  { key: 'observations', label: 'Observations' },
+  { key: 'assessments', label: 'Assessments' },
+  { key: 'laboratory', label: 'Laboratory' },
+  { key: 'clinical-observations', label: 'Clinical Observations' },
   { key: 'exclusions', label: 'Exclusions' },
-  { key: 'other', label: 'Other' },
 ];
 
 const STATUS_OPTIONS: { value: ApprovalStatus; label: string }[] = [
