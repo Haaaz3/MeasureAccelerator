@@ -23,6 +23,7 @@ import { InlineErrorBanner, InlineSuccessBanner } from '../shared/ErrorBoundary.
 import { useMeasureStore } from '../../stores/measureStore.js';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore.js';
 import { ComponentBuilder } from './ComponentBuilder.jsx';
+import { ComponentDetailPanel } from './ComponentDetailPanel.jsx';
 
 // ============================================================================
 // Constants
@@ -332,126 +333,29 @@ function PopulationSection({
 }
 
 // ============================================================================
-// Detail Panel Component
+// Helper Function: Find Element by ID
 // ============================================================================
 
-function DetailPanel({ measure, nodeId, onClose }) {
-  // Find the element in the measure
-  const findElement = (node, targetId) => {
+function findElementById(measure, targetId) {
+  if (!measure || !targetId) return null;
+
+  const findInNode = (node) => {
     if (!node) return null;
     if (node.id === targetId) return node;
     if (node.children) {
       for (const child of node.children) {
-        const found = findElement(child, targetId);
+        const found = findInNode(child);
         if (found) return found;
       }
     }
     return null;
   };
 
-  let element = null;
   for (const pop of measure.populations || []) {
-    element = findElement(pop.criteria, nodeId);
-    if (element) break;
+    const element = findInNode(pop.criteria);
+    if (element) return element;
   }
-
-  if (!element) {
-    return (
-      <div className="h-full flex items-center justify-center p-6">
-        <p className="text-[var(--text-muted)]">Element not found</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full flex flex-col">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-        <h3 className="font-medium text-[var(--text)]">Component Details</h3>
-        <button
-          onClick={onClose}
-          className="text-[var(--text-muted)] hover:text-[var(--text)]"
-        >
-          &times;
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-auto p-4 space-y-4">
-        {/* Type */}
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1">Type</label>
-          <span className={`
-            inline-block px-2 py-0.5 text-xs font-medium rounded uppercase
-            ${element.type === 'procedure' ? 'bg-purple-100 text-purple-700' :
-              element.type === 'diagnosis' ? 'bg-red-100 text-red-700' :
-              element.type === 'encounter' ? 'bg-[var(--success-light)] text-[var(--success)]' :
-              element.type === 'observation' ? 'bg-cyan-100 text-cyan-700' :
-              element.type === 'medication' ? 'bg-orange-100 text-orange-700' :
-              'bg-gray-100 text-gray-600'}
-          `}>
-            {element.type}
-          </span>
-        </div>
-
-        {/* Description */}
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1">Description</label>
-          <p className="text-sm text-[var(--text)]">{cleanDescription(element.description)}</p>
-        </div>
-
-        {/* Value Set */}
-        {element.valueSet && (
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">Value Set</label>
-            <div className="p-3 bg-[var(--bg-tertiary)] rounded-lg border border-[var(--border)]">
-              <p className="text-sm font-medium text-[var(--text)]">{element.valueSet.name}</p>
-              {element.valueSet.oid && (
-                <p className="text-xs text-[var(--text-muted)] font-mono mt-1">{element.valueSet.oid}</p>
-              )}
-              <p className="text-xs text-[var(--accent)] mt-1">
-                {element.valueSet.codes?.length || 0} codes
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Library Link */}
-        {element.libraryComponentId && (
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">Library Component</label>
-            <div className="flex items-center gap-2 p-2 bg-[var(--success-light)] rounded-lg">
-              <Link2 size={14} className="text-[var(--success)]" />
-              <span className="text-sm text-[var(--success)]">{element.libraryComponentId}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Timing */}
-        {element.timingRequirements && element.timingRequirements.length > 0 && (
-          <div>
-            <label className="block text-xs text-[var(--text-muted)] mb-1">Timing</label>
-            <div className="space-y-1">
-              {element.timingRequirements.map((timing, idx) => (
-                <p key={idx} className="text-sm text-[var(--text)]">{timing.description}</p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Review Status */}
-        <div>
-          <label className="block text-xs text-[var(--text-muted)] mb-1">Review Status</label>
-          <span className={`
-            inline-block px-2 py-0.5 text-xs font-medium rounded-full
-            ${element.reviewStatus === 'approved' ? 'bg-green-500/15 text-green-400' :
-              element.reviewStatus === 'flagged' ? 'bg-red-500/15 text-red-400' :
-              'bg-yellow-500/15 text-yellow-400'}
-          `}>
-            {element.reviewStatus || 'Pending'}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
+  return null;
 }
 
 // ============================================================================
@@ -873,18 +777,37 @@ export function UMSEditor() {
       </div>
 
       {/* Detail panel */}
-      {selectedNode && (
-        <div
-          style={{ width: detailPanelWidth }}
-          className="flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-secondary)]"
-        >
-          <DetailPanel
-            measure={measure}
-            nodeId={selectedNode}
-            onClose={() => setSelectedNode(null)}
-          />
-        </div>
-      )}
+      {selectedNode && (() => {
+        const selectedElement = findElementById(measure, selectedNode);
+        if (!selectedElement) {
+          return (
+            <div
+              style={{ width: detailPanelWidth }}
+              className="flex-shrink-0 border-l border-[var(--border)] bg-[var(--bg-secondary)] flex items-center justify-center"
+            >
+              <p className="text-[var(--text-muted)]">Element not found</p>
+            </div>
+          );
+        }
+        return (
+          <div
+            style={{ width: detailPanelWidth }}
+            className="flex-shrink-0"
+          >
+            <ComponentDetailPanel
+              element={selectedElement}
+              measureId={measure.id}
+              onClose={() => setSelectedNode(null)}
+              onNavigateToLibrary={(libraryId) => {
+                setActiveTab('components');
+                // Could also set selected component in library store if needed
+              }}
+              mpStart={measure.measurementPeriod?.start || '2024-01-01'}
+              mpEnd={measure.measurementPeriod?.end || '2024-12-31'}
+            />
+          </div>
+        );
+      })()}
 
       {/* Component Builder modal */}
       {builderTarget && measure && (

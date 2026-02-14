@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, FileText, Loader } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore.js';
+import { MeasureCreator } from './MeasureCreator.jsx';
 
 export function MeasureLibrary() {
   const { measures, isLoading, error, setActiveMeasure, fetchMeasures } = useMeasureStore();
+  const [showCreator, setShowCreator] = useState(false);
 
   useEffect(() => {
     fetchMeasures();
@@ -38,7 +40,10 @@ export function MeasureLibrary() {
     <div className="flex-1 flex flex-col p-6 overflow-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-semibold text-[var(--text)]">Measure Library</h1>
-        <button className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary-hover)] transition-colors">
+        <button
+          onClick={() => setShowCreator(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary-hover)] transition-colors"
+        >
           <Plus className="w-4 h-4" />
           New Measure
         </button>
@@ -75,6 +80,12 @@ export function MeasureLibrary() {
           ))}
         </div>
       )}
+
+      {/* Measure Creator Modal */}
+      <MeasureCreator
+        isOpen={showCreator}
+        onClose={() => setShowCreator(false)}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   X,
   Edit3,
@@ -16,9 +16,11 @@ import {
   AlertTriangle,
   Code,
   ExternalLink,
+  Code2,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore.js';
 import { useMeasureStore } from '../../stores/measureStore.js';
+import { ComponentCodeViewer } from '../measure/ComponentCodeViewer.jsx';
 
 // ============================================================================
 // Helper Functions
@@ -75,6 +77,94 @@ function getComplexityDots(level) {
     default:
       return '○○○';
   }
+}
+
+// ============================================================================
+// Library Component to DataElement Converter
+// ============================================================================
+
+/**
+ * Converts an AtomicComponent from the library to a DataElement
+ * so it can be used with the ComponentCodeViewer
+ */
+function libraryComponentToDataElement(component) {
+  // Map component metadata.category to DataElement type
+  const categoryToTypeMap = {
+    diagnoses: 'diagnosis',
+    procedures: 'procedure',
+    encounters: 'encounter',
+    observations: 'observation',
+    medications: 'medication',
+    demographics: 'demographic',
+    assessments: 'assessment',
+    immunizations: 'immunization',
+  };
+
+  const elementType = categoryToTypeMap[component.metadata?.category] || 'assessment';
+
+  return {
+    id: component.id,
+    type: elementType,
+    description: component.name,
+    valueSet: component.valueSet ? {
+      id: component.valueSet.oid || component.id,
+      name: component.valueSet.name,
+      oid: component.valueSet.oid,
+      codes: component.valueSet.codes || [],
+      confidence: 'high',
+      totalCodeCount: component.valueSet.codes?.length || 0,
+    } : undefined,
+    negation: component.negation,
+    libraryComponentId: component.id,
+    reviewStatus: 'approved',
+    confidence: 'high',
+  };
+}
+
+// ============================================================================
+// Library Code Viewer Sub-Component
+// ============================================================================
+
+function LibraryCodeViewer({ component }) {
+  // Use "library" as the measureId for library-scoped overrides
+  const LIBRARY_MEASURE_ID = 'library';
+
+  // Local code state for the viewer
+  const [codeState, setCodeState] = useState({
+    componentId: component.id,
+    overrides: {},
+    selectedFormat: 'cql',
+    isEditing: false,
+    pendingNote: '',
+  });
+
+  // Convert library component to DataElement for code generation
+  const dataElement = useMemo(() => {
+    return libraryComponentToDataElement(component);
+  }, [component]);
+
+  // Handle code state changes
+  const handleCodeStateChange = useCallback((newState) => {
+    setCodeState(newState);
+  }, []);
+
+  return (
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--bg)] overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-[var(--border)]">
+        <Code2 size={14} className="text-[var(--primary)]" />
+        <span className="text-sm font-medium text-[var(--text)]">Generated Code</span>
+      </div>
+      <ComponentCodeViewer
+        key={component.id}
+        element={dataElement}
+        measureId={LIBRARY_MEASURE_ID}
+        codeState={codeState}
+        onCodeStateChange={handleCodeStateChange}
+        isLibraryLinked={false}
+        className="border-0 rounded-none"
+      />
+    </div>
+  );
 }
 
 // ============================================================================
@@ -621,6 +711,9 @@ export function ComponentDetail({ componentId, onClose, onEdit }) {
             </div>
           </div>
         )}
+
+        {/* Generated Code (Atomic Components Only) */}
+        {isAtomic && <LibraryCodeViewer component={component} />}
       </div>
 
       {/* Action Buttons */}
