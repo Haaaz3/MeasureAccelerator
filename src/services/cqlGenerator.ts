@@ -21,6 +21,33 @@ import type {
   TimingRequirement,
 } from '../types/ums';
 
+import {
+  escapeIdentifier,
+  validateLibraryName,
+  validateVersion,
+  intervalTemplate,
+  statusCheckTemplate,
+  existsQueryTemplate,
+  defineTemplate,
+  combineExpressionsTemplate,
+  libraryHeaderTemplate,
+  valueSetDeclarationsTemplate,
+  parametersTemplate,
+  supplementalDataTemplate,
+  crcScreeningTemplates,
+  cervicalScreeningTemplates,
+  breastScreeningTemplates,
+  ageAtEndOfMPTemplate,
+  ageRangeCheckTemplate,
+  genderCheckTemplate,
+  hospiceCheckTemplate,
+  STANDARD_INCLUDES,
+  STANDARD_CODE_SYSTEMS,
+  type CQLResourceType,
+  type CQLValueSetDeclaration,
+  type CQLDefinition,
+} from './cqlTemplates';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -162,7 +189,8 @@ function generateHeader(
   libraryName: string,
   version: string
 ): string {
-  const lines: string[] = [
+  // Generate comment block with measure metadata
+  const commentLines: string[] = [
     '/*',
     ` * Library: ${libraryName}`,
     ` * Title: ${measure.metadata.title}`,
@@ -178,28 +206,19 @@ function generateHeader(
     ` * Generator: AlgoAccelerator CQL Generator v1.0`,
     ' */',
     '',
-    `library ${libraryName} version '${version}'`,
-    '',
-    "using FHIR version '4.0.1'",
-    '',
-    "include FHIRHelpers version '4.0.1' called FHIRHelpers",
-    "include QICoreCommon version '2.0.0' called QICoreCommon",
-    "include MATGlobalCommonFunctions version '7.0.000' called Global",
-    "include SupplementalDataElements version '3.4.000' called SDE",
-    "include Hospice version '6.9.000' called Hospice",
-    '',
-    '// Code Systems',
-    'codesystem "LOINC": \'http://loinc.org\'',
-    'codesystem "SNOMEDCT": \'http://snomed.info/sct\'',
-    'codesystem "ICD10CM": \'http://hl7.org/fhir/sid/icd-10-cm\'',
-    'codesystem "CPT": \'http://www.ama-assn.org/go/cpt\'',
-    'codesystem "HCPCS": \'https://www.cms.gov/Medicare/Coding/HCPCSReleaseCodeSets\'',
-    'codesystem "RxNorm": \'http://www.nlm.nih.gov/research/umls/rxnorm\'',
-    'codesystem "CVX": \'http://hl7.org/fhir/sid/cvx\'',
-    '',
   ];
 
-  return lines.join('\n');
+  // Use template for library structure
+  const headerContent = libraryHeaderTemplate({
+    name: libraryName,
+    version: version,
+    fhirVersion: '4.0.1',
+    includes: STANDARD_INCLUDES,
+    codeSystems: STANDARD_CODE_SYSTEMS,
+    parameters: [],
+  });
+
+  return commentLines.join('\n') + headerContent;
 }
 
 /**
@@ -212,7 +231,7 @@ function generateValueSetDeclarations(valueSets: ValueSetReference[], warnings: 
     return '// No value sets defined\n';
   }
 
-  const lines: string[] = ['// Value Sets'];
+  const declarations: CQLValueSetDeclaration[] = [];
 
   for (const vs of valueSets) {
     if (!vs) continue; // Skip null/undefined entries
@@ -222,20 +241,37 @@ function generateValueSetDeclarations(valueSets: ValueSetReference[], warnings: 
       // Check if value set has no codes defined
       const hasCodes = vs.codes && vs.codes.length > 0;
       if (!hasCodes) {
-        lines.push(`valueset "${sanitizeIdentifier(vs.name)}": '${url}'`);
-        lines.push(`  /* WARNING: Value set "${vs.name}" has no codes defined - may need expansion */`);
+        declarations.push({
+          name: vs.name,
+          url,
+          warning: `Value set "${vs.name}" has no codes defined - may need expansion`,
+        });
         warnings.push(`Value set "${vs.name}" has no codes defined`);
       } else {
-        lines.push(`valueset "${sanitizeIdentifier(vs.name)}": '${url}'`);
+        declarations.push({
+          name: vs.name,
+          url,
+        });
       }
     } else {
-      lines.push(`// valueset "${sanitizeIdentifier(vs.name)}": 'OID_NOT_SPECIFIED'`);
+      // No OID specified - add as comment (not supported by template, handle separately)
       warnings.push(`Value set "${vs.name}" has no OID or URL specified`);
     }
   }
 
-  lines.push('');
-  return lines.join('\n');
+  // Handle value sets without OIDs by prepending comments
+  const vsWithoutOid = valueSets.filter(vs => vs && !vs.url && !vs.oid);
+  const commentLines = vsWithoutOid.map(vs =>
+    `// valueset "${escapeIdentifier(vs.name).escaped}": 'OID_NOT_SPECIFIED'`
+  );
+
+  const templateOutput = valueSetDeclarationsTemplate(declarations);
+
+  if (commentLines.length > 0) {
+    return templateOutput + commentLines.join('\n') + '\n';
+  }
+
+  return templateOutput;
 }
 
 /**
@@ -245,36 +281,32 @@ function generateParameters(measure: UniversalMeasureSpec): string {
   const mpStart = measure.metadata.measurementPeriod?.start || '2025-01-01';
   const mpEnd = measure.metadata.measurementPeriod?.end || '2025-12-31';
 
-  return `// Parameters
-parameter "Measurement Period" Interval<DateTime>
-  default Interval[@${mpStart}T00:00:00.0, @${mpEnd}T23:59:59.999]
-
-`;
+  return parametersTemplate([
+    {
+      name: 'Measurement Period',
+      type: 'Interval<DateTime>',
+      default: intervalTemplate({ start: mpStart, end: mpEnd, type: 'DateTime' }),
+    },
+  ]);
 }
 
 /**
  * Generate helper definitions used across populations
  */
 function generateHelperDefinitions(measure: UniversalMeasureSpec): string {
-  const lines: string[] = ['// Helper Definitions'];
+  const definitions: CQLDefinition[] = [];
 
   // Age calculation
   const ageRange = measure.globalConstraints?.ageRange;
   if (ageRange) {
-    lines.push(`
-define "Age at End of Measurement Period":
-  AgeInYearsAt(date from end of "Measurement Period")
-
-define "Patient Age Valid":
-  "Age at End of Measurement Period" in Interval[${ageRange.min}, ${ageRange.max}]`);
+    definitions.push(ageAtEndOfMPTemplate());
+    definitions.push(ageRangeCheckTemplate(ageRange.min, ageRange.max));
   }
 
   // Gender requirement
   const gender = measure.globalConstraints?.gender;
   if (gender && gender !== 'all') {
-    lines.push(`
-define "Patient Gender Valid":
-  Patient.gender = '${gender}'`);
+    definitions.push(genderCheckTemplate(gender as 'male' | 'female'));
   }
 
   // Qualifying encounters helper
@@ -282,9 +314,9 @@ define "Patient Gender Valid":
     pop.criteria && hasDataElementType(pop.criteria, 'encounter')
   ) ?? false;
   if (hasEncounterCriteria) {
-    lines.push(`
-define "Qualifying Encounter During Measurement Period":
-  ( [Encounter: "Office Visit"]
+    definitions.push({
+      name: 'Qualifying Encounter During Measurement Period',
+      expression: `( [Encounter: "Office Visit"]
     union [Encounter: "Annual Wellness Visit"]
     union [Encounter: "Preventive Care Services Established Office Visit, 18 and Up"]
     union [Encounter: "Home Healthcare Services"]
@@ -292,13 +324,12 @@ define "Qualifying Encounter During Measurement Period":
     union [Encounter: "Telephone Visits"]
   ) Encounter
     where Encounter.status = 'finished'
-      and Encounter.period during "Measurement Period"`);
+      and Encounter.period during "Measurement Period"`,
+    });
   }
 
   // Hospice check (common exclusion)
-  lines.push(`
-define "Has Hospice Services":
-  Hospice."Has Hospice Services"`);
+  definitions.push(hospiceCheckTemplate());
 
   // Detect measure type and add specific helpers
   const title = measure.metadata.title?.toLowerCase() || '';
@@ -306,118 +337,33 @@ define "Has Hospice Services":
 
   // Colorectal cancer screening helpers
   if (title.includes('colorectal') || measureId.includes('CMS130')) {
-    lines.push(generateCRCHelpers());
+    definitions.push(...crcScreeningTemplates());
   }
 
   // Cervical cancer screening helpers
   if (title.includes('cervical') || measureId.includes('CMS124')) {
-    lines.push(generateCervicalHelpers());
+    definitions.push(...cervicalScreeningTemplates());
   }
 
   // Breast cancer screening helpers
   if (title.includes('breast') && title.includes('screen') || measureId.includes('CMS125')) {
-    lines.push(generateBreastCancerHelpers());
+    definitions.push(...breastScreeningTemplates());
+  }
+
+  // Build output using defineTemplate
+  const lines: string[] = ['// Helper Definitions'];
+  for (const def of definitions) {
+    lines.push('');
+    lines.push(defineTemplate(def));
   }
 
   lines.push('');
   return lines.join('\n');
 }
 
-/**
- * Generate colorectal cancer screening specific helpers
- */
-function generateCRCHelpers(): string {
-  return `
-// Colorectal Cancer Screening Helpers
-define "Colonoscopy Performed":
-  [Procedure: "Colonoscopy"] Colonoscopy
-    where Colonoscopy.status = 'completed'
-      and Colonoscopy.performed ends 10 years or less before end of "Measurement Period"
-
-define "Fecal Occult Blood Test Performed":
-  [Observation: "Fecal Occult Blood Test (FOBT)"] FOBT
-    where FOBT.status in { 'final', 'amended', 'corrected' }
-      and FOBT.effective ends 1 year or less before end of "Measurement Period"
-      and FOBT.value is not null
-
-define "Flexible Sigmoidoscopy Performed":
-  [Procedure: "Flexible Sigmoidoscopy"] Sigmoidoscopy
-    where Sigmoidoscopy.status = 'completed'
-      and Sigmoidoscopy.performed ends 5 years or less before end of "Measurement Period"
-
-define "FIT DNA Test Performed":
-  [Observation: "FIT DNA"] FITTest
-    where FITTest.status in { 'final', 'amended', 'corrected' }
-      and FITTest.effective ends 3 years or less before end of "Measurement Period"
-      and FITTest.value is not null
-
-define "CT Colonography Performed":
-  [Procedure: "CT Colonography"] CTCol
-    where CTCol.status = 'completed'
-      and CTCol.performed ends 5 years or less before end of "Measurement Period"
-
-define "Has Colorectal Cancer":
-  exists ([Condition: "Malignant Neoplasm of Colon"] Cancer
-    where Cancer.clinicalStatus ~ QICoreCommon."active")
-
-define "Has Total Colectomy":
-  exists ([Procedure: "Total Colectomy"] Colectomy
-    where Colectomy.status = 'completed'
-      and Colectomy.performed starts before end of "Measurement Period")`;
-}
-
-/**
- * Generate cervical cancer screening specific helpers
- */
-function generateCervicalHelpers(): string {
-  return `
-// Cervical Cancer Screening Helpers
-define "Cervical Cytology Within 3 Years":
-  [Observation: "Pap Test"] Pap
-    where Pap.status in { 'final', 'amended', 'corrected' }
-      and Pap.effective ends 3 years or less before end of "Measurement Period"
-      and Pap.value is not null
-
-define "HPV Test Within 5 Years":
-  [Observation: "HPV Test"] HPV
-    where HPV.status in { 'final', 'amended', 'corrected' }
-      and HPV.effective ends 5 years or less before end of "Measurement Period"
-      and HPV.value is not null
-
-define "Has Hysterectomy":
-  exists ([Procedure: "Hysterectomy with No Residual Cervix"] Hyst
-    where Hyst.status = 'completed'
-      and Hyst.performed starts before end of "Measurement Period")
-
-define "Absence of Cervix Diagnosis":
-  exists ([Condition: "Congenital or Acquired Absence of Cervix"] Absence
-    where Absence.clinicalStatus ~ QICoreCommon."active")`;
-}
-
-/**
- * Generate breast cancer screening specific helpers
- */
-function generateBreastCancerHelpers(): string {
-  return `
-// Breast Cancer Screening Helpers
-define "Mammography Within 27 Months":
-  [DiagnosticReport: "Mammography"] Mammogram
-    where Mammogram.status in { 'final', 'amended', 'corrected' }
-      and Mammogram.effective ends 27 months or less before end of "Measurement Period"
-
-define "Has Bilateral Mastectomy":
-  exists ([Procedure: "Bilateral Mastectomy"] Mastectomy
-    where Mastectomy.status = 'completed'
-      and Mastectomy.performed starts before end of "Measurement Period")
-
-define "Has Unilateral Mastectomy Left":
-  exists ([Procedure: "Unilateral Mastectomy Left"] LeftMastectomy
-    where LeftMastectomy.status = 'completed')
-
-define "Has Unilateral Mastectomy Right":
-  exists ([Procedure: "Unilateral Mastectomy Right"] RightMastectomy
-    where RightMastectomy.status = 'completed')`;
-}
+// NOTE: Measure-specific helpers (CRC, Cervical, Breast) are now provided by
+// crcScreeningTemplates, cervicalScreeningTemplates, and breastScreeningTemplates
+// from cqlTemplates.ts
 
 /**
  * Generate population definitions
@@ -467,24 +413,19 @@ function generatePopulationDefinition(
   name: string,
   measure: UniversalMeasureSpec
 ): string {
-  const lines: string[] = [];
-
-  // Add narrative as comment
-  if (pop.narrative) {
-    lines.push(`
-/*
- * ${name}
- * ${pop.narrative.substring(0, 200)}${pop.narrative.length > 200 ? '...' : ''}
- */`);
-  }
-
   // Generate criteria expression
   const criteriaExpr = generateCriteriaExpression(pop.criteria, measure);
 
-  lines.push(`define "${name}":
-  ${criteriaExpr}`);
+  // Build comment from narrative
+  const comment = pop.narrative
+    ? `${name}\n${pop.narrative.substring(0, 200)}${pop.narrative.length > 200 ? '...' : ''}`
+    : undefined;
 
-  return lines.join('\n');
+  return defineTemplate({
+    name,
+    expression: criteriaExpr,
+    comment,
+  });
 }
 
 /**
@@ -500,13 +441,11 @@ function generateDenominatorDefinition(
   }
 
   // Default: Denominator equals Initial Population
-  return `
-/*
- * Denominator
- * Equals Initial Population
- */
-define "Denominator":
-  "Initial Population"`;
+  return defineTemplate({
+    name: 'Denominator',
+    expression: '"Initial Population"',
+    comment: 'Denominator\nEquals Initial Population',
+  });
 }
 
 /**
@@ -516,15 +455,6 @@ function generateExclusionDefinition(
   pop: PopulationDefinition | null,
   measure: UniversalMeasureSpec
 ): string {
-  const lines: string[] = [
-    `
-/*
- * Denominator Exclusion
- * ${pop?.narrative || 'Patients meeting exclusion criteria'}
- */
-define "Denominator Exclusion":`,
-  ];
-
   const exclusionCriteria: string[] = [];
 
   // Always include hospice
@@ -557,9 +487,13 @@ define "Denominator Exclusion":`,
     }
   }
 
-  lines.push('  ' + exclusionCriteria.join('\n    or '));
+  const expression = combineExpressionsTemplate(exclusionCriteria, 'or');
 
-  return lines.join('\n');
+  return defineTemplate({
+    name: 'Denominator Exclusion',
+    expression,
+    comment: `Denominator Exclusion\n${pop?.narrative || 'Patients meeting exclusion criteria'}`,
+  });
 }
 
 /**
@@ -571,69 +505,69 @@ function generateNumeratorDefinition(
 ): string {
   const title = measure.metadata.title?.toLowerCase() || '';
   const measureId = measure.metadata.measureId?.toUpperCase() || '';
-
-  const lines: string[] = [
-    `
-/*
- * Numerator
- * ${pop?.narrative || 'Patients meeting numerator criteria'}
- */
-define "Numerator":`,
-  ];
+  const comment = `Numerator\n${pop?.narrative || 'Patients meeting numerator criteria'}`;
 
   // Measure-specific numerator logic
+  // Note: Helper definitions like "Colonoscopy Performed" already include exists,
+  // so we reference them directly as boolean expressions
   if (title.includes('colorectal') || measureId.includes('CMS130')) {
-    lines.push(`  exists "Colonoscopy Performed"
-    or exists "Fecal Occult Blood Test Performed"
-    or exists "Flexible Sigmoidoscopy Performed"
-    or exists "FIT DNA Test Performed"
-    or exists "CT Colonography Performed"`);
-    return lines.join('\n');
+    const crcNumerator = [
+      '"Colonoscopy Performed"',
+      '"Fecal Occult Blood Test Performed"',
+      '"Flexible Sigmoidoscopy Performed"',
+      '"FIT DNA Test Performed"',
+      '"CT Colonography Performed"',
+    ];
+    return defineTemplate({
+      name: 'Numerator',
+      expression: combineExpressionsTemplate(crcNumerator, 'or'),
+      comment,
+    });
   }
 
   if (title.includes('cervical') || measureId.includes('CMS124')) {
-    lines.push(`  exists "Cervical Cytology Within 3 Years"
-    or (AgeInYearsAt(date from end of "Measurement Period") >= 30
-        and exists "HPV Test Within 5 Years")`);
-    return lines.join('\n');
+    const cervicalNumerator = [
+      '"Cervical Cytology Within 3 Years"',
+      '(AgeInYearsAt(date from end of "Measurement Period") >= 30\n        and "HPV Test Within 5 Years")',
+    ];
+    return defineTemplate({
+      name: 'Numerator',
+      expression: combineExpressionsTemplate(cervicalNumerator, 'or'),
+      comment,
+    });
   }
 
   if (title.includes('breast') && title.includes('screen') || measureId.includes('CMS125')) {
-    lines.push('  exists "Mammography Within 27 Months"');
-    return lines.join('\n');
+    return defineTemplate({
+      name: 'Numerator',
+      expression: '"Mammography Within 27 Months"',
+      comment,
+    });
   }
 
   // Generic numerator from criteria
   if (pop && pop.criteria) {
     const criteriaExpr = generateCriteriaExpression(pop.criteria, measure);
-    lines.push('  ' + criteriaExpr);
-  } else {
-    // No numerator criteria defined - generate placeholder with warning comment
-    lines.push('  /* WARNING: No numerator criteria defined in measure specification */');
-    lines.push('  true');
+    return defineTemplate({
+      name: 'Numerator',
+      expression: criteriaExpr,
+      comment,
+    });
   }
 
-  return lines.join('\n');
+  // No numerator criteria defined - generate placeholder with warning comment
+  return defineTemplate({
+    name: 'Numerator',
+    expression: '/* WARNING: No numerator criteria defined in measure specification */\n  true',
+    comment,
+  });
 }
 
 /**
  * Generate supplemental data definitions
  */
-function generateSupplementalData(measure: UniversalMeasureSpec): string {
-  return `
-// Supplemental Data Elements
-define "SDE Ethnicity":
-  SDE."SDE Ethnicity"
-
-define "SDE Payer":
-  SDE."SDE Payer"
-
-define "SDE Race":
-  SDE."SDE Race"
-
-define "SDE Sex":
-  SDE."SDE Sex"
-`;
+function generateSupplementalData(_measure: UniversalMeasureSpec): string {
+  return supplementalDataTemplate();
 }
 
 /**
@@ -649,7 +583,6 @@ function generateCriteriaExpression(
   }
 
   const expressions: string[] = [];
-  const indentStr = '  '.repeat(indent);
 
   for (const child of criteria.children) {
     if ('operator' in child) {
@@ -667,8 +600,8 @@ function generateCriteriaExpression(
     return 'true';
   }
 
-  const operator = criteria.operator === 'OR' ? '\n    or ' : '\n    and ';
-  return expressions.join(operator);
+  const operator = criteria.operator === 'OR' ? 'or' : 'and';
+  return combineExpressionsTemplate(expressions, operator, indent);
 }
 
 /**
@@ -676,7 +609,7 @@ function generateCriteriaExpression(
  */
 function generateDataElementExpression(
   element: DataElement,
-  measure: UniversalMeasureSpec
+  _measure: UniversalMeasureSpec
 ): string {
   if (!element) {
     return '/* WARNING: Null data element encountered */\n  true';
@@ -690,40 +623,56 @@ function generateDataElementExpression(
     return `/* WARNING: No value set defined for "${desc}" */\n  true`;
   }
 
-  const vsName = element.valueSet?.name
-    ? sanitizeIdentifier(element.valueSet.name)
-    : 'Unspecified Value Set';
+  const vsName = element.valueSet?.name || 'Unspecified Value Set';
 
-  const timing = generateTimingExpression(element.timingRequirements);
+  // Map element type to FHIR resource type and alias
+  const resourceTypeMap: Record<string, { resourceType: CQLResourceType; alias: string }> = {
+    diagnosis: { resourceType: 'Condition', alias: 'C' },
+    encounter: { resourceType: 'Encounter', alias: 'E' },
+    procedure: { resourceType: 'Procedure', alias: 'P' },
+    observation: { resourceType: 'Observation', alias: 'O' },
+    medication: { resourceType: 'MedicationRequest', alias: 'M' },
+    immunization: { resourceType: 'Immunization', alias: 'I' },
+  };
 
   switch (element.type) {
     case 'demographic':
       return generateDemographicExpression(element);
 
     case 'diagnosis':
-      return `exists ([Condition: "${vsName}"] C
-      where C.clinicalStatus ~ QICoreCommon."active"${timing ? '\n        ' + timing : ''})`;
-
     case 'encounter':
-      return `exists ([Encounter: "${vsName}"] E
-      where E.status = 'finished'${timing ? '\n        ' + timing : ''})`;
-
     case 'procedure':
-      return `exists ([Procedure: "${vsName}"] P
-      where P.status = 'completed'${timing ? '\n        ' + timing : ''})`;
+    case 'immunization': {
+      const config = resourceTypeMap[element.type];
+      const timing = generateTimingExpression(element.timingRequirements, config.alias, config.resourceType);
+      return existsQueryTemplate({
+        resourceType: config.resourceType,
+        valueSet: vsName,
+        alias: config.alias,
+        timingExpression: timing,
+      });
+    }
 
-    case 'observation':
-      return `exists ([Observation: "${vsName}"] O
-      where O.status in { 'final', 'amended', 'corrected' }
-        and O.value is not null${timing ? '\n        ' + timing : ''})`;
+    case 'observation': {
+      const timing = generateTimingExpression(element.timingRequirements, 'O', 'Observation');
+      return existsQueryTemplate({
+        resourceType: 'Observation',
+        valueSet: vsName,
+        alias: 'O',
+        additionalCriteria: ['O.value is not null'],
+        timingExpression: timing,
+      });
+    }
 
-    case 'medication':
-      return `exists ([MedicationRequest: "${vsName}"] M
-      where M.status in { 'active', 'completed' }${timing ? '\n        ' + timing : ''})`;
-
-    case 'immunization':
-      return `exists ([Immunization: "${vsName}"] I
-      where I.status = 'completed'${timing ? '\n        ' + timing : ''})`;
+    case 'medication': {
+      const timing = generateTimingExpression(element.timingRequirements, 'M', 'MedicationRequest');
+      return existsQueryTemplate({
+        resourceType: 'MedicationRequest',
+        valueSet: vsName,
+        alias: 'M',
+        timingExpression: timing,
+      });
+    }
 
     default:
       return `// TODO: ${element.description || 'Unknown criterion'}`;
@@ -754,29 +703,59 @@ function generateDemographicExpression(element: DataElement): string {
 }
 
 /**
- * Generate timing expression from timing requirements
+ * Get the timing attribute for a FHIR resource type
  */
-function generateTimingExpression(timing?: TimingRequirement[]): string {
+function getTimingAttribute(resourceType: CQLResourceType): string {
+  const timingAttributes: Record<CQLResourceType, string> = {
+    Procedure: 'performed',
+    Observation: 'effective',
+    Encounter: 'period',
+    Condition: 'onset',
+    MedicationRequest: 'authoredOn',
+    MedicationAdministration: 'effective',
+    Immunization: 'occurrence',
+    DiagnosticReport: 'effective',
+    ServiceRequest: 'authoredOn',
+    CarePlan: 'period',
+    Goal: 'start',
+    AllergyIntolerance: 'onset',
+    FamilyMemberHistory: 'date',
+  };
+  return timingAttributes[resourceType] || 'performed';
+}
+
+/**
+ * Generate timing expression from timing requirements
+ * Returns the timing clause without leading "and" - caller is responsible for conjunction
+ */
+function generateTimingExpression(
+  timing?: TimingRequirement[],
+  alias?: string,
+  resourceType?: CQLResourceType
+): string {
+  const timingAttr = resourceType ? getTimingAttribute(resourceType) : 'performed';
+  const attr = alias ? `${alias}.${timingAttr}` : timingAttr;
+
   if (!timing || timing.length === 0) {
-    return 'and P.performed during "Measurement Period"';
+    return `${attr} during "Measurement Period"`;
   }
 
   const req = timing[0];
   const window = req.window;
 
   if (!window) {
-    return 'and P.performed during "Measurement Period"';
+    return `${attr} during "Measurement Period"`;
   }
 
   const { value, unit, direction } = window;
   const unitPlural = value === 1 ? unit.replace(/s$/, '') : unit;
 
   if (direction === 'before') {
-    return `and ends ${value} ${unitPlural} or less before end of "Measurement Period"`;
+    return `${attr} ends ${value} ${unitPlural} or less before end of "Measurement Period"`;
   } else if (direction === 'after') {
-    return `and starts ${value} ${unitPlural} or less after start of "Measurement Period"`;
+    return `${attr} starts ${value} ${unitPlural} or less after start of "Measurement Period"`;
   } else {
-    return 'and occurs during "Measurement Period"';
+    return `${attr} during "Measurement Period"`;
   }
 }
 
@@ -905,21 +884,14 @@ export async function isCQLServiceAvailable(
 
 /**
  * Sanitize measure ID for use as CQL library name
+ * Uses validateLibraryName from cqlTemplates for consistency
  */
 function sanitizeLibraryName(measureId: string): string {
-  return measureId
-    .replace(/[^a-zA-Z0-9]/g, '')
-    .replace(/^(\d)/, '_$1'); // CQL identifiers can't start with numbers
+  return validateLibraryName(measureId);
 }
 
-/**
- * Sanitize string for use as CQL identifier
- */
-function sanitizeIdentifier(name: string): string {
-  return name
-    .replace(/"/g, '\\"')
-    .trim();
-}
+// NOTE: sanitizeIdentifier is now provided by escapeIdentifier from cqlTemplates.ts
+// Usage: escapeIdentifier(name).escaped
 
 /**
  * Find population by type (handles both kebab-case and underscore formats)
