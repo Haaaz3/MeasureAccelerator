@@ -297,10 +297,10 @@ function mapComponentCategory(category: string | null | undefined): ComponentCat
     'procedures': 'procedures',
     'MEDICATIONS': 'medications',
     'medications': 'medications',
-    'OBSERVATIONS': 'laboratory',
-    'observations': 'laboratory',
-    'IMMUNIZATIONS': 'clinical-observations',
-    'immunizations': 'clinical-observations',
+    'OBSERVATIONS': 'clinical-observations',
+    'observations': 'clinical-observations',
+    'IMMUNIZATIONS': 'medications',
+    'immunizations': 'medications',
     'ASSESSMENTS': 'assessments',
     'assessments': 'assessments',
     'CLINICAL_OBSERVATIONS': 'clinical-observations',
@@ -389,20 +389,28 @@ export function transformComponentSummary(dto: ComponentSummary): LibraryCompone
   const category = mapComponentCategory(dto.category);
   const status = mapApprovalStatus(dto.status);
 
+  // Map complexity level from backend
+  const complexityLevel = dto.complexityLevel?.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | undefined;
+  const complexity: ComponentComplexity = {
+    level: complexityLevel || 'LOW',
+    score: complexityLevel === 'HIGH' ? 5 : complexityLevel === 'MEDIUM' ? 3 : 1,
+    factors: [],
+  };
+
   const atomic: AtomicComponent = {
     type: 'atomic',
     id: dto.id,
     name: dto.name,
-    description: '',
+    description: dto.description || '',
     valueSet: createDefaultValueSet(),
     timing: createDefaultTiming(),
     negation: false,
-    complexity: createDefaultComplexity(),
+    complexity,
     versionInfo: createDefaultVersionInfo(status),
     usage: {
       measureIds: [],
       usageCount: dto.usageCount || 0,
-      lastUsedAt: dto.lastUsed || undefined,
+      lastUsedAt: dto.updatedAt || undefined,
     },
     metadata: createDefaultMetadata(category),
   };

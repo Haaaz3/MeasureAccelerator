@@ -8,12 +8,14 @@ import { get, post, put, del } from './client';
 
 export interface ComponentSummary {
   id: string;
-  name: string;
   type: string;
+  name: string;
+  description: string | null;
   category: string;
   status: string;
+  complexityLevel: string | null;
   usageCount: number;
-  lastUsed: string | null;
+  updatedAt: string | null;
 }
 
 export interface ComponentDto {
