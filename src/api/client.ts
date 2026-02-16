@@ -22,6 +22,19 @@ export class ApiError extends Error {
 }
 
 /**
+ * Network error when backend is unreachable.
+ */
+export class NetworkError extends Error {
+  cause?: Error;
+
+  constructor(message: string, cause?: Error) {
+    super(message);
+    this.name = 'NetworkError';
+    this.cause = cause;
+  }
+}
+
+/**
  * Make an API request with automatic JSON handling.
  */
 async function request<T>(
@@ -35,52 +48,54 @@ async function request<T>(
     ...options.headers,
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    // Network error - backend unreachable, DNS failure, CORS blocked, etc.
+    throw new NetworkError(
+      `Unable to reach the server at ${API_BASE_URL}. Please check your connection and try again.`,
+      err instanceof Error ? err : undefined
+    );
+  }
+
+  // Read body once and reuse - response body can only be consumed once
+  const text = await response.text();
 
   if (!response.ok) {
+    // Try to parse as JSON for structured error, fall back to raw text
     let body: unknown;
     try {
-      body = await response.json();
+      body = text ? JSON.parse(text) : undefined;
     } catch {
-      body = await response.text();
+      body = text;
     }
     throw new ApiError(response.status, response.statusText, body);
   }
 
-  // Check content-type before parsing
-  const contentType = response.headers.get('content-type');
-  if (!contentType?.includes('application/json')) {
-    const text = await response.text();
-    // If it's HTML (Vite fallback), throw a clear error
-    if (text.startsWith('<!') || text.startsWith('<html')) {
-      throw new ApiError(
-        500,
-        'Received HTML instead of JSON',
-        `Endpoint ${url} returned HTML. Backend may not be running or proxy misconfigured.`
-      );
-    }
-    // Empty response
-    if (!text) {
-      return undefined as T;
-    }
-    // Try to parse anyway (some backends don't set content-type)
-    try {
-      return JSON.parse(text) as T;
-    } catch {
-      throw new ApiError(500, 'Invalid JSON response', text.substring(0, 200));
-    }
+  // Check for HTML responses (Vite fallback when backend not running)
+  if (text.startsWith('<!') || text.startsWith('<html')) {
+    throw new ApiError(
+      500,
+      'Received HTML instead of JSON',
+      `Endpoint ${url} returned HTML. Backend may not be running or proxy misconfigured.`
+    );
   }
 
   // Handle empty responses
-  const text = await response.text();
   if (!text) {
     return undefined as T;
   }
 
-  return JSON.parse(text) as T;
+  // Parse JSON
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(500, 'Invalid JSON response', text.substring(0, 200));
+  }
 }
 
 /**
@@ -127,4 +142,6 @@ export default {
   post,
   put,
   del,
+  ApiError,
+  NetworkError,
 };

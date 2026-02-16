@@ -18,6 +18,17 @@ export class ApiError extends Error {
 }
 
 /**
+ * Network error when backend is unreachable.
+ */
+export class NetworkError extends Error {
+  constructor(message, cause) {
+    super(message);
+    this.name = 'NetworkError';
+    this.cause = cause;
+  }
+}
+
+/**
  * Make an API request with automatic JSON handling.
  */
 async function request(endpoint, options = {}) {
@@ -28,23 +39,35 @@ async function request(endpoint, options = {}) {
     ...options.headers,
   };
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    // Network error - backend unreachable, DNS failure, CORS blocked, etc.
+    throw new NetworkError(
+      `Unable to reach the server at ${API_BASE_URL}. Please check your connection and try again.`,
+      err
+    );
+  }
+
+  // Read body once and reuse - response body can only be consumed once
+  const text = await response.text();
 
   if (!response.ok) {
+    // Try to parse as JSON for structured error, fall back to raw text
     let body;
     try {
-      body = await response.json();
+      body = text ? JSON.parse(text) : undefined;
     } catch {
-      body = await response.text();
+      body = text;
     }
     throw new ApiError(response.status, response.statusText, body);
   }
 
   // Handle empty responses
-  const text = await response.text();
   if (!text) {
     return undefined;
   }
@@ -96,4 +119,6 @@ export default {
   post,
   put,
   del,
+  ApiError,
+  NetworkError,
 };
