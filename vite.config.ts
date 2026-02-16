@@ -7,6 +7,15 @@ export default defineConfig({
   optimizeDeps: {
     include: ['pdfjs-dist'],
   },
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true
+      }
+    }
+  },
   build: {
     rollupOptions: {
       output: {
