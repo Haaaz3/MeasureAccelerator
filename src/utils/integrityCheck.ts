@@ -77,7 +77,8 @@ export function validateReferentialIntegrity(
   const actualUsage = new Map<string, Set<string>>();
 
   for (const measure of measures) {
-    const measureId = measure.metadata?.measureId || measure.id;
+    // Use measure.id (internal store ID) to match rebuildUsageIndex behavior
+    const measureId = measure.id;
     const refs = collectMeasureReferences(measure);
 
     for (const { elementId, componentId } of refs) {

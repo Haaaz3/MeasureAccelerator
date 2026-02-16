@@ -80,10 +80,11 @@ describe('Measure-Component Wiring', () => {
       }
 
       // Check that linked components have usage count > 0
+      // Note: rebuildUsageIndex uses measure.id (internal ID), not metadata.measureId (display ID)
       for (const comp of libraryComponents) {
         if (linkedComponentIds.has(comp.id)) {
           expect(comp.usage.usageCount).toBeGreaterThan(0);
-          expect(comp.usage.measureIds).toContain(measure.metadata.measureId);
+          expect(comp.usage.measureIds).toContain(measure.id);
         }
       }
     });

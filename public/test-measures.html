@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<body>
+<h1>API Test</h1>
+<div id="measures">Loading...</div>
+<div id="components">Loading...</div>
+<script>
+fetch('/api/measures')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('measures').innerHTML = 
+      '<h2>Measures (' + d.length + ')</h2>' + 
+      d.map(m => '<div>' + m.measureId + ': ' + m.title + '</div>').join('');
+  })
+  .catch(e => {
+    document.getElementById('measures').innerHTML = '<h2>ERROR: ' + e.message + '</h2>';
+  });
+
+fetch('/api/components')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('components').innerHTML = 
+      '<h2>Components (' + d.length + ')</h2>' + 
+      d.map(c => '<div>' + c.name + ' [' + c.category + ']</div>').join('');
+  })
+  .catch(e => {
+    document.getElementById('components').innerHTML = '<h2>ERROR: ' + e.message + '</h2>';
+  });
+</script>
+</body>
+</html>
