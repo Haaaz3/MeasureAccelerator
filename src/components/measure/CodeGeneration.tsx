@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight, CheckCircle, XCircle, AlertTriangle, Loader2, Server, Search, X, ChevronUp, ChevronDown, Edit3 } from 'lucide-react';
 import { useMeasureStore, type CodeOutputFormat } from '../../stores/measureStore';
 import { generateCQL, validateCQL, isCQLServiceAvailable, type CQLGenerationResult, type CQLValidationResult } from '../../services/cqlGenerator';
+import { validateCQLSyntax, type CQLValidationResult as CQLSyntaxValidationResult } from '../../services/cqlValidator';
 import { generateHDISQL, DEFAULT_HDI_CONFIG } from '../../services/hdiSqlGenerator';
 import { validateHDISQL, type SQLValidationResult as HDISQLValidationResult } from '../../services/hdiSqlValidator';
 import type { SQLGenerationResult, SQLGenerationConfig } from '../../types/hdiDataModels';
@@ -23,6 +24,9 @@ export function CodeGeneration() {
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<CQLValidationResult | null>(null);
   const [generationResult, setGenerationResult] = useState<CQLGenerationResult | null>(null);
+
+  // Syntax validation (local, runs automatically on generation)
+  const [syntaxValidationResult, setSyntaxValidationResult] = useState<CQLSyntaxValidationResult | null>(null);
 
   // Synapse SQL state
   const [synapseResult, setSynapseResult] = useState<SQLGenerationResult | null>(null);
@@ -224,6 +228,12 @@ export function CodeGeneration() {
           if (appliedOverrides > 0 && result.warnings) {
             result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
           }
+
+          // Run local syntax validation immediately after generation
+          const syntaxResult = validateCQLSyntax(result.cql);
+          setSyntaxValidationResult(syntaxResult);
+        } else {
+          setSyntaxValidationResult(null);
         }
 
         setGenerationResult(result);
@@ -237,6 +247,7 @@ export function CodeGeneration() {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error during CQL generation';
         setGenerationError(`CQL generation failed: ${errorMessage}`);
         setGenerationResult(null);
+        setSyntaxValidationResult(null);
       }
     }
   }, [measure, format]);
@@ -328,6 +339,14 @@ export function CodeGeneration() {
         const result = generateCQL(measure);
         setGenerationResult(result);
         setValidationResult(null);
+
+        // Run local syntax validation on regeneration
+        if (result.success && result.cql) {
+          const syntaxResult = validateCQLSyntax(result.cql);
+          setSyntaxValidationResult(syntaxResult);
+        } else {
+          setSyntaxValidationResult(null);
+        }
 
         if (!result.success && result.errors && result.errors.length > 0) {
           setGenerationError(`Cannot generate CQL: ${result.errors.join(', ')}`);
@@ -543,6 +562,60 @@ export function CodeGeneration() {
             ))}
           </div>
         </div>
+
+        {/* Syntax Validation Status (CQL only, shown immediately after generation) */}
+        {format === 'cql' && syntaxValidationResult && (
+          <div className={`mb-4 p-3 rounded-xl border flex items-center gap-3 ${
+            syntaxValidationResult.valid
+              ? 'bg-[var(--success)]/5 border-[var(--success)]/30'
+              : 'bg-[var(--danger)]/5 border-[var(--danger)]/30'
+          }`}>
+            {syntaxValidationResult.valid ? (
+              <>
+                <CheckCircle className="w-5 h-5 text-[var(--success)] flex-shrink-0" />
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-[var(--success)]">Valid CQL Syntax</span>
+                  {syntaxValidationResult.metadata && (
+                    <span className="text-xs text-[var(--text-muted)] ml-2">
+                      {syntaxValidationResult.metadata.definitionCount} definitions, {syntaxValidationResult.metadata.valueSetCount} value sets
+                    </span>
+                  )}
+                  {syntaxValidationResult.warnings.length > 0 && (
+                    <span className="text-xs text-[var(--warning)] ml-2">
+                      ({syntaxValidationResult.warnings.length} warning{syntaxValidationResult.warnings.length !== 1 ? 's' : ''})
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <XCircle className="w-5 h-5 text-[var(--danger)] flex-shrink-0" />
+                <div className="flex-1">
+                  <span className="text-sm font-medium text-[var(--danger)]">
+                    CQL Syntax Errors ({syntaxValidationResult.errors.length})
+                  </span>
+                  <div className="mt-1 space-y-1">
+                    {syntaxValidationResult.errors.slice(0, 3).map((error, i) => (
+                      <div key={i} className="text-xs text-[var(--danger)] flex items-start gap-1">
+                        <span className="flex-shrink-0">•</span>
+                        <span>
+                          {error.line && <span className="font-mono">Line {error.line}: </span>}
+                          {error.message}
+                          {error.suggestion && <span className="text-[var(--text-dim)]"> ({error.suggestion})</span>}
+                        </span>
+                      </div>
+                    ))}
+                    {syntaxValidationResult.errors.length > 3 && (
+                      <div className="text-xs text-[var(--text-dim)]">
+                        ... and {syntaxValidationResult.errors.length - 3} more error{syntaxValidationResult.errors.length - 3 !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Code preview */}
         <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border)] overflow-hidden">

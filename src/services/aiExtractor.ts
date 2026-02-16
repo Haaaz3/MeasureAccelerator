@@ -34,6 +34,11 @@ import {
   type LLMProvider,
   type CustomLLMConfig,
 } from './llmClient';
+import {
+  extractWithMultiPass,
+  isLargeDocument,
+  type ExtractionResult as MultiPassResult,
+} from './multiPassExtractor';
 
 export interface ExtractionProgress {
   stage: 'extracting' | 'parsing' | 'building' | 'complete' | 'error';
@@ -101,11 +106,23 @@ interface ExtractedMeasureData {
 
 // Re-export types from llmClient for backwards compatibility
 export type { LLMProvider, CustomLLMConfig } from './llmClient';
+// Re-export multi-pass types for callers who need detailed results
+export type { ExtractionResult as MultiPassExtractionResult, MeasureSkeleton, PopulationExtractionResult } from './multiPassExtractor';
+
+/**
+ * Extraction mode configuration
+ * - 'multi-pass': Uses three-pass extraction (skeleton → detail → validation) for better accuracy
+ * - 'single-shot': Uses single LLM call with verification pass (faster, legacy fallback)
+ * - 'auto': Uses multi-pass for large documents, single-shot for smaller ones
+ */
+export type ExtractionMode = 'multi-pass' | 'single-shot' | 'auto';
 
 /**
  * Extract measure data from document content using AI
  * Supports multiple LLM providers: Anthropic (Claude), OpenAI (GPT), Google (Gemini), Custom/Local
  * When pageImages are provided (for image-based PDFs), uses vision capability for extraction
+ *
+ * @param extractionMode - 'multi-pass' (default), 'single-shot', or 'auto'
  */
 export async function extractMeasureWithAI(
   documentContent: string,
@@ -114,7 +131,8 @@ export async function extractMeasureWithAI(
   provider: LLMProvider = 'anthropic',
   model?: string,
   customConfig?: CustomLLMConfig,
-  pageImages?: string[] // Base64 encoded PNG images for vision-based extraction
+  pageImages?: string[], // Base64 encoded PNG images for vision-based extraction
+  extractionMode: ExtractionMode = 'multi-pass'
 ): Promise<AIExtractionResult> {
   // For custom provider, API key is optional but base URL is required
   if (provider === 'custom') {
@@ -131,6 +149,26 @@ export async function extractMeasureWithAI(
     };
   }
 
+  // Determine effective extraction mode
+  let effectiveMode = extractionMode;
+  if (extractionMode === 'auto') {
+    // Use multi-pass for large documents, single-shot for smaller ones
+    effectiveMode = isLargeDocument(documentContent, 40000) ? 'multi-pass' : 'single-shot';
+  }
+
+  // Route to multi-pass extraction if enabled (and no page images - vision requires single-shot)
+  if (effectiveMode === 'multi-pass' && !pageImages?.length) {
+    return extractWithMultiPassAdapter(
+      documentContent,
+      apiKey,
+      onProgress,
+      provider,
+      model,
+      customConfig
+    );
+  }
+
+  // Fall through to single-shot extraction (legacy path)
   const actualModel = provider === 'custom'
     ? (customConfig?.modelName || 'default')
     : (model || DEFAULT_MODELS[provider as keyof typeof DEFAULT_MODELS]);
@@ -1438,5 +1476,85 @@ async function runVerificationPass(
     return parseVerificationResponse(result.content);
   } catch {
     return null;
+  }
+}
+
+// =============================================================================
+// MULTI-PASS EXTRACTION ADAPTER
+// =============================================================================
+
+/**
+ * Adapter function that calls multi-pass extraction and converts the result
+ * to the AIExtractionResult format expected by the rest of the system.
+ */
+async function extractWithMultiPassAdapter(
+  documentContent: string,
+  apiKey: string,
+  onProgress?: (progress: ExtractionProgress) => void,
+  provider: LLMProvider = 'anthropic',
+  model?: string,
+  customConfig?: CustomLLMConfig,
+): Promise<AIExtractionResult> {
+  // Map progress from multi-pass format to legacy format
+  const progressMapper = (mpProgress: { phase: string; message: string; currentStep: number; totalSteps: number }) => {
+    const stageMap: Record<string, ExtractionProgress['stage']> = {
+      'skeleton': 'extracting',
+      'populations': 'extracting',
+      'validation': 'parsing',
+      'complete': 'complete',
+    };
+
+    // Calculate overall progress percentage
+    let progress = 0;
+    if (mpProgress.phase === 'skeleton') {
+      progress = 10;
+    } else if (mpProgress.phase === 'populations') {
+      // Populations phase takes 10-70% progress
+      progress = 10 + Math.round((mpProgress.currentStep / mpProgress.totalSteps) * 60);
+    } else if (mpProgress.phase === 'validation') {
+      progress = 80;
+    } else if (mpProgress.phase === 'complete') {
+      progress = 100;
+    }
+
+    onProgress?.({
+      stage: stageMap[mpProgress.phase] || 'extracting',
+      message: mpProgress.message,
+      progress,
+    });
+  };
+
+  try {
+    const result = await extractWithMultiPass(documentContent, {
+      apiKey,
+      provider,
+      model,
+      onProgress: progressMapper,
+      includeFewShotExamples: true,
+      skipValidationPass: false,
+    });
+
+    if (!result.success || !result.ums) {
+      return {
+        success: false,
+        error: result.errors.join('; ') || 'Multi-pass extraction failed',
+      };
+    }
+
+    onProgress?.({ stage: 'complete', message: 'Extraction complete', progress: 100 });
+
+    return {
+      success: true,
+      ums: result.ums,
+      // Note: rawExtraction not available from multi-pass - the UMS is the canonical output
+    };
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    onProgress?.({ stage: 'error', message: errorMessage, progress: 0 });
+
+    return {
+      success: false,
+      error: errorMessage,
+    };
   }
 }

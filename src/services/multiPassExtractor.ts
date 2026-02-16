@@ -12,6 +12,11 @@
 import { callLLM, type LLMRequestOptions } from './llmClient';
 import { validateOID, type OIDValidationResult } from './oidValidator';
 import { generateFewShotExamples } from './feedbackLoop';
+import {
+  chunkDocument as chunkDocumentSemantic,
+  type DocumentChunk,
+  type ChunkingOptions,
+} from './promptChunker';
 import type {
   UniversalMeasureSpec,
   PopulationDefinition,
@@ -22,6 +27,9 @@ import type {
   MeasureMetadata,
   ConfidenceLevel,
 } from '../types/ums';
+
+// Threshold for triggering chunked extraction (in characters)
+const LARGE_DOCUMENT_THRESHOLD = 20000;
 
 // ============================================================================
 // Types
@@ -123,11 +131,19 @@ export interface PossibleHallucination {
 
 /**
  * Extract measure data using multi-pass approach
+ *
+ * For large documents (> LARGE_DOCUMENT_THRESHOLD), uses semantic chunking
+ * from promptChunker to split the document and merge extraction results.
  */
 export async function extractWithMultiPass(
   documentText: string,
   options: ExtractionOptions
 ): Promise<ExtractionResult> {
+  // Check if document is large enough to require chunking
+  if (isLargeDocument(documentText, LARGE_DOCUMENT_THRESHOLD)) {
+    return extractWithChunking(documentText, options);
+  }
+
   const errors: string[] = [];
   const warnings: string[] = [];
   const timings = { skeletonMs: 0, populationsMs: 0, validationMs: 0, totalMs: 0 };
@@ -743,6 +759,317 @@ export function chunkDocument(
 /**
  * Check if document is too large for single-pass
  */
-export function isLargeDocument(text: string, threshold: number = 40000): boolean {
+export function isLargeDocument(text: string, threshold: number = LARGE_DOCUMENT_THRESHOLD): boolean {
   return text.length > threshold;
+}
+
+// ============================================================================
+// Chunk Result Merging
+// ============================================================================
+
+/**
+ * Partial extraction result from a single chunk
+ */
+interface PartialExtractionResult {
+  chunk: DocumentChunk;
+  skeleton?: MeasureSkeleton;
+  populationResults: PopulationExtractionResult[];
+  valueSets: ValueSetReference[];
+}
+
+/**
+ * Merge extraction results from multiple document chunks.
+ *
+ * Simple concatenation strategy:
+ * - Skeleton: use first non-null skeleton (metadata should be in first chunk)
+ * - Populations: deduplicate by type, merge criteria from overlapping chunks
+ * - ValueSets: deduplicate by OID, merge codes
+ */
+export function mergeChunkExtractionResults(
+  partialResults: PartialExtractionResult[]
+): { skeleton: MeasureSkeleton | null; populationResults: PopulationExtractionResult[]; valueSets: ValueSetReference[] } {
+  if (partialResults.length === 0) {
+    return { skeleton: null, populationResults: [], valueSets: [] };
+  }
+
+  if (partialResults.length === 1) {
+    return {
+      skeleton: partialResults[0].skeleton || null,
+      populationResults: partialResults[0].populationResults,
+      valueSets: partialResults[0].valueSets,
+    };
+  }
+
+  // Use first skeleton found (metadata should be at start of document)
+  const skeleton = partialResults.find(r => r.skeleton)?.skeleton || null;
+
+  // Merge populations by type
+  const populationsByType = new Map<string, PopulationExtractionResult[]>();
+  for (const result of partialResults) {
+    for (const popResult of result.populationResults) {
+      const existing = populationsByType.get(popResult.populationType) || [];
+      existing.push(popResult);
+      populationsByType.set(popResult.populationType, existing);
+    }
+  }
+
+  const mergedPopulations: PopulationExtractionResult[] = [];
+  for (const [type, results] of populationsByType) {
+    if (results.length === 1) {
+      mergedPopulations.push(results[0]);
+    } else {
+      // Merge multiple results for same population type
+      const merged = mergePopulationResults(results);
+      mergedPopulations.push(merged);
+    }
+  }
+
+  // Merge value sets by OID/name
+  const valueSetsByKey = new Map<string, ValueSetReference[]>();
+  for (const result of partialResults) {
+    for (const vs of result.valueSets) {
+      const key = vs.oid || vs.name.toLowerCase().trim();
+      const existing = valueSetsByKey.get(key) || [];
+      existing.push(vs);
+      valueSetsByKey.set(key, existing);
+    }
+  }
+
+  const mergedValueSets: ValueSetReference[] = [];
+  for (const [_key, vsList] of valueSetsByKey) {
+    if (vsList.length === 1) {
+      mergedValueSets.push(vsList[0]);
+    } else {
+      // Merge codes from all instances
+      const merged = { ...vsList[0] };
+      const codeKeys = new Set<string>();
+      const allCodes: any[] = [];
+
+      for (const vs of vsList) {
+        for (const code of vs.codes || []) {
+          const codeKey = `${code.code}|${code.system}`;
+          if (!codeKeys.has(codeKey)) {
+            codeKeys.add(codeKey);
+            allCodes.push(code);
+          }
+        }
+      }
+
+      merged.codes = allCodes;
+      mergedValueSets.push(merged);
+    }
+  }
+
+  return { skeleton, populationResults: mergedPopulations, valueSets: mergedValueSets };
+}
+
+/**
+ * Merge multiple extraction results for the same population type
+ */
+function mergePopulationResults(results: PopulationExtractionResult[]): PopulationExtractionResult {
+  const successful = results.filter(r => r.success && r.population);
+
+  if (successful.length === 0) {
+    // All failed, return first with combined errors
+    return {
+      populationType: results[0].populationType,
+      success: false,
+      errors: results.flatMap(r => r.errors),
+      warnings: results.flatMap(r => r.warnings),
+    };
+  }
+
+  // Start with first successful result
+  const base = { ...successful[0] };
+  const population = { ...base.population! };
+
+  // Merge criteria from all successful results (deduplicate by description)
+  const criteriaSet = new Set<string>();
+  const allChildren: (DataElement | LogicalClause)[] = [];
+
+  for (const result of successful) {
+    if (result.population?.criteria?.children) {
+      for (const child of result.population.criteria.children) {
+        const key = 'description' in child ? child.description : child.id;
+        if (!criteriaSet.has(key)) {
+          criteriaSet.add(key);
+          allChildren.push(child);
+        }
+      }
+    }
+  }
+
+  population.criteria = {
+    ...population.criteria!,
+    children: allChildren,
+  };
+
+  // Use longest narrative
+  const longestNarrative = successful
+    .map(r => r.population?.narrative || '')
+    .sort((a, b) => b.length - a.length)[0];
+  population.narrative = longestNarrative;
+
+  // Combine value sets
+  const allValueSets = successful.flatMap(r => r.valueSets || []);
+
+  // Combine OID validations
+  const allOidValidations = successful.flatMap(r => r.oidValidations || []);
+
+  return {
+    populationType: base.populationType,
+    success: true,
+    population,
+    valueSets: allValueSets,
+    oidValidations: allOidValidations,
+    errors: results.flatMap(r => r.errors),
+    warnings: results.flatMap(r => r.warnings),
+  };
+}
+
+// ============================================================================
+// Chunked Extraction for Large Documents
+// ============================================================================
+
+/**
+ * Extract from a large document using semantic chunking
+ */
+async function extractWithChunking(
+  documentText: string,
+  options: ExtractionOptions
+): Promise<ExtractionResult> {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const timings = { skeletonMs: 0, populationsMs: 0, validationMs: 0, totalMs: 0 };
+  const startTotal = performance.now();
+
+  const progress = options.onProgress || (() => {});
+
+  // Chunk the document using semantic boundaries
+  const chunkingResult = chunkDocumentSemantic(documentText, {
+    maxChunkSize: 40000, // Smaller chunks for LLM context
+    overlapSize: 2000,
+    preserveHeaders: true,
+    minChunkSize: 5000,
+  });
+
+  warnings.push(`Document chunked into ${chunkingResult.chunks.length} parts for processing`);
+
+  const partialResults: PartialExtractionResult[] = [];
+
+  // Process each chunk
+  for (let i = 0; i < chunkingResult.chunks.length; i++) {
+    const chunk = chunkingResult.chunks[i];
+
+    progress({
+      phase: 'skeleton',
+      currentStep: i + 1,
+      totalSteps: chunkingResult.chunks.length,
+      message: `Processing chunk ${i + 1} of ${chunkingResult.chunks.length}...`,
+      details: `Sections: ${chunk.sections.map(s => s.type).join(', ')}`,
+    });
+
+    const partial: PartialExtractionResult = {
+      chunk,
+      populationResults: [],
+      valueSets: [],
+    };
+
+    // Extract skeleton only from first chunk (metadata should be at start)
+    if (i === 0) {
+      const startSkeleton = performance.now();
+      partial.skeleton = await extractSkeleton(chunk.content, options) || undefined;
+      timings.skeletonMs = performance.now() - startSkeleton;
+    }
+
+    // Extract populations from chunks that contain population sections
+    const hasPopulationSections = chunk.sections.some(s =>
+      ['initial_population', 'denominator', 'denominator_exclusion',
+       'denominator_exception', 'numerator', 'numerator_exclusion'].includes(s.type)
+    );
+
+    if (hasPopulationSections && partial.skeleton || partialResults[0]?.skeleton) {
+      const skeleton = partial.skeleton || partialResults[0]?.skeleton!;
+      const startPop = performance.now();
+
+      for (const popSkeleton of skeleton.populations) {
+        // Check if this population is likely in this chunk
+        const popSectionType = popSkeleton.type.replace('-', '_');
+        const inThisChunk = chunk.sections.some(s => s.type === popSectionType);
+
+        if (inThisChunk) {
+          const popResult = await extractPopulationDetail(
+            chunk.content,
+            skeleton,
+            popSkeleton,
+            options
+          );
+
+          partial.populationResults.push(popResult);
+          if (popResult.valueSets) {
+            partial.valueSets.push(...popResult.valueSets);
+          }
+        }
+      }
+
+      timings.populationsMs += performance.now() - startPop;
+    }
+
+    partialResults.push(partial);
+  }
+
+  // Merge results from all chunks
+  const { skeleton, populationResults, valueSets } = mergeChunkExtractionResults(partialResults);
+
+  if (!skeleton) {
+    return {
+      success: false,
+      errors: ['Failed to extract measure skeleton from any chunk'],
+      warnings,
+      timings: { ...timings, totalMs: performance.now() - startTotal },
+    };
+  }
+
+  // Run validation pass on full document (truncated)
+  let validationResult: CrossReferenceResult | undefined;
+  if (!options.skipValidationPass) {
+    progress({
+      phase: 'validation',
+      currentStep: 1,
+      totalSteps: 1,
+      message: 'Validating extraction completeness...',
+    });
+
+    const startValidation = performance.now();
+    validationResult = await crossReferenceValidation(
+      documentText.substring(0, 30000),
+      skeleton,
+      populationResults,
+      options
+    );
+    timings.validationMs = performance.now() - startValidation;
+  }
+
+  // Assemble UMS
+  progress({
+    phase: 'complete',
+    currentStep: 1,
+    totalSteps: 1,
+    message: 'Assembling measure specification...',
+  });
+
+  const ums = assembleUMS(skeleton, populationResults, valueSets);
+
+  timings.totalMs = performance.now() - startTotal;
+
+  return {
+    success: errors.length === 0,
+    ums,
+    skeleton,
+    populationResults,
+    validationResult,
+    errors,
+    warnings,
+    timings,
+  };
 }

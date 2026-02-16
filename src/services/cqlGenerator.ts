@@ -22,6 +22,11 @@ import type {
 } from '../types/ums';
 
 import {
+  generateCQLFromTree,
+  isLogicalClause,
+} from './logicTreeUtils';
+
+import {
   escapeIdentifier,
   validateLibraryName,
   validateVersion,
@@ -572,6 +577,9 @@ function generateSupplementalData(_measure: UniversalMeasureSpec): string {
 
 /**
  * Generate CQL expression from criteria
+ *
+ * Uses generateCQLFromTree from logicTreeUtils for complex nested boolean logic
+ * (e.g., A AND (B OR C)), falling back to simple flat joining for non-nested criteria.
  */
 function generateCriteriaExpression(
   criteria: LogicalClause,
@@ -582,18 +590,23 @@ function generateCriteriaExpression(
     return 'true';
   }
 
+  // Check if we have complex nested logic that requires tree-based generation
+  const hasNestedClauses = criteria.children.some(child => isLogicalClause(child));
+  const hasMixedOperators = criteria.siblingConnections && criteria.siblingConnections.length > 0;
+
+  // Use tree-based generator for complex boolean logic (A AND (B OR C))
+  if (hasNestedClauses || hasMixedOperators) {
+    const getCriterionCQL = (element: DataElement) => generateDataElementExpression(element, measure);
+    return generateCQLFromTree(criteria, getCriterionCQL);
+  }
+
+  // Fall back to simple flat approach for non-nested criteria
   const expressions: string[] = [];
 
   for (const child of criteria.children) {
-    if ('operator' in child) {
-      // Nested clause
-      const nested = generateCriteriaExpression(child as LogicalClause, measure, indent + 1);
-      expressions.push(`(${nested})`);
-    } else {
-      // Data element
-      const expr = generateDataElementExpression(child as DataElement, measure);
-      expressions.push(expr);
-    }
+    // At this point, all children should be DataElements (not nested clauses)
+    const expr = generateDataElementExpression(child as DataElement, measure);
+    expressions.push(expr);
   }
 
   if (expressions.length === 0) {

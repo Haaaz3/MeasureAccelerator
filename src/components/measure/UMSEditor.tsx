@@ -17,6 +17,11 @@ import { getComplexityColor, getComplexityDots, getComplexityLevel, calculateDat
 import { getAllStandardValueSets, searchStandardValueSets, type StandardValueSet } from '../../constants/standardValueSets';
 import { handleAIAssistantRequest, buildAssistantContext, applyAIChanges, formatChangesForDisplay, type AIAssistantResponse } from '../../services/aiAssistant';
 import SharedEditWarning from '../library/SharedEditWarning';
+import {
+  recordComponentFeedback,
+  snapshotFromDataElement,
+  type ComponentSnapshot,
+} from '../../services/feedbackLoop';
 
 // Program/catalogue options for measure metadata
 const MEASURE_PROGRAMS = [
@@ -152,12 +157,70 @@ export function UMSEditor() {
   // changes (addCodeToValueSet, removeCodeFromValueSet) should also check if the
   // affected DataElements link to shared library components and prompt the user.
 
+  // Feedback capture: store snapshots before edits to enable before/after comparison
+  const elementSnapshotsRef = useRef<Map<string, ComponentSnapshot>>(new Map());
+
+  /**
+   * Capture a snapshot of an element before editing.
+   * Call this BEFORE any edit operation to record the "before" state.
+   */
+  const captureBeforeSnapshot = (elementId: string) => {
+    const element = findElementById(elementId);
+    if (element) {
+      const snapshot = snapshotFromDataElement(element);
+      elementSnapshotsRef.current.set(elementId, snapshot);
+    }
+  };
+
+  /**
+   * Record feedback after an edit is complete.
+   * Call this AFTER the edit to compare before/after and store feedback.
+   */
+  const recordEditFeedback = (elementId: string) => {
+    if (!measure) return;
+
+    const beforeSnapshot = elementSnapshotsRef.current.get(elementId);
+    if (!beforeSnapshot) return; // No before snapshot captured
+
+    const element = findElementById(elementId);
+    if (!element) return;
+
+    const afterSnapshot = snapshotFromDataElement(element);
+
+    // Only record if there are actual changes
+    const hasChanges =
+      beforeSnapshot.description !== afterSnapshot.description ||
+      beforeSnapshot.oid !== afterSnapshot.oid ||
+      beforeSnapshot.valueSetName !== afterSnapshot.valueSetName ||
+      beforeSnapshot.negation !== afterSnapshot.negation ||
+      beforeSnapshot.dataType !== afterSnapshot.dataType ||
+      JSON.stringify(beforeSnapshot.timing) !== JSON.stringify(afterSnapshot.timing) ||
+      JSON.stringify(beforeSnapshot.thresholds) !== JSON.stringify(afterSnapshot.thresholds);
+
+    if (hasChanges) {
+      recordComponentFeedback(
+        elementId,
+        measure.id,
+        beforeSnapshot,
+        afterSnapshot
+      );
+    }
+
+    // Clear the before snapshot
+    elementSnapshotsRef.current.delete(elementId);
+  };
+
   // Wrapped timing save that checks for shared components
   const handleTimingSaveWithWarning = (componentId: string, modified: TimingConstraint) => {
+    // Capture before state for feedback
+    captureBeforeSnapshot(componentId);
+
     const element = findElementById(componentId);
     if (!element?.libraryComponentId) {
       // Not library-linked, proceed directly
       updateTimingOverride(measure!.id, componentId, modified);
+      // Record feedback after edit
+      setTimeout(() => recordEditFeedback(componentId), 100);
       return;
     }
 
@@ -165,6 +228,8 @@ export function UMSEditor() {
     if (!libraryComponent || libraryComponent.usage.usageCount <= 1) {
       // Only used in this measure, proceed directly
       updateTimingOverride(measure!.id, componentId, modified);
+      // Record feedback after edit
+      setTimeout(() => recordEditFeedback(componentId), 100);
       return;
     }
 
@@ -181,15 +246,22 @@ export function UMSEditor() {
 
   // Wrapped timing window save that checks for shared components
   const handleTimingWindowSaveWithWarning = (componentId: string, modified: TimingWindow) => {
+    // Capture before state for feedback
+    captureBeforeSnapshot(componentId);
+
     const element = findElementById(componentId);
     if (!element?.libraryComponentId) {
       updateTimingWindow(measure!.id, componentId, modified);
+      // Record feedback after edit
+      setTimeout(() => recordEditFeedback(componentId), 100);
       return;
     }
 
     const libraryComponent = getComponent(element.libraryComponentId);
     if (!libraryComponent || libraryComponent.usage.usageCount <= 1) {
       updateTimingWindow(measure!.id, componentId, modified);
+      // Record feedback after edit
+      setTimeout(() => recordEditFeedback(componentId), 100);
       return;
     }
 
@@ -2100,6 +2172,9 @@ function SelectedComponentDetailPanel({
   onResetTimingWindow: (componentId: string) => void;
 }) {
   const { measures } = useMeasureStore();
+
+  // Feedback capture: store snapshot before edit for comparison
+  const beforeSnapshotRef = useRef<ComponentSnapshot | null>(null);
   const currentMeasure = measures.find(m => m.id === measureId);
 
   // Find the DataElement in the criteria tree
@@ -2341,8 +2416,19 @@ function NodeDetailPanel({
 
   // Save handlers
   const saveDescription = () => {
-    if (editValue.trim() && editValue !== node?.description) {
+    if (editValue.trim() && editValue !== node?.description && node) {
+      // Capture before state
+      const beforeSnapshot = snapshotFromDataElement(node);
+
       updateDataElement(measureId, nodeId, { description: editValue.trim() }, 'description_changed', 'Edited via inline edit');
+
+      // Record feedback after edit (use setTimeout to allow state update)
+      setTimeout(() => {
+        if (element) {
+          const afterSnapshot = snapshotFromDataElement(element);
+          recordComponentFeedback(nodeId, measureId, beforeSnapshot, afterSnapshot);
+        }
+      }, 100);
     }
     setEditingField(null);
     setEditValue('');
@@ -2360,18 +2446,44 @@ function NodeDetailPanel({
 
   const saveTiming = (idx: number, newValue: string) => {
     if (!node?.timingRequirements) return;
+
+    // Capture before state
+    const beforeSnapshot = snapshotFromDataElement(node);
+
     const updatedTimings = [...node.timingRequirements];
     updatedTimings[idx] = { ...updatedTimings[idx], description: newValue };
     updateDataElement(measureId, nodeId, { timingRequirements: updatedTimings }, 'timing_changed', 'Edited timing via inline edit');
+
+    // Record feedback after edit
+    setTimeout(() => {
+      if (element) {
+        const afterSnapshot = snapshotFromDataElement(element);
+        recordComponentFeedback(nodeId, measureId, beforeSnapshot, afterSnapshot);
+      }
+    }, 100);
+
     setEditTimingIdx(null);
     setEditValue('');
   };
 
   const saveRequirement = (idx: number, newValue: string) => {
     if (!node?.additionalRequirements) return;
+
+    // Capture before state
+    const beforeSnapshot = snapshotFromDataElement(node);
+
     const updated = [...node.additionalRequirements];
     updated[idx] = newValue;
     updateDataElement(measureId, nodeId, { additionalRequirements: updated }, 'description_changed', 'Edited requirement via inline edit');
+
+    // Record feedback after edit
+    setTimeout(() => {
+      if (element) {
+        const afterSnapshot = snapshotFromDataElement(element);
+        recordComponentFeedback(nodeId, measureId, beforeSnapshot, afterSnapshot);
+      }
+    }, 100);
+
     setEditReqIdx(null);
     setEditValue('');
   };
@@ -2558,7 +2670,10 @@ function NodeDetailPanel({
           </span>
           <ComplexityBadge level={calculateDataElementComplexity(node)} />
           {node.libraryComponentId && (
-            <LibraryStatusBadge component={getComponent(node.libraryComponentId) ?? undefined} size="md" />
+            <>
+              <LibraryStatusBadge component={getComponent(node.libraryComponentId) ?? undefined} size="md" />
+              <OIDValidationBadge component={getComponent(node.libraryComponentId) ?? undefined} size="md" />
+            </>
           )}
         </div>
 
@@ -3628,6 +3743,106 @@ function LibraryStatusBadge({ component, size = 'sm' }: { component: LibraryComp
   );
 }
 
+/**
+ * OID Validation Badge - shows warning for components with invalid or unknown OIDs
+ */
+function OIDValidationBadge({ component, size = 'sm' }: { component: LibraryComponent | undefined; size?: 'sm' | 'md' }) {
+  const textSize = size === 'sm' ? 'text-[10px]' : 'text-xs';
+  const iconSize = size === 'sm' ? 'w-3 h-3' : 'w-3.5 h-3.5';
+
+  // Only show for atomic components with oidValidation issues
+  if (!component || component.type !== 'atomic') return null;
+
+  const validation = component.oidValidation;
+  if (!validation) return null;
+
+  // Don't show for valid OIDs in catalog
+  if (validation.status === 'valid' && validation.inCatalog) return null;
+
+  const isInvalid = validation.status === 'invalid';
+  const isUnknown = validation.status === 'unknown';
+  const hasWarnings = validation.warnings && validation.warnings.length > 0;
+
+  // Show nothing if status is valid with no warnings
+  if (validation.status === 'valid' && !hasWarnings) return null;
+
+  // Build tooltip message
+  const messages: string[] = [];
+  if (validation.errors) messages.push(...validation.errors);
+  if (validation.warnings) messages.push(...validation.warnings);
+  const tooltipText = messages.join(' • ') || 'OID validation issue';
+
+  if (isInvalid) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${textSize} bg-red-500/10 text-red-600 border-red-500/30`}
+        title={tooltipText}
+      >
+        <AlertTriangle className={iconSize} />
+        Invalid OID
+      </span>
+    );
+  }
+
+  if (isUnknown || hasWarnings) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${textSize} bg-amber-500/10 text-amber-600 border-amber-500/30`}
+        title={tooltipText}
+      >
+        <AlertTriangle className={iconSize} />
+        {isUnknown ? 'Unknown OID' : 'OID Warning'}
+      </span>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * OID Validation Warning - inline warning box for components with OID issues (used in card view)
+ */
+function OIDValidationWarning({ component }: { component: LibraryComponent }) {
+  if (component.type !== 'atomic') return null;
+
+  const validation = component.oidValidation;
+  if (!validation) return null;
+
+  // Check if there are any issues to display
+  const hasIssues = validation.status === 'invalid' ||
+    validation.status === 'unknown' ||
+    (validation.warnings && validation.warnings.length > 0);
+
+  if (!hasIssues) return null;
+
+  const isInvalid = validation.status === 'invalid';
+  const messages = [...(validation.errors || []), ...(validation.warnings || [])];
+
+  return (
+    <div className={`mt-2 px-2 py-1.5 rounded-lg flex items-center gap-2 ${
+      isInvalid
+        ? 'bg-red-500/10 border border-red-500/30'
+        : 'bg-amber-500/10 border border-amber-500/30'
+    }`}>
+      <AlertTriangle className={`w-3.5 h-3.5 flex-shrink-0 ${
+        isInvalid ? 'text-red-500' : 'text-amber-500'
+      }`} />
+      <div className="flex-1 min-w-0">
+        <span className={`text-xs font-medium ${
+          isInvalid ? 'text-red-400' : 'text-amber-400'
+        }`}>
+          {isInvalid ? 'Invalid OID' : 'OID Not Recognized'}
+        </span>
+        {messages.length > 0 && (
+          <p className="text-[10px] text-[var(--text-dim)] truncate">
+            {messages[0]}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ComponentLibraryIndicator({ component }: { component: LibraryComponent }) {
   const isApproved = component.versionInfo.status === 'approved';
   const usageCount = component.usage?.usageCount ?? component.usage?.measureIds?.length ?? 0;
@@ -3697,6 +3912,9 @@ function ComponentLibraryIndicator({ component }: { component: LibraryComponent 
           </div>
         )}
       </div>
+
+      {/* OID Validation Warning */}
+      <OIDValidationWarning component={component} />
 
       {/* Multiple value sets detail */}
       {hasMultipleValueSets && (

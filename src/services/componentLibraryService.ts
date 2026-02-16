@@ -22,8 +22,10 @@ import type {
   MeasureReference,
   TimingExpression,
   LogicalOperator,
+  OIDValidationStatus,
 } from '../types/componentLibrary';
 import { calculateAtomicComplexity, calculateCompositeComplexity } from './complexityCalculator';
+import { validateOID, type OIDValidationResult } from './oidValidator';
 
 // ============================================================================
 // ID Generation
@@ -34,6 +36,45 @@ let idCounter = 0;
 function generateId(prefix: string): ComponentId {
   idCounter++;
   return `${prefix}-${Date.now()}-${idCounter}`;
+}
+
+// ============================================================================
+// OID Validation Helper
+// ============================================================================
+
+/**
+ * Convert OIDValidationResult to OIDValidationStatus for component storage
+ */
+export function buildOIDValidationStatus(oid: string, name?: string): OIDValidationStatus {
+  if (!oid || oid === 'N/A') {
+    return {
+      status: 'unknown',
+      warnings: ['No OID provided'],
+      inCatalog: false,
+      validatedAt: new Date().toISOString(),
+    };
+  }
+
+  const result = validateOID(oid, name);
+
+  // Determine status
+  let status: OIDValidationStatus['status'];
+  if (!result.valid) {
+    status = 'invalid';
+  } else if (result.catalogMatch) {
+    status = 'valid';
+  } else {
+    status = 'unknown'; // Valid format but not in catalog
+  }
+
+  return {
+    status,
+    errors: result.errors.length > 0 ? result.errors.map(e => e.message) : undefined,
+    warnings: result.warnings.length > 0 ? result.warnings.map(w => w.message) : undefined,
+    inCatalog: !!result.catalogMatch,
+    catalogName: result.catalogMatch?.name,
+    validatedAt: new Date().toISOString(),
+  };
 }
 
 // ============================================================================
@@ -70,6 +111,9 @@ export function createAtomicComponent(params: CreateAtomicParams): AtomicCompone
     ? [params.valueSet, ...params.additionalValueSets]
     : undefined;
 
+  // Validate OID for primary value set
+  const oidValidation = buildOIDValidationStatus(params.valueSet.oid, params.valueSet.name);
+
   const base: Omit<AtomicComponent, 'complexity'> = {
     type: 'atomic',
     id,
@@ -79,6 +123,7 @@ export function createAtomicComponent(params: CreateAtomicParams): AtomicCompone
     valueSets: allValueSets,
     timing: params.timing,
     negation: params.negation,
+    oidValidation,
     versionInfo: createInitialVersionInfo(params.createdBy || 'user', now),
     usage: createInitialUsage(),
     metadata: createInitialMetadata(params.category, params.tags || [], params.createdBy || 'user', now),

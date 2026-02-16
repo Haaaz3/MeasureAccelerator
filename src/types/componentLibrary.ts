@@ -86,6 +86,27 @@ export interface TimingExpression {
 }
 
 // ============================================================================
+// OID Validation Status
+// ============================================================================
+
+export type OIDValidationStatusType = 'valid' | 'invalid' | 'unknown';
+
+export interface OIDValidationStatus {
+  /** Overall validation status */
+  status: OIDValidationStatusType;
+  /** Validation error messages (only if invalid) */
+  errors?: string[];
+  /** Validation warning messages */
+  warnings?: string[];
+  /** Whether OID was found in the known catalog */
+  inCatalog?: boolean;
+  /** Expected name from catalog (if OID found) */
+  catalogName?: string;
+  /** Validated at timestamp */
+  validatedAt?: string;
+}
+
+// ============================================================================
 // Atomic Component
 // ============================================================================
 
@@ -142,6 +163,9 @@ export interface AtomicComponent {
 
   /** Auto-calculated complexity */
   complexity: ComponentComplexity;
+
+  /** OID validation result (valid/invalid/unknown + warnings) */
+  oidValidation?: OIDValidationStatus;
 
   /** Version and approval info */
   versionInfo: ComponentVersionInfo;
