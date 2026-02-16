@@ -215,7 +215,7 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           const validComponents = fullComponents
             .filter((c): c is LibraryComponent => c !== null)
             .map((component) => {
-              if (component.componentType === 'atomic') {
+              if (component.type === 'atomic') {
                 return {
                   ...component,
                   complexity: calculateAtomicComplexity(component as AtomicComponent),
