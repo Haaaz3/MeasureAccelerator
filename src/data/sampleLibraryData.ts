@@ -681,7 +681,7 @@ export const sampleCategories: CategoryGroup[] = [
   {
     category: 'demographics',
     displayName: 'Demographics',
-    componentIds: ['age-45-75-at-start-mp'],
+    componentIds: ['age-45-75-at-start-mp', 'patient-sex-female', 'patient-sex-male'],
     sortOrder: 1,
   },
   {

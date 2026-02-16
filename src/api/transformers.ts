@@ -281,7 +281,11 @@ export function transformMeasureDto(dto: MeasureDto): UniversalMeasureSpec {
 // Component Transformers
 // ============================================================================
 
-function mapComponentCategory(category: string): ComponentCategory {
+function mapComponentCategory(category: string | null | undefined): ComponentCategory {
+  if (!category) {
+    console.warn('[transformers] Component has null/undefined category, defaulting to clinical-observations');
+    return 'clinical-observations';
+  }
   const mapping: Record<string, ComponentCategory> = {
     'DEMOGRAPHICS': 'demographics',
     'demographics': 'demographics',
@@ -306,7 +310,12 @@ function mapComponentCategory(category: string): ComponentCategory {
     'LABORATORY': 'laboratory',
     'laboratory': 'laboratory',
   };
-  return mapping[category] || 'conditions';
+  const mapped = mapping[category];
+  if (!mapped) {
+    console.warn(`[transformers] Unknown category "${category}", defaulting to clinical-observations`);
+    return 'clinical-observations';
+  }
+  return mapped;
 }
 
 function mapApprovalStatus(status: string): ApprovalStatus {
