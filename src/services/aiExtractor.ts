@@ -28,18 +28,12 @@ import {
   getChildhoodImmunizationExclusionValueSets,
   type StandardValueSet,
 } from '../constants/standardValueSets';
-
-// API URLs
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const GOOGLE_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
-
-// Default models for each provider
-const DEFAULT_MODELS = {
-  anthropic: 'claude-sonnet-4-20250514',
-  openai: 'gpt-4o',
-  google: 'gemini-1.5-pro',
-};
+import {
+  callLLM,
+  DEFAULT_MODELS,
+  type LLMProvider,
+  type CustomLLMConfig,
+} from './llmClient';
 
 export interface ExtractionProgress {
   stage: 'extracting' | 'parsing' | 'building' | 'complete' | 'error';
@@ -105,12 +99,8 @@ interface ExtractedMeasureData {
   ageRange?: { min: number; max: number; unit: string };
 }
 
-type LLMProvider = 'anthropic' | 'openai' | 'google' | 'custom';
-
-export interface CustomLLMConfig {
-  baseUrl: string;
-  modelName: string;
-}
+// Re-export types from llmClient for backwards compatibility
+export type { LLMProvider, CustomLLMConfig } from './llmClient';
 
 /**
  * Extract measure data from document content using AI
@@ -163,29 +153,21 @@ export async function extractMeasureWithAI(
     const systemPrompt = buildSystemPrompt();
     const userPrompt = buildUserPrompt(truncatedContent);
 
-    // Call the appropriate API based on provider
-    let content: string;
-    let tokensUsed: number | undefined;
+    // Call the LLM using unified client (supports vision for all providers)
+    const result = await callLLM({
+      provider,
+      model: actualModel,
+      apiKey,
+      systemPrompt,
+      userPrompt,
+      images: pageImages,
+      maxTokens: 16000,
+      customConfig,
+      jsonMode: provider === 'openai' || provider === 'google',
+    });
 
-    if (provider === 'anthropic') {
-      const result = await callAnthropicAPI(apiKey, actualModel, systemPrompt, userPrompt, pageImages);
-      content = result.content;
-      tokensUsed = result.tokensUsed;
-    } else if (provider === 'openai') {
-      const result = await callOpenAIAPI(apiKey, actualModel, systemPrompt, userPrompt);
-      content = result.content;
-      tokensUsed = result.tokensUsed;
-    } else if (provider === 'google') {
-      const result = await callGoogleAPI(apiKey, actualModel, systemPrompt, userPrompt);
-      content = result.content;
-      tokensUsed = result.tokensUsed;
-    } else if (provider === 'custom' && customConfig) {
-      const result = await callCustomAPI(customConfig.baseUrl, apiKey, actualModel, systemPrompt, userPrompt);
-      content = result.content;
-      tokensUsed = result.tokensUsed;
-    } else {
-      throw new Error(`Unsupported provider: ${provider}`);
-    }
+    const content = result.content;
+    const tokensUsed = result.tokensUsed;
 
     onProgress?.({ stage: 'parsing', message: 'Parsing extraction results...', progress: 40 });
 
@@ -424,204 +406,7 @@ ${content}
 Return ONLY valid JSON matching the schema. Include ALL value sets with ALL their codes. Be thorough - a complete measure should have 5-10+ value sets with 10-100+ codes each.`;
 }
 
-/**
- * Call Anthropic (Claude) API
- */
-async function callAnthropicAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string,
-  pageImages?: string[] // Base64 encoded PNG images for vision-based extraction
-): Promise<{ content: string; tokensUsed?: number }> {
-  // Build message content - include images if available for vision-based extraction
-  let messageContent: any;
-
-  if (pageImages && pageImages.length > 0) {
-    console.log(`[AI Extractor] Using vision mode with ${pageImages.length} page images`);
-
-    // Build content array with images first, then text prompt
-    const contentBlocks: any[] = [];
-
-    // Add each page image
-    for (let i = 0; i < pageImages.length; i++) {
-      contentBlocks.push({
-        type: 'image',
-        source: {
-          type: 'base64',
-          media_type: 'image/png',
-          data: pageImages[i],
-        },
-      });
-    }
-
-    // Add text prompt after images
-    contentBlocks.push({
-      type: 'text',
-      text: userPrompt,
-    });
-
-    messageContent = contentBlocks;
-  } else {
-    // Standard text-only mode
-    messageContent = userPrompt;
-  }
-
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 16000,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: messageContent }],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `Anthropic API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return {
-    content: data.content?.[0]?.text || '',
-    tokensUsed: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
-  };
-}
-
-/**
- * Call OpenAI (GPT) API
- */
-async function callOpenAIAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<{ content: string; tokensUsed?: number }> {
-  const response = await fetch(OPENAI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 16000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      response_format: { type: 'json_object' },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `OpenAI API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    tokensUsed: (data.usage?.prompt_tokens || 0) + (data.usage?.completion_tokens || 0),
-  };
-}
-
-/**
- * Call Google (Gemini) API
- */
-async function callGoogleAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<{ content: string; tokensUsed?: number }> {
-  const url = `${GOOGLE_API_URL}/${model}:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: `${systemPrompt}\n\n${userPrompt}` },
-          ],
-        },
-      ],
-      generationConfig: {
-        maxOutputTokens: 16000,
-        responseMimeType: 'application/json',
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `Google API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-  return {
-    content,
-    tokensUsed: data.usageMetadata?.totalTokenCount,
-  };
-}
-
-/**
- * Call Custom/Local LLM API (OpenAI-compatible format)
- */
-async function callCustomAPI(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  userPrompt: string
-): Promise<{ content: string; tokensUsed?: number }> {
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  // Only add Authorization header if API key is provided
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      max_tokens: 16000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(`Custom LLM API error: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json();
-  return {
-    content: data.choices?.[0]?.message?.content || '',
-    tokensUsed: (data.usage?.prompt_tokens || 0) + (data.usage?.completion_tokens || 0),
-  };
-}
+// API call functions have been moved to llmClient.ts
 
 /**
  * Parse AI response to extract JSON
@@ -1639,25 +1424,18 @@ async function runVerificationPass(
     const systemPrompt = buildVerificationSystemPrompt();
     const userPrompt = buildVerificationPrompt(documentContent, extractedData);
 
-    let content: string;
+    const result = await callLLM({
+      provider,
+      model,
+      apiKey,
+      systemPrompt,
+      userPrompt,
+      maxTokens: 8000,
+      customConfig,
+      jsonMode: provider === 'openai' || provider === 'google',
+    });
 
-    if (provider === 'anthropic') {
-      const result = await callAnthropicAPI(apiKey, model, systemPrompt, userPrompt);
-      content = result.content;
-    } else if (provider === 'openai') {
-      const result = await callOpenAIAPI(apiKey, model, systemPrompt, userPrompt);
-      content = result.content;
-    } else if (provider === 'google') {
-      const result = await callGoogleAPI(apiKey, model, systemPrompt, userPrompt);
-      content = result.content;
-    } else if (provider === 'custom' && customConfig) {
-      const result = await callCustomAPI(customConfig.baseUrl, apiKey, model, systemPrompt, userPrompt);
-      content = result.content;
-    } else {
-      return null;
-    }
-
-    return parseVerificationResponse(content);
+    return parseVerificationResponse(result.content);
   } catch {
     return null;
   }

@@ -3,6 +3,7 @@ import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Users, Targe
 import { useMeasureStore } from '../../stores/measureStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { extractFromFiles, type ExtractedDocument } from '../../services/documentLoader';
+import { callLLM, getDefaultModel } from '../../services/llmClient';
 import type { UniversalMeasureSpec, MeasureMetadata, PopulationDefinition, ValueSetReference, LogicalClause, DataElement, ConfidenceLevel } from '../../types/ums';
 import { CriteriaBlockBuilder, type CriteriaBlock } from './CriteriaBlockBuilder';
 
@@ -87,7 +88,7 @@ interface AIExtractedCriterion {
 
 export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
   const { measures, addMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
-  const { selectedProvider, apiKeys, getActiveApiKey, getCustomLlmConfig } = useSettingsStore();
+  const { selectedProvider, selectedModel, apiKeys, getActiveApiKey, getCustomLlmConfig } = useSettingsStore();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>('start');
@@ -529,99 +530,21 @@ Return ONLY valid JSON, no markdown or explanation.`;
 
       setAiProgress('Sending to AI for analysis...');
 
-      // Call the appropriate API
-      let content: string;
-      if (selectedProvider === 'anthropic') {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 8000,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        });
+      // Use unified LLM client with settings from store
+      const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
+      const modelToUse = selectedModel || getDefaultModel(selectedProvider, customConfig);
 
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
+      const result = await callLLM({
+        provider: selectedProvider,
+        model: modelToUse,
+        apiKey,
+        userPrompt: prompt,
+        maxTokens: 8000,
+        customConfig,
+        jsonMode: selectedProvider === 'openai' || selectedProvider === 'google',
+      });
 
-        const data = await response.json();
-        content = data.content?.[0]?.text || '';
-      } else if (selectedProvider === 'openai') {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: 'gpt-4o',
-            max_tokens: 8000,
-            messages: [{ role: 'user', content: prompt }],
-            response_format: { type: 'json_object' },
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        content = data.choices?.[0]?.message?.content || '';
-      } else if (selectedProvider === 'custom') {
-        // Custom/Local LLM using OpenAI-compatible API format
-        const customConfig = getCustomLlmConfig();
-        const baseUrl = customConfig.baseUrl.replace(/\/$/, ''); // Remove trailing slash
-
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        // Only add Authorization header if API key is provided
-        if (customConfig.apiKey) {
-          headers['Authorization'] = `Bearer ${customConfig.apiKey}`;
-        }
-
-        const response = await fetch(`${baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            model: customConfig.modelName,
-            max_tokens: 8000,
-            messages: [{ role: 'user', content: prompt }],
-          }),
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => '');
-          throw new Error(`Custom LLM API error: ${response.status} ${errorText}`);
-        }
-
-        const data = await response.json();
-        content = data.choices?.[0]?.message?.content || '';
-      } else {
-        // Google Gemini
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 8000, responseMimeType: 'application/json' },
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      }
+      const content = result.content;
 
       setAiProgress('Parsing AI response...');
 

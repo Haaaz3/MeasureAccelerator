@@ -15,11 +15,7 @@ import type {
   ReviewStatus,
 } from '../types/ums';
 import type { LLMProvider } from '../stores/settingsStore';
-
-// API URLs (same as aiExtractor.ts)
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const GOOGLE_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+import { callLLM, type CustomLLMConfig } from './llmClient';
 
 // =============================================================================
 // TYPES
@@ -89,10 +85,8 @@ export interface AIAssistantResponse {
   error?: string;
 }
 
-export interface CustomLLMConfig {
-  baseUrl: string;
-  modelName: string;
-}
+// Re-export CustomLLMConfig for backwards compatibility
+export type { CustomLLMConfig } from './llmClient';
 
 // =============================================================================
 // CONTEXT BUILDING
@@ -322,148 +316,7 @@ If the user's request is ambiguous, respond with:
 Be concise. Use clinical terminology accurately. Reference specific value sets, codes, and measure logic when relevant.`;
 }
 
-// =============================================================================
-// API CALLS
-// =============================================================================
-
-async function callAnthropicAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<string> {
-  const response = await fetch(ANTHROPIC_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4000,
-      system: systemPrompt,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `Anthropic API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.content?.[0]?.text || '';
-}
-
-async function callOpenAIAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<string> {
-  const response = await fetch(OPENAI_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 4000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `OpenAI API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
-}
-
-async function callGoogleAPI(
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<string> {
-  const url = `${GOOGLE_API_URL}/${model}:generateContent?key=${apiKey}`;
-
-  // Convert messages to Gemini format
-  const contents = messages.map(m => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      contents: [
-        { role: 'user', parts: [{ text: systemPrompt }] },
-        ...contents,
-      ],
-      generationConfig: {
-        maxOutputTokens: 4000,
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error?.message || `Google API error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-}
-
-async function callCustomAPI(
-  baseUrl: string,
-  apiKey: string,
-  model: string,
-  systemPrompt: string,
-  messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<string> {
-  const url = `${baseUrl.replace(/\/$/, '')}/chat/completions`;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-  if (apiKey) {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-  }
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model,
-      max_tokens: 4000,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...messages,
-      ],
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(`Custom LLM API error: ${response.status} ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices?.[0]?.message?.content || '';
-}
+// API call functions have been moved to llmClient.ts
 
 // =============================================================================
 // RESPONSE PARSING
@@ -539,30 +392,23 @@ export async function handleAIAssistantRequest(
   const systemPrompt = buildSystemPrompt(context);
 
   // Build messages array with conversation history + new message
-  const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
+  const messages = [
     ...context.conversationHistory,
-    { role: 'user', content: userMessage },
+    { role: 'user' as const, content: userMessage },
   ];
 
   try {
-    let responseContent: string;
+    const result = await callLLM({
+      provider,
+      model,
+      apiKey,
+      systemPrompt,
+      messages,
+      maxTokens: 4000,
+      customConfig,
+    });
 
-    if (provider === 'anthropic') {
-      responseContent = await callAnthropicAPI(apiKey, model, systemPrompt, messages);
-    } else if (provider === 'openai') {
-      responseContent = await callOpenAIAPI(apiKey, model, systemPrompt, messages);
-    } else if (provider === 'google') {
-      responseContent = await callGoogleAPI(apiKey, model, systemPrompt, messages);
-    } else if (provider === 'custom' && customConfig) {
-      responseContent = await callCustomAPI(customConfig.baseUrl, apiKey, model, systemPrompt, messages);
-    } else {
-      return {
-        action: 'error',
-        error: `Unsupported LLM provider: ${provider}`,
-      };
-    }
-
-    return parseAIResponse(responseContent);
+    return parseAIResponse(result.content);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
     return {
