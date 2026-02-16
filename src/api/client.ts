@@ -50,6 +50,30 @@ async function request<T>(
     throw new ApiError(response.status, response.statusText, body);
   }
 
+  // Check content-type before parsing
+  const contentType = response.headers.get('content-type');
+  if (!contentType?.includes('application/json')) {
+    const text = await response.text();
+    // If it's HTML (Vite fallback), throw a clear error
+    if (text.startsWith('<!') || text.startsWith('<html')) {
+      throw new ApiError(
+        500,
+        'Received HTML instead of JSON',
+        `Endpoint ${url} returned HTML. Backend may not be running or proxy misconfigured.`
+      );
+    }
+    // Empty response
+    if (!text) {
+      return undefined as T;
+    }
+    // Try to parse anyway (some backends don't set content-type)
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new ApiError(500, 'Invalid JSON response', text.substring(0, 200));
+    }
+  }
+
   // Handle empty responses
   const text = await response.text();
   if (!text) {
