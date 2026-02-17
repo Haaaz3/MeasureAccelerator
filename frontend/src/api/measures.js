@@ -87,3 +87,30 @@ export async function generateSql(id) {
 export async function generateCode(id) {
   return get(`/measures/${id}/code`);
 }
+
+/**
+ * Import a full measure with populations via the import endpoint.
+ * This bypasses the simpler createMeasure endpoint to support full UMS import.
+ */
+export async function importMeasure(measure) {
+  const result = await post('/import', {
+    measures: [measure],
+    components: [],
+    validationTraces: [],
+    codeStates: {},
+    version: 1,
+    exportedAt: new Date().toISOString(),
+  });
+
+  // Return the imported measure (fetch it fresh after import)
+  if (result.success && measure.metadata?.measureId) {
+    try {
+      return await getMeasureByMeasureId(measure.metadata.measureId);
+    } catch {
+      // If fetch fails, return the original measure
+      return measure;
+    }
+  }
+
+  return measure;
+}

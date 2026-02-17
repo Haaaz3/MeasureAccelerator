@@ -112,6 +112,26 @@ export const useMeasureStore = create((set, get) => ({
     }
   },
 
+  // Import a full measure with populations
+  importMeasure: async (measureData) => {
+    set({ isLoading: true, error: null });
+    try {
+      const measure = await measureApi.importMeasure(measureData);
+      set((state) => ({
+        measures: [...state.measures, measure],
+        activeMeasureId: measure.id,
+        activeMeasure: measure,
+        activeTab: 'editor',
+        isLoading: false,
+      }));
+      return measure;
+    } catch (error) {
+      console.error('Failed to import measure:', error);
+      set({ error: error.message, isLoading: false });
+      return null;
+    }
+  },
+
   // UI actions
   setActiveMeasure: (id) => {
     set({ activeMeasureId: id, activeTab: id ? 'editor' : 'library' });

@@ -31,9 +31,11 @@ import {
   AlertCircle,
   Sparkles,
   Save,
+  FileText,
 } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore.js';
 import { CriteriaBlockBuilder } from './CriteriaBlockBuilder.jsx';
+import { extractMeasure, extractTextFromFiles } from '../../services/extractionService.js';
 
 // ============================================================================
 // Constants
@@ -78,7 +80,7 @@ function generateId() {
 // ============================================================================
 
 export function MeasureCreator({ isOpen, onClose }) {
-  const { measures, addMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
+  const { measures, importMeasure, createMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState('start');
@@ -114,10 +116,116 @@ export function MeasureCreator({ isOpen, onClose }) {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [aiProcessing, setAiProcessing] = useState(false);
   const [aiError, setAiError] = useState(null);
+  const [aiProgress, setAiProgress] = useState({ phase: '', message: '' });
+  const [extractedUMS, setExtractedUMS] = useState(null);
   const fileInputRef = useRef(null);
 
   // Available value sets (would come from API/store in real app)
   const availableValueSets = useMemo(() => [], []);
+
+  // AI Extraction handler
+  const handleAIExtraction = useCallback(async () => {
+    // Combine pasted text and uploaded files
+    let documentText = aiInputText;
+
+    if (uploadedFiles.length > 0) {
+      setAiProcessing(true);
+      setAiProgress({ phase: 'files', message: 'Extracting text from files...' });
+
+      try {
+        const fileText = await extractTextFromFiles(uploadedFiles);
+        documentText = documentText ? `${documentText}\n\n${fileText}` : fileText;
+      } catch (error) {
+        setAiError(`Failed to extract text from files: ${error.message}`);
+        setAiProcessing(false);
+        return false;
+      }
+    }
+
+    if (!documentText || documentText.trim().length < 50) {
+      // Not enough text, skip extraction
+      return true;
+    }
+
+    setAiProcessing(true);
+    setAiError(null);
+    setAiProgress({ phase: 'starting', message: 'Starting AI extraction...' });
+
+    try {
+      const result = await extractMeasure(documentText, {
+        onProgress: (phase, message) => {
+          setAiProgress({ phase, message });
+        },
+      });
+
+      if (!result.success) {
+        setAiError(result.error || 'Extraction failed');
+        setAiProcessing(false);
+        return false;
+      }
+
+      // Store extracted UMS and populate form fields
+      setExtractedUMS(result.ums);
+
+      // Populate metadata
+      const meta = result.ums.metadata;
+      setMeasureId(meta.measureId || '');
+      setTitle(meta.title || '');
+      setDescription(meta.description || '');
+      setProgram(meta.program || 'MIPS_CQM');
+      setMeasureType(meta.measureType || 'process');
+      setSteward(meta.steward || '');
+
+      // Populate population descriptions
+      const ip = result.ums.populations?.find(p =>
+        p.type === 'initial_population' || p.type === 'denominator'
+      );
+      const num = result.ums.populations?.find(p => p.type === 'numerator');
+      const excl = result.ums.populations?.find(p =>
+        p.type === 'denominator_exclusion' || p.type === 'denominator_exception'
+      );
+
+      if (ip) {
+        setInitialPopCriteria(prev => ({
+          ...prev,
+          description: ip.description || ip.narrative || '',
+        }));
+      }
+      if (num) {
+        setNumeratorCriteria(prev => ({
+          ...prev,
+          description: num.description || num.narrative || '',
+        }));
+      }
+      if (excl) {
+        setExclusionCriteria(prev => ({
+          ...prev,
+          description: excl.description || excl.narrative || '',
+        }));
+      }
+
+      // Set age constraints if present
+      if (result.ums.globalConstraints) {
+        const gc = result.ums.globalConstraints;
+        setInitialPopCriteria(prev => ({
+          ...prev,
+          ageRange: {
+            min: gc.ageMin ?? undefined,
+            max: gc.ageMax ?? undefined,
+          },
+        }));
+      }
+
+      setAiProcessing(false);
+      setAiProgress({ phase: 'complete', message: 'Extraction complete!' });
+      return true;
+    } catch (error) {
+      console.error('AI extraction error:', error);
+      setAiError(error.message || 'An unexpected error occurred');
+      setAiProcessing(false);
+      return false;
+    }
+  }, [aiInputText, uploadedFiles]);
 
   // Navigation
   const getCurrentStepIndex = () => STEPS.findIndex(s => s.id === currentStep);
@@ -141,13 +249,22 @@ export function MeasureCreator({ isOpen, onClose }) {
     }
   };
 
-  const goNext = () => {
+  const goNext = async () => {
     const currentIndex = getCurrentStepIndex();
 
     // Skip AI input step for non-AI modes
     if (currentStep === 'start' && mode !== 'ai_guided') {
       setCurrentStep('metadata');
       return;
+    }
+
+    // Handle AI extraction when leaving ai_input step
+    if (currentStep === 'ai_input' && (aiInputText.trim() || uploadedFiles.length > 0)) {
+      const success = await handleAIExtraction();
+      if (!success && aiError) {
+        // Stay on this step if extraction failed
+        return;
+      }
     }
 
     // Skip to review for copy/blank mode after metadata
@@ -200,11 +317,14 @@ export function MeasureCreator({ isOpen, onClose }) {
   };
 
   // Create measure
-  const handleCreate = () => {
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleCreate = async () => {
     const now = new Date().toISOString();
     const id = generateId();
 
     let newMeasure;
+    let useFullImport = false;
 
     if (mode === 'copy' && sourceMeasureId) {
       // Copy from existing measure
@@ -226,8 +346,30 @@ export function MeasureCreator({ isOpen, onClose }) {
         createdAt: now,
         updatedAt: now,
       };
+      useFullImport = true;
+    } else if (extractedUMS && mode === 'ai_guided') {
+      // Use AI-extracted UMS with full population structure
+      newMeasure = {
+        ...extractedUMS,
+        id,
+        // Override metadata with any user edits
+        metadata: {
+          ...extractedUMS.metadata,
+          measureId: measureId || extractedUMS.metadata.measureId,
+          title: title || extractedUMS.metadata.title,
+          description: description || extractedUMS.metadata.description,
+          steward: steward || extractedUMS.metadata.steward,
+          program: program || extractedUMS.metadata.program,
+          measureType: measureType || extractedUMS.metadata.measureType,
+          lastUpdated: now,
+        },
+        status: 'in_progress',
+        createdAt: now,
+        updatedAt: now,
+      };
+      useFullImport = true;
     } else {
-      // Create new measure (blank or AI-guided)
+      // Create new measure (blank or AI-guided without extraction)
       newMeasure = {
         id,
         metadata: {
@@ -327,12 +469,41 @@ export function MeasureCreator({ isOpen, onClose }) {
           reviewStatus: 'pending',
         });
       }
+      useFullImport = true;
     }
 
-    addMeasure(newMeasure);
-    setActiveMeasure(newMeasure.id);
-    setActiveTab('editor');
-    onClose();
+    // Persist to backend
+    setIsCreating(true);
+    try {
+      let result;
+      if (useFullImport) {
+        // Use import endpoint for full measure with populations
+        result = await importMeasure(newMeasure);
+      } else {
+        // Use simple create endpoint for basic measures
+        result = await createMeasure({
+          measureId: newMeasure.metadata.measureId,
+          title: newMeasure.metadata.title,
+          version: newMeasure.metadata.version,
+          steward: newMeasure.metadata.steward,
+          program: newMeasure.metadata.program,
+          measureType: newMeasure.metadata.measureType,
+          description: newMeasure.metadata.description,
+          status: 'IN_PROGRESS',
+        });
+      }
+
+      if (result) {
+        setActiveMeasure(result.id);
+        setActiveTab('editor');
+        onClose();
+      }
+    } catch (error) {
+      console.error('Failed to create measure:', error);
+      // Could show error to user here
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   // File handling
@@ -557,8 +728,98 @@ export function MeasureCreator({ isOpen, onClose }) {
                 </div>
                 <h3 className="text-xl font-semibold text-[var(--text)] mb-2">AI-Guided Extraction</h3>
                 <p className="text-[var(--text-muted)]">
-                  Paste your measure specification below. AI will extract the structure.
+                  Upload a PDF or paste your measure specification. AI will extract the structure.
                 </p>
+              </div>
+
+              {/* AI Processing Indicator */}
+              {aiProcessing && (
+                <div className="p-4 bg-[var(--accent-light)] border border-[var(--accent)]/30 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 text-[var(--accent)] animate-spin" />
+                    <div>
+                      <div className="text-sm font-medium text-[var(--accent)]">
+                        {aiProgress.phase === 'files' ? 'Processing Files' :
+                         aiProgress.phase === 'skeleton' ? 'Analyzing Structure' :
+                         aiProgress.phase === 'extraction' ? 'Extracting Populations' :
+                         aiProgress.phase === 'converting' ? 'Finalizing' :
+                         'Processing...'}
+                      </div>
+                      <div className="text-xs text-[var(--text-muted)]">{aiProgress.message}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Error Display */}
+              {aiError && !aiProcessing && (
+                <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-sm font-medium text-rose-400">Extraction Error</div>
+                      <div className="text-xs text-[var(--text-muted)] mt-1">{aiError}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* File Upload Section */}
+              <div>
+                <label className="block text-sm font-medium text-[var(--text)] mb-2">
+                  Upload PDF
+                </label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.txt,.md"
+                  multiple
+                  onChange={(e) => handleFileSelect(e.target.files)}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-[var(--border)] rounded-lg p-6 text-center cursor-pointer hover:border-[var(--accent)] transition-colors"
+                >
+                  <Upload className="w-8 h-8 mx-auto mb-2 text-[var(--text-muted)]" />
+                  <p className="text-sm text-[var(--text-muted)]">
+                    Click to upload PDF or drag and drop
+                  </p>
+                  <p className="text-xs text-[var(--text-dim)] mt-1">
+                    Supports PDF, TXT, and MD files
+                  </p>
+                </div>
+
+                {/* Uploaded Files List */}
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {uploadedFiles.map((file, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-lg border border-[var(--border)]">
+                        <div className="flex items-center gap-3">
+                          <FileText className="w-5 h-5 text-[var(--accent)]" />
+                          <div>
+                            <div className="text-sm font-medium text-[var(--text)]">{file.name}</div>
+                            <div className="text-xs text-[var(--text-muted)]">
+                              {(file.size / 1024).toFixed(1)} KB
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removeFile(idx)}
+                          className="p-1 text-[var(--text-muted)] hover:text-rose-400 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3 text-[var(--text-dim)]">
+                <div className="flex-1 h-px bg-[var(--border)]" />
+                <span className="text-xs uppercase">or paste text</span>
+                <div className="flex-1 h-px bg-[var(--border)]" />
               </div>
 
               <div className="flex items-start gap-3 p-4 bg-[var(--accent-light)] border border-[var(--accent)]/20 rounded-lg">
@@ -577,13 +838,14 @@ export function MeasureCreator({ isOpen, onClose }) {
                   value={aiInputText}
                   onChange={(e) => setAiInputText(e.target.value)}
                   placeholder="Paste your measure specification here..."
-                  rows={12}
-                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)] resize-none text-sm"
+                  rows={10}
+                  disabled={aiProcessing}
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-[var(--border)] rounded-lg text-[var(--text)] placeholder-[var(--text-dim)] focus:outline-none focus:border-[var(--accent)] resize-none text-sm disabled:opacity-50"
                 />
               </div>
 
               <div className="text-center text-sm text-[var(--text-dim)]">
-                Or <button onClick={goNext} className="text-[var(--accent)] hover:underline">skip this step</button> to build the measure manually.
+                Or <button onClick={() => setCurrentStep('metadata')} disabled={aiProcessing} className="text-[var(--accent)] hover:underline disabled:opacity-50">skip this step</button> to build the measure manually.
               </div>
             </div>
           )}
@@ -898,6 +1160,42 @@ export function MeasureCreator({ isOpen, onClose }) {
                     </p>
                   </div>
                 )}
+
+                {mode === 'ai_guided' && extractedUMS && (
+                  <div className="p-4 bg-[var(--accent-light)] rounded-lg border border-[var(--accent)]/20">
+                    <div className="flex items-center gap-2 text-[var(--accent)] text-sm font-medium mb-2">
+                      <Brain className="w-4 h-4" />
+                      AI Extraction Complete
+                    </div>
+                    <div className="text-sm text-[var(--text-muted)] space-y-1">
+                      <p>Extracted {extractedUMS.populations?.length || 0} populations:</p>
+                      <ul className="list-disc list-inside ml-2 text-xs">
+                        {extractedUMS.populations?.map((pop, idx) => (
+                          <li key={idx}>
+                            {pop.type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            {pop.criteria?.children?.length > 0 && ` (${pop.criteria.children.length} criteria)`}
+                          </li>
+                        ))}
+                      </ul>
+                      {extractedUMS.valueSets?.length > 0 && (
+                        <p className="mt-2">Found {extractedUMS.valueSets.length} value sets</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {mode === 'ai_guided' && !extractedUMS && (
+                  <div className="p-4 bg-[var(--warning-light)] rounded-lg border border-[var(--warning)]/20">
+                    <div className="flex items-center gap-2 text-[var(--warning)] text-sm font-medium mb-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      Manual Entry Mode
+                    </div>
+                    <p className="text-sm text-[var(--text-muted)]">
+                      No AI extraction was performed. Your measure will start with empty populations.
+                      Use the UMS Editor to define criteria.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -928,19 +1226,43 @@ export function MeasureCreator({ isOpen, onClose }) {
             {currentStep === 'review' ? (
               <button
                 onClick={handleCreate}
-                className="px-6 py-2.5 bg-[var(--success)] text-white rounded-lg font-medium hover:opacity-90 transition-all flex items-center gap-2"
+                disabled={isCreating}
+                className="px-6 py-2.5 bg-[var(--success)] text-white rounded-lg font-medium hover:opacity-90 transition-all flex items-center gap-2 disabled:opacity-50"
               >
-                <Plus className="w-4 h-4" />
-                Create Measure
+                {isCreating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-4 h-4" />
+                    Create Measure
+                  </>
+                )}
               </button>
             ) : (
               <button
                 onClick={goNext}
-                disabled={!canGoNext()}
+                disabled={!canGoNext() || aiProcessing}
                 className="px-6 py-2.5 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Continue
-                <ArrowRight className="w-4 h-4" />
+                {aiProcessing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Extracting...
+                  </>
+                ) : currentStep === 'ai_input' && (aiInputText.trim() || uploadedFiles.length > 0) ? (
+                  <>
+                    <Brain className="w-4 h-4" />
+                    Extract with AI
+                  </>
+                ) : (
+                  <>
+                    Continue
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             )}
           </div>
