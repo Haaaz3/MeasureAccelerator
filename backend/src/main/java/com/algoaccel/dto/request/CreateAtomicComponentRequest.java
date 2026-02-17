@@ -7,6 +7,12 @@ import java.util.List;
  * Request DTO for creating an atomic component.
  */
 public record CreateAtomicComponentRequest(
+    /**
+     * Optional client-provided ID. If null, backend will generate one.
+     * This allows frontend to create components with stable IDs that match local state.
+     */
+    String id,
+
     @NotBlank(message = "Name is required")
     String name,
 

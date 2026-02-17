@@ -9,6 +9,7 @@ import type { SQLGenerationResult, SQLGenerationConfig } from '../../types/hdiDa
 import { InlineErrorBanner } from '../shared/ErrorBoundary';
 import { applyCQLOverrides, applySQLOverrides, getOverrideCountForMeasure, getOverridesForMeasure } from '../../services/codeOverrideHelper';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
+import { generateComponentAwareMeasureCode, type ComposedMeasureCode } from '../../services/componentAwareCodeGenerator';
 
 export function CodeGeneration() {
   const { selectedCodeFormat, setSelectedCodeFormat, setActiveTab } = useMeasureStore();
@@ -35,6 +36,10 @@ export function CodeGeneration() {
 
   // Generation error state
   const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Component-aware generation result (for composition stats)
+  const [composedResult, setComposedResult] = useState<ComposedMeasureCode | null>(null);
+  const [useComponentAware, setUseComponentAware] = useState(true);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,86 +222,160 @@ export function CodeGeneration() {
     if (measure && format === 'cql') {
       try {
         setGenerationError(null);
-        const result = generateCQL(measure);
 
-        // Apply code overrides if any exist
-        if (result.success && result.cql) {
-          const { code: modifiedCql, overrideCount: appliedOverrides } = applyCQLOverrides(result.cql, measure);
-          result.cql = modifiedCql;
+        if (useComponentAware) {
+          // Use component-aware generation (pulls from library component code)
+          const composed = generateComponentAwareMeasureCode(measure);
+          setComposedResult(composed);
 
-          // Add warning about overrides if any were applied
-          if (appliedOverrides > 0 && result.warnings) {
-            result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+          // Create a CQL result object from composed code
+          const result: CQLGenerationResult = {
+            success: true,
+            cql: composed.cql,
+            warnings: [...composed.warnings],
+            metadata: {
+              libraryName: (measure.metadata.measureId || 'Measure').replace(/[^a-zA-Z0-9]/g, ''),
+              version: measure.metadata.version || '1.0.0',
+              populationCount: measure.populations?.length ?? 0,
+              valueSetCount: measure.valueSets?.length ?? 0,
+              definitionCount: composed.populations.length,
+            },
+          };
+
+          // Add composition stats to warnings
+          if (composed.componentFromLibraryCount > 0) {
+            result.warnings?.unshift(`${composed.componentFromLibraryCount}/${composed.componentCount} components from library`);
+          }
+          if (composed.overrideCount > 0) {
+            result.warnings?.unshift(`${composed.overrideCount} component(s) with code overrides`);
           }
 
-          // Run local syntax validation immediately after generation
+          // Run local syntax validation
           const syntaxResult = validateCQLSyntax(result.cql);
           setSyntaxValidationResult(syntaxResult);
+
+          setGenerationResult(result);
+          setValidationResult(null);
         } else {
-          setSyntaxValidationResult(null);
-        }
+          // Fall back to standard generation (for comparison/debugging)
+          const result = generateCQL(measure);
 
-        setGenerationResult(result);
-        setValidationResult(null);
+          // Apply code overrides if any exist
+          if (result.success && result.cql) {
+            const { code: modifiedCql, overrideCount: appliedOverrides } = applyCQLOverrides(result.cql, measure);
+            result.cql = modifiedCql;
 
-        // Check for generation-level errors
-        if (!result.success && result.errors && result.errors.length > 0) {
-          setGenerationError(`Cannot generate CQL: ${result.errors.join(', ')}`);
+            // Add warning about overrides if any were applied
+            if (appliedOverrides > 0 && result.warnings) {
+              result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+            }
+
+            // Run local syntax validation immediately after generation
+            const syntaxResult = validateCQLSyntax(result.cql);
+            setSyntaxValidationResult(syntaxResult);
+          } else {
+            setSyntaxValidationResult(null);
+          }
+
+          setGenerationResult(result);
+          setComposedResult(null);
+          setValidationResult(null);
+
+          // Check for generation-level errors
+          if (!result.success && result.errors && result.errors.length > 0) {
+            setGenerationError(`Cannot generate CQL: ${result.errors.join(', ')}`);
+          }
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error during CQL generation';
         setGenerationError(`CQL generation failed: ${errorMessage}`);
         setGenerationResult(null);
+        setComposedResult(null);
         setSyntaxValidationResult(null);
       }
     }
-  }, [measure, format]);
+  }, [measure, format, useComponentAware]);
 
   // Generate Synapse SQL when format is 'synapse'
   useEffect(() => {
     if (measure && format === 'synapse') {
       try {
         setGenerationError(null);
-        const result = generateHDISQL(measure, {
-          ...DEFAULT_HDI_CONFIG,
-          measurementPeriod: measure.metadata.measurementPeriod ? {
-            start: measure.metadata.measurementPeriod.start || '',
-            end: measure.metadata.measurementPeriod.end || '',
-          } : undefined,
-          ontologyContexts: [
-            'HEALTHE INTENT Demographics',
-            'HEALTHE INTENT Encounters',
-            'HEALTHE INTENT Procedures',
-            'HEALTHE INTENT Conditions',
-            'HEALTHE INTENT Results',
-          ],
-        });
 
-        // Apply code overrides if any exist
-        if (result.success && result.sql) {
-          const { code: modifiedSql, overrideCount: appliedOverrides } = applySQLOverrides(result.sql, measure, 'synapse-sql');
-          result.sql = modifiedSql;
+        if (useComponentAware) {
+          // Use component-aware generation
+          const composed = generateComponentAwareMeasureCode(measure);
+          setComposedResult(composed);
 
-          // Add warning about overrides if any were applied
-          if (appliedOverrides > 0) {
-            result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+          // Create a SQL result object from composed code
+          const result: SQLGenerationResult = {
+            success: true,
+            sql: composed.sql,
+            warnings: [...composed.warnings],
+            errors: [],
+            metadata: {
+              predicateCount: composed.componentCount,
+              dataModelsUsed: ['CONDITION', 'ENCOUNTER', 'PROCEDURE', 'RESULT'],
+              estimatedComplexity: composed.componentCount > 10 ? 'high' : composed.componentCount > 5 ? 'medium' : 'low',
+              generatedAt: new Date().toISOString(),
+            },
+          };
+
+          // Add composition stats to warnings
+          if (composed.componentFromLibraryCount > 0) {
+            result.warnings.unshift(`${composed.componentFromLibraryCount}/${composed.componentCount} components from library`);
           }
-        }
+          if (composed.overrideCount > 0) {
+            result.warnings.unshift(`${composed.overrideCount} component(s) with code overrides`);
+          }
 
-        setSynapseResult(result);
-        setSynapseValidation(null);
+          setSynapseResult(result);
+          setSynapseValidation(null);
+        } else {
+          // Fall back to standard generation
+          const result = generateHDISQL(measure, {
+            ...DEFAULT_HDI_CONFIG,
+            measurementPeriod: measure.metadata.measurementPeriod ? {
+              start: measure.metadata.measurementPeriod.start || '',
+              end: measure.metadata.measurementPeriod.end || '',
+            } : undefined,
+            ontologyContexts: [
+              'HEALTHE INTENT Demographics',
+              'HEALTHE INTENT Encounters',
+              'HEALTHE INTENT Procedures',
+              'HEALTHE INTENT Conditions',
+              'HEALTHE INTENT Results',
+            ],
+          });
 
-        // Check for generation-level errors
-        if (!result.success && result.errors && result.errors.length > 0) {
-          setGenerationError(`Cannot generate Synapse SQL: ${result.errors.join(', ')}`);
+          // Apply code overrides if any exist
+          if (result.success && result.sql) {
+            const { code: modifiedSql, overrideCount: appliedOverrides } = applySQLOverrides(result.sql, measure, 'synapse-sql');
+            result.sql = modifiedSql;
+
+            // Add warning about overrides if any were applied
+            if (appliedOverrides > 0) {
+              result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+            }
+          }
+
+          setSynapseResult(result);
+          setComposedResult(null);
+          setSynapseValidation(null);
+
+          // Check for generation-level errors
+          if (!result.success && result.errors && result.errors.length > 0) {
+            setGenerationError(`Cannot generate Synapse SQL: ${result.errors.join(', ')}`);
+          }
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error during Synapse SQL generation';
         setGenerationError(`Synapse SQL generation failed: ${errorMessage}`);
         setSynapseResult(null);
+        setComposedResult(null);
       }
     }
-  }, [measure, format]);
+  }, [measure, format, useComponentAware]);
 
   if (!measure) {
     return (
@@ -540,14 +619,15 @@ export function CodeGeneration() {
         )}
 
         {/* Format selector */}
-        <div className="flex items-center gap-4 mb-6">
-          <span className="text-sm text-[var(--text-muted)]">Output Format:</span>
-          <div className="flex gap-2">
-            {[
-              { id: 'cql' as const, label: 'CQL', icon: FileCode },
-              { id: 'synapse' as const, label: 'Synapse SQL', icon: Database },
-            ].map((f) => (
-              <button
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-[var(--text-muted)]">Output Format:</span>
+            <div className="flex gap-2">
+              {[
+                { id: 'cql' as const, label: 'CQL', icon: FileCode },
+                { id: 'synapse' as const, label: 'Synapse SQL', icon: Database },
+              ].map((f) => (
+                <button
                 key={f.id}
                 onClick={() => setFormat(f.id)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors ${
@@ -560,7 +640,26 @@ export function CodeGeneration() {
                 {f.label}
               </button>
             ))}
+            </div>
           </div>
+
+          {/* Composition indicator */}
+          {composedResult && useComponentAware && (
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-[var(--accent-light)] rounded-lg text-sm">
+                <Library className="w-4 h-4 text-[var(--accent)]" />
+                <span className="text-[var(--accent)]">
+                  {composedResult.componentFromLibraryCount}/{composedResult.componentCount} from library
+                </span>
+              </div>
+              {composedResult.overrideCount > 0 && (
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 rounded-lg text-sm">
+                  <Edit3 className="w-4 h-4 text-amber-500" />
+                  <span className="text-amber-500">{composedResult.overrideCount} overrides</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Syntax Validation Status (CQL only, shown immediately after generation) */}

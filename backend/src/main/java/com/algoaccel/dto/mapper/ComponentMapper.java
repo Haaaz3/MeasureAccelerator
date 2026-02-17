@@ -125,6 +125,12 @@ public class ComponentMapper {
      */
     public AtomicComponent toEntity(CreateAtomicComponentRequest request) {
         AtomicComponent entity = new AtomicComponent();
+
+        // Use client-provided ID if present, otherwise let service generate one
+        if (request.id() != null && !request.id().isEmpty()) {
+            entity.setId(request.id());
+        }
+
         entity.setName(request.name());
         entity.setDescription(request.description());
 

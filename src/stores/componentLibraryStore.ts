@@ -21,6 +21,7 @@ import type {
 } from '../types/componentLibrary';
 import { calculateAtomicComplexity, calculateCompositeComplexity } from '../services/complexityCalculator';
 import { inferCategory } from '../utils/inferCategory';
+import { generateAndPackageCode } from '../services/componentCodeGenerator';
 import {
   createNewVersion,
   archiveVersion,
@@ -93,6 +94,9 @@ interface ComponentLibraryState {
   // Usage actions
   addUsage: (componentId: ComponentId, measureId: string) => void;
   removeUsage: (componentId: ComponentId, measureId: string) => void;
+
+  // Code generation actions
+  regenerateCode: (componentId: ComponentId) => void;
 
   // Edit workflow
   handleSharedEdit: (
@@ -299,6 +303,21 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           };
         }
 
+        // Auto-generate code for new components if not already present
+        if (!component.generatedCode) {
+          try {
+            const allComponents = get().components;
+            const generatedCode = generateAndPackageCode(component, allComponents);
+            component = {
+              ...component,
+              generatedCode,
+            };
+            console.log(`[ComponentLibrary] Auto-generated code for component ${component.id}`);
+          } catch (err) {
+            console.warn(`[ComponentLibrary] Failed to generate code for component ${component.id}:`, err);
+          }
+        }
+
         // Add to local state first
         set((state) => ({
           components: [...state.components, component],
@@ -461,27 +480,51 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           };
         }),
 
+      // Code generation
+      regenerateCode: (componentId) =>
+        set((state) => {
+          const component = state.components.find((c) => c.id === componentId);
+          if (!component) return state;
+
+          try {
+            const generatedCode = generateAndPackageCode(component, state.components);
+            const updated = {
+              ...component,
+              generatedCode,
+            };
+            console.log(`[ComponentLibrary] Regenerated code for component ${componentId}`);
+            return {
+              components: state.components.map((c) => (c.id === componentId ? updated : c)),
+            };
+          } catch (err) {
+            console.warn(`[ComponentLibrary] Failed to regenerate code for ${componentId}:`, err);
+            return state;
+          }
+        }),
+
       // Shared edit workflow
       handleSharedEdit: (id, changes, action, updatedBy) => {
-        const state = get();
-        const component = state.components.find((c) => c.id === id);
-        if (!component) return;
+        // Use updater function to avoid stale closure issues
+        set((state) => {
+          const component = state.components.find((c) => c.id === id);
+          if (!component) return state;
 
-        if (action === 'update_all') {
-          // Create new version, archive old one
-          const updated = createNewVersion(component, changes, updatedBy);
-          set({
-            components: state.components.map((c) => (c.id === id ? updated : c)),
-          });
-        } else {
-          // create_version: duplicate the component with changes for this measure only
-          const duplicated = createNewVersion(component, changes, updatedBy);
-          const newId = `${id}-v${Date.now()}`;
-          const duplicatedWithNewId = { ...duplicated, id: newId } as LibraryComponent;
-          set({
-            components: [...state.components, duplicatedWithNewId],
-          });
-        }
+          if (action === 'update_all') {
+            // Create new version, archive old one
+            const updated = createNewVersion(component, changes, updatedBy);
+            return {
+              components: state.components.map((c) => (c.id === id ? updated : c)),
+            };
+          } else {
+            // create_version: duplicate the component with changes for this measure only
+            const duplicated = createNewVersion(component, changes, updatedBy);
+            const newId = `${id}-v${Date.now()}`;
+            const duplicatedWithNewId = { ...duplicated, id: newId } as LibraryComponent;
+            return {
+              components: [...state.components, duplicatedWithNewId],
+            };
+          }
+        });
       },
 
       // Measure linking - extract data elements and match/create in library
@@ -680,6 +723,8 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
                 if (comp.type === 'atomic') {
                   const atomicComp = comp as AtomicComponent;
                   createAtomicApi({
+                    // IMPORTANT: Send the local ID to backend so IDs match
+                    id: atomicComp.id,
                     name: atomicComp.name,
                     category: atomicComp.metadata?.category || 'uncategorized',
                     description: atomicComp.description || undefined,

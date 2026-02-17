@@ -16,6 +16,19 @@ import type {
   CodeEditNote,
 } from '../types/componentCode';
 import { formatNoteForCodeComment } from '../types/componentCode';
+import type {
+  AtomicComponent,
+  CompositeComponent,
+  LibraryComponent,
+  GeneratedComponentCode,
+  TimingExpression,
+} from '../types/componentLibrary';
+
+// ============================================================================
+// Generator Version
+// ============================================================================
+
+const GENERATOR_VERSION = '1.0.0';
 
 // ============================================================================
 // Lookback Period Configuration
@@ -349,4 +362,486 @@ export function generateSQLAlias(description: string, index: number): string {
     .substring(0, 6);
 
   return `PRED_${prefix}_${index}`;
+}
+
+// ============================================================================
+// Library Component Code Generation
+// ============================================================================
+
+// Map component categories to FHIR resource types
+const CATEGORY_TO_RESOURCE: Record<string, string> = {
+  encounters: 'Encounter',
+  conditions: 'Condition',
+  procedures: 'Procedure',
+  medications: 'MedicationRequest',
+  laboratory: 'Observation',
+  assessments: 'Observation',
+  'clinical-observations': 'Observation',
+  immunizations: 'Immunization',
+};
+
+// Map resource types to timing attributes
+const RESOURCE_TIMING_ATTR: Record<string, string> = {
+  Encounter: 'period',
+  Condition: 'onset',
+  Procedure: 'performed',
+  MedicationRequest: 'authoredOn',
+  Observation: 'effective',
+  Immunization: 'occurrence',
+  DiagnosticReport: 'effective',
+};
+
+/**
+ * Result of generating code for a library component
+ */
+export interface LibraryComponentCodeResult {
+  cql: string;
+  sql: string;
+  success: boolean;
+  errors?: string[];
+  warnings?: string[];
+}
+
+/**
+ * Generate code for any library component (atomic or composite)
+ */
+export function generateLibraryComponentCode(
+  component: LibraryComponent,
+  allComponents?: LibraryComponent[]
+): LibraryComponentCodeResult {
+  if (component.type === 'atomic') {
+    return generateAtomicComponentCode(component);
+  } else {
+    return generateCompositeComponentCode(component, allComponents || []);
+  }
+}
+
+/**
+ * Generate CQL and SQL for an atomic component
+ */
+export function generateAtomicComponentCode(component: AtomicComponent): LibraryComponentCodeResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+
+  try {
+    // Handle demographic components (age, gender)
+    if (component.resourceType === 'Patient' || component.metadata?.category === 'demographics') {
+      return generateDemographicComponentCode(component);
+    }
+
+    // Determine resource type from category or resourceType field
+    const resourceType = getComponentResourceType(component);
+    if (!resourceType) {
+      errors.push(`Cannot determine resource type for component: ${component.name}`);
+      return {
+        cql: `// ERROR: Unknown resource type for ${component.name}`,
+        sql: `-- ERROR: Unknown resource type for ${component.name}`,
+        success: false,
+        errors,
+      };
+    }
+
+    // Get value set info
+    const valueSetName = component.valueSet?.name || 'Unspecified Value Set';
+    const valueSetOid = component.valueSet?.oid;
+
+    if (!valueSetOid && !component.valueSet?.name) {
+      warnings.push(`No value set defined for ${component.name}`);
+    }
+
+    // Generate CQL
+    const cql = generateAtomicComponentCQL(component, resourceType, valueSetName);
+
+    // Generate SQL
+    const sql = generateAtomicComponentSQL(component, resourceType, valueSetOid, valueSetName);
+
+    return {
+      cql,
+      sql,
+      success: true,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  } catch (err) {
+    return {
+      cql: `// ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      sql: `-- ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      success: false,
+      errors: [err instanceof Error ? err.message : 'Unknown error'],
+    };
+  }
+}
+
+/**
+ * Generate CQL and SQL for a composite component
+ */
+export function generateCompositeComponentCode(
+  component: CompositeComponent,
+  allComponents: LibraryComponent[]
+): LibraryComponentCodeResult {
+  const warnings: string[] = [];
+
+  try {
+    // Get child components
+    const childCodes: { cql: string; sql: string }[] = [];
+
+    for (const childRef of component.children) {
+      const child = allComponents.find(c => c.id === childRef.componentId);
+      if (!child) {
+        warnings.push(`Child component not found: ${childRef.displayName}`);
+        childCodes.push({
+          cql: `/* MISSING: ${childRef.displayName} */\n  true`,
+          sql: `-- MISSING: ${childRef.displayName}`,
+        });
+        continue;
+      }
+
+      // Recursively generate code for children
+      const childResult = generateLibraryComponentCode(child, allComponents);
+      if (childResult.warnings) {
+        warnings.push(...childResult.warnings);
+      }
+      childCodes.push({
+        cql: childResult.cql,
+        sql: childResult.sql,
+      });
+    }
+
+    // Combine with operator
+    const cqlOperator = component.operator === 'OR' ? 'or' : 'and';
+    const sqlOperator = component.operator === 'OR' ? 'UNION' : 'INTERSECT';
+
+    // CQL: combine expressions
+    const cqlExpressions = childCodes.map(c => `(${c.cql})`);
+    const cql = cqlExpressions.join(`\n  ${cqlOperator} `);
+
+    // SQL: combine with set operations
+    const sqlParts = childCodes.map((c, i) => {
+      return `-- Child: ${component.children[i]?.displayName || `Component ${i + 1}`}\n${c.sql}`;
+    });
+    const sql = sqlParts.join(`\n${sqlOperator}\n`);
+
+    return {
+      cql,
+      sql,
+      success: true,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  } catch (err) {
+    return {
+      cql: `// ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      sql: `-- ERROR: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      success: false,
+      errors: [err instanceof Error ? err.message : 'Unknown error'],
+    };
+  }
+}
+
+/**
+ * Generate CQL for an atomic component
+ */
+function generateAtomicComponentCQL(
+  component: AtomicComponent,
+  resourceType: string,
+  valueSetName: string
+): string {
+  const alias = resourceType.charAt(0); // E for Encounter, P for Procedure, etc.
+  const timing = generateComponentCQLTiming(component.timing, alias, resourceType);
+  const vsRef = `"${valueSetName}"`;
+
+  // Build the exists query
+  let query: string;
+  if (resourceType === 'Observation') {
+    query = `exists ([${resourceType}: ${vsRef}] ${alias}
+    where ${alias}.value is not null
+      and ${timing})`;
+  } else {
+    query = `exists ([${resourceType}: ${vsRef}] ${alias}
+    where ${timing})`;
+  }
+
+  // Apply negation if needed
+  if (component.negation) {
+    return `not ${query}`;
+  }
+
+  return query;
+}
+
+/**
+ * Generate CQL timing expression for a component
+ */
+function generateComponentCQLTiming(
+  timing: TimingExpression | undefined,
+  alias: string,
+  resourceType: string
+): string {
+  const timingAttr = RESOURCE_TIMING_ATTR[resourceType] || 'performed';
+  const attr = `${alias}.${timingAttr}`;
+
+  if (!timing) {
+    return `${attr} during "Measurement Period"`;
+  }
+
+  const { operator, quantity, unit, reference } = timing;
+
+  // Handle "within X years/days before end of MP" patterns
+  if (operator === 'within' && quantity && unit) {
+    const unitStr = quantity === 1 ? unit.replace(/s$/, '') : unit;
+    return `${attr} ends ${quantity} ${unitStr} or less before end of "Measurement Period"`;
+  }
+
+  // Handle "during" operator
+  if (operator === 'during') {
+    if (reference === 'Measurement Period') {
+      return `${attr} during "Measurement Period"`;
+    }
+    return `${attr} during "${reference}"`;
+  }
+
+  // Handle other operators
+  switch (operator) {
+    case 'before':
+      return `${attr} ends before end of "Measurement Period"`;
+    case 'after':
+      return `${attr} starts after start of "Measurement Period"`;
+    case 'starts during':
+      return `${attr} starts during "Measurement Period"`;
+    case 'ends during':
+      return `${attr} ends during "Measurement Period"`;
+    default:
+      return `${attr} during "Measurement Period"`;
+  }
+}
+
+/**
+ * Generate code for demographic components
+ */
+function generateDemographicComponentCode(component: AtomicComponent): LibraryComponentCodeResult {
+  // Handle gender check
+  if (component.genderValue) {
+    const cql = `Patient.gender = '${component.genderValue}'`;
+    const sql = `-- Gender check: ${component.genderValue}\nSELECT patient_id FROM DEMOG WHERE gender = '${component.genderValue.toUpperCase()}'`;
+    return { cql, sql, success: true };
+  }
+
+  // Default demographic placeholder
+  const cql = '"Patient Age Valid"';
+  const sql = `-- Demographic: ${component.name}\nSELECT patient_id FROM DEMOG`;
+  return { cql, sql, success: true };
+}
+
+/**
+ * Generate SQL for an atomic component
+ */
+function generateAtomicComponentSQL(
+  component: AtomicComponent,
+  resourceType: string,
+  valueSetOid: string | undefined,
+  valueSetName: string
+): string {
+  const dataModel = getDataModelFromResource(resourceType);
+  const alias = component.name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 20);
+  const tableName = getSQLTableName(dataModel);
+  const timingClause = generateComponentSQLTiming(component.timing, dataModel);
+
+  // Build CTE with ontology join
+  const lines: string[] = [
+    `-- Component: ${component.name}`,
+    `-- Value Set: ${valueSetName}${valueSetOid ? ` (${valueSetOid})` : ''}`,
+    `${alias} AS (`,
+    `  SELECT DISTINCT dm.patient_id`,
+    `  FROM ${tableName} dm`,
+    `  INNER JOIN ONT ont ON dm.code = ont.code AND dm.code_system = ont.code_system`,
+    `  WHERE ont.concept_set_name = '${escapeSQLString(valueSetName)}'`,
+  ];
+
+  if (timingClause) {
+    lines.push(`    AND ${timingClause}`);
+  }
+
+  // Add status check
+  const statusCheck = getSQLStatusCheck(dataModel);
+  if (statusCheck) {
+    lines.push(`    AND ${statusCheck}`);
+  }
+
+  lines.push(')');
+
+  const cteSql = lines.join('\n');
+
+  // If negated, wrap in EXCEPT
+  if (component.negation) {
+    return `-- NEGATED: Patients WITHOUT ${component.name}\nSELECT patient_id FROM DEMOG\nEXCEPT\nSELECT patient_id FROM ${alias}`;
+  }
+
+  return cteSql;
+}
+
+/**
+ * Generate SQL timing clause for a component
+ */
+function generateComponentSQLTiming(timing: TimingExpression | undefined, dataModel: string): string | null {
+  const dateColumn = getSQLDateColumn(dataModel);
+  if (!dateColumn) return null;
+
+  if (!timing) {
+    return `${dateColumn} >= @MP_START AND ${dateColumn} <= @MP_END`;
+  }
+
+  const { operator, quantity, unit } = timing;
+
+  if (operator === 'within' && quantity && unit) {
+    const interval = convertToSQLInterval(quantity, unit);
+    return `${dateColumn} >= DATEADD(${interval.unit}, -${interval.value}, @MP_END) AND ${dateColumn} <= @MP_END`;
+  }
+
+  if (operator === 'during') {
+    return `${dateColumn} >= @MP_START AND ${dateColumn} <= @MP_END`;
+  }
+
+  // Default to measurement period
+  return `${dateColumn} >= @MP_START AND ${dateColumn} <= @MP_END`;
+}
+
+/**
+ * Get data model name from FHIR resource type
+ */
+function getDataModelFromResource(resourceType: string): string {
+  const models: Record<string, string> = {
+    Encounter: 'ENCOUNTER',
+    Condition: 'CONDITION',
+    Procedure: 'PROCEDURE',
+    MedicationRequest: 'MEDICATION',
+    Observation: 'RESULT',
+    Immunization: 'IMMUNIZATION',
+    DiagnosticReport: 'RESULT',
+  };
+  return models[resourceType] || 'RESULT';
+}
+
+/**
+ * Get table name for data model
+ */
+function getSQLTableName(dataModel: string): string {
+  const tables: Record<string, string> = {
+    ENCOUNTER: 'FACT_ENCOUNTER',
+    CONDITION: 'FACT_CONDITION',
+    PROCEDURE: 'FACT_PROCEDURE',
+    MEDICATION: 'FACT_MEDICATION',
+    RESULT: 'FACT_RESULT',
+    IMMUNIZATION: 'FACT_IMMUNIZATION',
+  };
+  return tables[dataModel] || 'FACT_CLINICAL';
+}
+
+/**
+ * Get date column for data model
+ */
+function getSQLDateColumn(dataModel: string): string {
+  const columns: Record<string, string> = {
+    ENCOUNTER: 'encounter_start_date',
+    CONDITION: 'onset_date',
+    PROCEDURE: 'procedure_date',
+    MEDICATION: 'order_date',
+    RESULT: 'result_date',
+    IMMUNIZATION: 'administration_date',
+  };
+  return columns[dataModel] || 'event_date';
+}
+
+/**
+ * Get status check for data model
+ */
+function getSQLStatusCheck(dataModel: string): string | null {
+  const checks: Record<string, string> = {
+    ENCOUNTER: "status = 'completed'",
+    CONDITION: "clinical_status = 'active'",
+    PROCEDURE: "status = 'completed'",
+    MEDICATION: "status IN ('active', 'completed')",
+    RESULT: "status IN ('final', 'amended')",
+    IMMUNIZATION: "status = 'completed'",
+  };
+  return checks[dataModel] || null;
+}
+
+/**
+ * Convert timing units to SQL interval
+ */
+function convertToSQLInterval(quantity: number, unit: string): { value: number; unit: string } {
+  const unitMap: Record<string, string> = {
+    years: 'YEAR',
+    year: 'YEAR',
+    months: 'MONTH',
+    month: 'MONTH',
+    days: 'DAY',
+    day: 'DAY',
+    hours: 'HOUR',
+    hour: 'HOUR',
+  };
+  return {
+    value: quantity,
+    unit: unitMap[unit.toLowerCase()] || 'DAY',
+  };
+}
+
+/**
+ * Escape string for SQL
+ */
+function escapeSQLString(str: string): string {
+  return str.replace(/'/g, "''");
+}
+
+/**
+ * Determine the FHIR resource type for a component
+ */
+function getComponentResourceType(component: AtomicComponent): string | null {
+  // First check explicit resourceType
+  if (component.resourceType) {
+    return component.resourceType as string;
+  }
+
+  // Then check category
+  const category = component.metadata?.category;
+  if (category && CATEGORY_TO_RESOURCE[category]) {
+    return CATEGORY_TO_RESOURCE[category];
+  }
+
+  // Infer from value set name patterns
+  const vsName = component.valueSet?.name?.toLowerCase() || '';
+  if (vsName.includes('encounter') || vsName.includes('visit')) return 'Encounter';
+  if (vsName.includes('diagnosis') || vsName.includes('condition')) return 'Condition';
+  if (vsName.includes('procedure') || vsName.includes('surgery')) return 'Procedure';
+  if (vsName.includes('medication') || vsName.includes('drug')) return 'MedicationRequest';
+  if (vsName.includes('lab') || vsName.includes('test') || vsName.includes('result')) return 'Observation';
+  if (vsName.includes('immunization') || vsName.includes('vaccine')) return 'Immunization';
+
+  return null;
+}
+
+// ============================================================================
+// GeneratedComponentCode Creation
+// ============================================================================
+
+/**
+ * Create a GeneratedComponentCode object from generation result
+ */
+export function createGeneratedCode(result: LibraryComponentCodeResult): GeneratedComponentCode {
+  return {
+    cql: result.cql,
+    sql: result.sql,
+    generatedAt: new Date().toISOString(),
+    generatorVersion: GENERATOR_VERSION,
+  };
+}
+
+/**
+ * Generate code for a component and return as GeneratedComponentCode
+ * This is the main entry point for auto-generating code on component creation
+ */
+export function generateAndPackageCode(
+  component: LibraryComponent,
+  allComponents?: LibraryComponent[]
+): GeneratedComponentCode {
+  const result = generateLibraryComponentCode(component, allComponents);
+  return createGeneratedCode(result);
 }

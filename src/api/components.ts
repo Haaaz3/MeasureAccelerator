@@ -76,6 +76,8 @@ export interface ComponentDto {
 }
 
 export interface CreateAtomicComponentRequest {
+  /** Optional client-provided ID. If not provided, backend generates one. */
+  id?: string;
   name: string;
   category: string;
   description?: string;

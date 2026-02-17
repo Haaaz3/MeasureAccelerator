@@ -107,6 +107,46 @@ export interface OIDValidationStatus {
 }
 
 // ============================================================================
+// Generated Code
+// ============================================================================
+
+/** Generated code for a component (CQL + SQL fragments) */
+export interface GeneratedComponentCode {
+  /** Generated CQL fragment for this component */
+  cql: string;
+
+  /** Generated SQL fragment (Synapse/T-SQL) for this component */
+  sql: string;
+
+  /** When the code was generated */
+  generatedAt: string;
+
+  /** Version of the generator used */
+  generatorVersion: string;
+
+  /** Whether the code has been manually overridden */
+  hasOverride?: boolean;
+}
+
+/** Code override with audit trail */
+export interface ComponentCodeOverride {
+  /** Overridden code */
+  code: string;
+
+  /** Language/format of the code */
+  language: 'cql' | 'sql';
+
+  /** Note explaining the override */
+  note: string;
+
+  /** Who made the override */
+  author: string;
+
+  /** When the override was made */
+  timestamp: string;
+}
+
+// ============================================================================
 // Atomic Component
 // ============================================================================
 
@@ -175,6 +215,15 @@ export interface AtomicComponent {
 
   /** Metadata */
   metadata: ComponentMetadata;
+
+  /** Auto-generated code (CQL + SQL) */
+  generatedCode?: GeneratedComponentCode;
+
+  /** Manual code overrides */
+  codeOverrides?: {
+    cql?: ComponentCodeOverride;
+    sql?: ComponentCodeOverride;
+  };
 }
 
 // ============================================================================
@@ -215,6 +264,15 @@ export interface CompositeComponent {
 
   /** Metadata */
   metadata: ComponentMetadata;
+
+  /** Auto-generated code (CQL + SQL) */
+  generatedCode?: GeneratedComponentCode;
+
+  /** Manual code overrides */
+  codeOverrides?: {
+    cql?: ComponentCodeOverride;
+    sql?: ComponentCodeOverride;
+  };
 }
 
 export interface ComponentReference {

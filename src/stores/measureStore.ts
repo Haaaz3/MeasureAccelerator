@@ -208,11 +208,53 @@ export const useMeasureStore = create<MeasureState>()(
 
           if (result.success) {
             // Add to local state with FHIR alignment
-            const fhirMeasure = measure.resourceType === 'Measure'
+            let fhirMeasure = measure.resourceType === 'Measure'
               ? measure
               : needsMigration(measure)
                 ? migrateMeasure(measure)
                 : { ...measure, resourceType: 'Measure' as const };
+
+            // Link data elements to component library
+            // This creates new components or links to existing ones based on value set matching
+            try {
+              const { useComponentLibraryStore } = await import('./componentLibraryStore');
+              const componentStore = useComponentLibraryStore.getState();
+              const linkMap = componentStore.linkMeasureComponents(
+                fhirMeasure.id,
+                fhirMeasure.populations
+              );
+
+              // Update the measure's data elements with their libraryComponentIds
+              if (Object.keys(linkMap).length > 0) {
+                const updateElementLinks = (node: any): any => {
+                  if (!node) return node;
+                  if ('operator' in node && 'children' in node) {
+                    return {
+                      ...node,
+                      children: node.children.map(updateElementLinks),
+                    };
+                  }
+                  // It's a DataElement - update libraryComponentId if we have a link
+                  if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
+                    return { ...node, libraryComponentId: linkMap[node.id] };
+                  }
+                  return node;
+                };
+
+                fhirMeasure = {
+                  ...fhirMeasure,
+                  populations: fhirMeasure.populations.map((pop) => ({
+                    ...pop,
+                    criteria: pop.criteria ? updateElementLinks(pop.criteria) : pop.criteria,
+                  })),
+                };
+
+                console.log(`[importMeasure] Linked ${Object.keys(linkMap).length} data elements to component library`);
+              }
+            } catch (linkError) {
+              console.error('[importMeasure] Failed to link components:', linkError);
+              // Continue without linking - not a fatal error
+            }
 
             set((state) => ({
               measures: [...state.measures, fhirMeasure],
@@ -233,22 +275,68 @@ export const useMeasureStore = create<MeasureState>()(
         }
       },
 
-      addMeasure: (measure) =>
-        set((state) => {
-          // If measure already has resourceType, it's already formatted - don't migrate
-          // This preserves copied measures exactly as they are
-          const fhirMeasure = measure.resourceType === 'Measure'
-            ? measure
-            : needsMigration(measure)
-              ? migrateMeasure(measure)
-              : { ...measure, resourceType: 'Measure' as const };
+      addMeasure: (measure) => {
+        // If measure already has resourceType, it's already formatted - don't migrate
+        // This preserves copied measures exactly as they are
+        let fhirMeasure = measure.resourceType === 'Measure'
+          ? measure
+          : needsMigration(measure)
+            ? migrateMeasure(measure)
+            : { ...measure, resourceType: 'Measure' as const };
 
-          return {
-            measures: [...state.measures, fhirMeasure],
-            activeMeasureId: fhirMeasure.id,
-            activeTab: 'editor',
-          };
-        }),
+        // Link data elements to component library (async, non-blocking for initial add)
+        // Import the store dynamically to avoid circular dependency
+        import('./componentLibraryStore').then(({ useComponentLibraryStore }) => {
+          const componentStore = useComponentLibraryStore.getState();
+          const linkMap = componentStore.linkMeasureComponents(
+            fhirMeasure.id,
+            fhirMeasure.populations
+          );
+
+          // Update the measure's data elements with their libraryComponentIds
+          if (Object.keys(linkMap).length > 0) {
+            const updateElementLinks = (node: any): any => {
+              if (!node) return node;
+              if ('operator' in node && 'children' in node) {
+                return {
+                  ...node,
+                  children: node.children.map(updateElementLinks),
+                };
+              }
+              // It's a DataElement - update libraryComponentId if we have a link
+              if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
+                return { ...node, libraryComponentId: linkMap[node.id] };
+              }
+              return node;
+            };
+
+            // Update the measure in state with linked components
+            set((state) => ({
+              measures: state.measures.map((m) =>
+                m.id === fhirMeasure.id
+                  ? {
+                      ...m,
+                      populations: m.populations.map((pop) => ({
+                        ...pop,
+                        criteria: pop.criteria ? updateElementLinks(pop.criteria) : pop.criteria,
+                      })),
+                    }
+                  : m
+              ),
+            }));
+
+            console.log(`[addMeasure] Linked ${Object.keys(linkMap).length} data elements to component library`);
+          }
+        }).catch((err) => {
+          console.error('[addMeasure] Failed to link components:', err);
+        });
+
+        set((state) => ({
+          measures: [...state.measures, fhirMeasure],
+          activeMeasureId: fhirMeasure.id,
+          activeTab: 'editor',
+        }));
+      },
 
       updateMeasure: (id, updates) =>
         set((state) => ({
@@ -296,6 +384,9 @@ export const useMeasureStore = create<MeasureState>()(
       },
 
       deleteMeasure: async (id) => {
+        // Get the measure before deleting to update component usage
+        const measure = get().measures.find((m) => m.id === id);
+
         try {
           // Delete from backend first
           const { deleteMeasure: deleteMeasureApi } = await import('../api/measures');
@@ -305,6 +396,43 @@ export const useMeasureStore = create<MeasureState>()(
           console.error('Failed to delete measure from backend:', error);
           // Continue with local delete even if backend fails
         }
+
+        // Update component usage - remove this measure from all components that reference it
+        // IMPORTANT: Components are NOT deleted, only their usage count is decremented
+        if (measure) {
+          try {
+            const { useComponentLibraryStore } = await import('./componentLibraryStore');
+            const componentStore = useComponentLibraryStore.getState();
+
+            // Collect all libraryComponentIds from the measure
+            const collectComponentIds = (node: any): string[] => {
+              if (!node) return [];
+              if ('operator' in node && 'children' in node) {
+                return node.children.flatMap(collectComponentIds);
+              }
+              // It's a DataElement - check for libraryComponentId
+              return node.libraryComponentId ? [node.libraryComponentId] : [];
+            };
+
+            const componentIds = new Set<string>();
+            for (const pop of measure.populations) {
+              if (pop.criteria) {
+                const ids = collectComponentIds(pop.criteria);
+                ids.forEach((cid) => componentIds.add(cid));
+              }
+            }
+
+            // Remove usage for each component (decrement, don't delete)
+            for (const componentId of componentIds) {
+              componentStore.removeUsage(componentId, id);
+            }
+
+            console.log(`Updated usage for ${componentIds.size} components after deleting measure ${id}`);
+          } catch (error) {
+            console.error('Failed to update component usage after measure delete:', error);
+          }
+        }
+
         // Always update local state
         set((state) => ({
           measures: state.measures.filter((m) => m.id !== id),
