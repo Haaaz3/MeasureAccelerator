@@ -117,6 +117,9 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     valueSets?: AIValueSetMatch[];
   } | null>(null);
 
+  // Extracted UMS from backend extraction service (used directly in handleCreate)
+  const [extractedUMS, setExtractedUMS] = useState<UniversalMeasureSpec | null>(null);
+
   // File upload state
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [extractedDocuments, setExtractedDocuments] = useState<ExtractedDocument[]>([]);
@@ -210,6 +213,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     setAiError(null);
     setAiProgress('');
     setAiExtractedData(null);
+    setExtractedUMS(null);
     // Reset file upload state
     setUploadedFiles([]);
     setExtractedDocuments([]);
@@ -437,7 +441,7 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
     });
   }, []);
 
-  // Process AI input and extract measure structure
+  // Process AI input and extract measure structure using backend extraction service
   const processAiInput = useCallback(async () => {
     // Combine extracted file content with free text input
     const combinedInput = [
@@ -450,29 +454,143 @@ export function MeasureCreator({ isOpen, onClose }: MeasureCreatorProps) {
       return;
     }
 
-    const apiKey = getCurrentApiKey();
-    // For custom LLM, check if base URL is configured (API key is optional for local servers)
-    if (selectedProvider === 'custom') {
-      const customConfig = getCustomLlmConfig();
-      if (!customConfig.baseUrl) {
-        setAiError('Custom LLM base URL not configured. Please configure it in Settings.');
-        return;
-      }
-    } else if (!apiKey) {
-      setAiError(`No API key configured for ${selectedProvider}. Please configure it in Settings.`);
-      return;
-    }
-
     setAiProcessing(true);
     setAiError(null);
     setAiProgress('Analyzing measure specification...');
 
     try {
-      // Build prompt for measure criteria extraction
-      const prompt = `You are a clinical quality measure expert. Analyze the following measure specification and extract structured data.
+      // Use backend extraction service (routes through /api/llm/extract)
+      const result = await extractMeasureFromBackend(combinedInput, {
+        onProgress: (phase, message) => {
+          setAiProgress(message);
+        },
+      });
 
-This content may come from PDF documents, HTML specifications, Excel files, and/or free text descriptions.
-Extract ALL relevant information about the measure including populations, criteria, timing constraints, and value sets.
+      if (!result.success || !result.ums) {
+        throw new Error(result.error || 'Extraction failed');
+      }
+
+      // Store the extracted UMS for use in handleCreate
+      setExtractedUMS(result.ums);
+
+      // Extract metadata and populations for form population
+      const ums = result.ums;
+
+      // Update aiExtractedData for UI display
+      setAiExtractedData({
+        metadata: {
+          measureId: ums.metadata.measureId,
+          title: ums.metadata.title,
+          description: ums.metadata.description,
+          program: ums.metadata.program,
+          measureType: ums.metadata.measureType,
+          ageRange: ums.globalConstraints?.ageRange ? {
+            min: ums.globalConstraints.ageRange.min,
+            max: ums.globalConstraints.ageRange.max,
+          } : undefined,
+        },
+        populations: ums.populations.map(pop => ({
+          type: pop.type.replace(/-/g, '_'),
+          description: pop.description || '',
+          criteria: [], // Simplified - full data is in extractedUMS
+        })),
+      });
+
+      // Auto-populate form fields from extracted metadata
+      if (ums.metadata.measureId) setMeasureId(ums.metadata.measureId);
+      if (ums.metadata.title) setTitle(ums.metadata.title);
+      if (ums.metadata.description) setDescription(ums.metadata.description);
+      if (ums.metadata.measureType) setMeasureType(ums.metadata.measureType);
+      if (ums.metadata.steward) setSteward(ums.metadata.steward);
+      if (ums.metadata.rationale) setRationale(ums.metadata.rationale);
+
+      // Map program to dropdown value
+      if (ums.metadata.program) {
+        const programMap: Record<string, MeasureProgram> = {
+          'MIPS_CQM': 'MIPS_CQM',
+          'MIPS': 'MIPS_CQM',
+          'eCQM': 'eCQM',
+          'ECQM': 'eCQM',
+          'HEDIS': 'HEDIS',
+          'QOF': 'QOF',
+          'Registry': 'Registry',
+          'Custom': 'Custom',
+        };
+        const mappedProgram = programMap[ums.metadata.program] || 'Custom';
+        setProgram(mappedProgram);
+      }
+
+      // Set age range if available
+      if (ums.globalConstraints?.ageRange) {
+        setInitialPopCriteria(prev => ({
+          ...prev,
+          ageRange: {
+            min: ums.globalConstraints?.ageRange?.min,
+            max: ums.globalConstraints?.ageRange?.max,
+          },
+        }));
+      }
+
+      // Auto-populate population descriptions
+      for (const pop of ums.populations) {
+        const popType = pop.type.replace(/-/g, '_');
+
+        switch (popType) {
+          case 'initial_population':
+            setInitialPopCriteria(prev => ({
+              ...prev,
+              description: pop.description || pop.narrative || '',
+            }));
+            break;
+          case 'denominator':
+            setDenominatorCriteria(prev => ({
+              ...prev,
+              description: pop.description || pop.narrative || '',
+            }));
+            break;
+          case 'numerator':
+            setNumeratorCriteria(prev => ({
+              ...prev,
+              description: pop.description || pop.narrative || '',
+            }));
+            break;
+          case 'denominator_exclusion':
+          case 'denominator_exception':
+            setExclusionCriteria(prev => ({
+              ...prev,
+              description: pop.description || pop.narrative || '',
+            }));
+            break;
+        }
+      }
+
+      setAiProgress(`Complete! Extracted ${ums.populations.length} populations. Review and create measure.`);
+      setAiProcessing(false);
+
+    } catch (err) {
+      console.error('Backend extraction error:', err);
+
+      // Fall back to direct LLM call if backend fails
+      setAiProgress('Backend extraction failed, trying direct LLM...');
+
+      try {
+        await processAiInputFallback(combinedInput);
+      } catch (fallbackErr) {
+        console.error('Fallback extraction error:', fallbackErr);
+        setAiError(err instanceof Error ? err.message : 'Extraction failed');
+        setAiProcessing(false);
+      }
+    }
+  }, [aiInputText, extractedContent]);
+
+  // Fallback extraction using direct LLM call (requires frontend API key)
+  const processAiInputFallback = useCallback(async (combinedInput: string) => {
+    const apiKey = getCurrentApiKey();
+    if (!apiKey && selectedProvider !== 'custom') {
+      throw new Error(`No API key configured for ${selectedProvider}. Please configure it in Settings or ensure backend LLM is configured.`);
+    }
+
+    const prompt = `You are a clinical quality measure expert. Analyze the following measure specification and extract structured data.
 
 MEASURE SPECIFICATION:
 ${combinedInput}
@@ -480,11 +598,11 @@ ${combinedInput}
 Extract and return a JSON object with this structure:
 {
   "metadata": {
-    "measureId": "extracted measure ID or suggested ID based on title",
+    "measureId": "extracted measure ID",
     "title": "measure title",
     "description": "brief description",
     "program": "MIPS_CQM" | "eCQM" | "HEDIS" | "QOF" | "Registry" | "Custom",
-    "steward": "organization that maintains this measure (e.g., NCQA for HEDIS, CMS for eCQM/MIPS)",
+    "steward": "organization",
     "measureType": "process" | "outcome" | "structure" | "patient_experience",
     "ageRange": { "min": number, "max": number }
   },
@@ -492,187 +610,131 @@ Extract and return a JSON object with this structure:
     {
       "type": "initial_population" | "denominator" | "numerator" | "denominator_exclusion",
       "description": "narrative description",
-      "criteria": [
-        {
-          "resourceType": "Condition" | "Encounter" | "Procedure" | "Observation" | "MedicationRequest" | "Immunization" | "Patient",
-          "description": "what this criterion checks",
-          "valueSetName": "suggested value set name",
-          "valueSetOid": "OID if known (2.16.840.1...)",
-          "timing": {
-            "type": "during_measurement_period" | "by_age" | "within_days_of" | "within_months_of" | "anytime",
-            "value": number (for within_X_of),
-            "unit": "days" | "months" | "years",
-            "ageValue": number (for by_age),
-            "ageUnit": "years" | "months" | "weeks",
-            "relativeTo": "encounter" | "measurement_period" | "birth" | etc
-          },
-          "quantity": {
-            "comparator": ">=" | "<=" | ">" | "<" | "=" | "between",
-            "value": number,
-            "maxValue": number (for between)
-          },
-          "negation": boolean (true if checking for absence),
-          "confidence": "high" | "medium" | "low"
-        }
-      ]
+      "criteria": []
     }
   ]
 }
 
-IMPORTANT:
-- Extract ALL criteria from each population with proper timing constraints
-- For immunizations/screenings, include quantity requirements (e.g., "at least 4 doses")
-- Include age-based timing (e.g., "by age 2", "before 13th birthday")
-- Include value set names even if you don't know the OID - I'll match against existing sets
-- Set confidence based on how explicit the spec is about each criterion
-- If timing is ambiguous, use "medium" confidence and your best interpretation
+Return ONLY valid JSON.`;
 
-Return ONLY valid JSON, no markdown or explanation.`;
+    const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
+    const modelToUse = selectedModel || getDefaultModel(selectedProvider, customConfig);
 
-      setAiProgress('Sending to AI for analysis...');
+    const result = await callLLM({
+      provider: selectedProvider,
+      model: modelToUse,
+      apiKey: apiKey || '',
+      userPrompt: prompt,
+      maxTokens: 8000,
+      customConfig,
+      jsonMode: selectedProvider === 'openai' || selectedProvider === 'google',
+    });
 
-      // Use unified LLM client with settings from store
-      const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
-      const modelToUse = selectedModel || getDefaultModel(selectedProvider, customConfig);
+    let parsed;
+    try {
+      parsed = JSON.parse(result.content);
+    } catch {
+      const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0]);
+      } else {
+        throw new Error('Failed to parse AI response as JSON');
+      }
+    }
 
-      const result = await callLLM({
-        provider: selectedProvider,
-        model: modelToUse,
-        apiKey,
-        userPrompt: prompt,
-        maxTokens: 8000,
-        customConfig,
-        jsonMode: selectedProvider === 'openai' || selectedProvider === 'google',
-      });
+    // Process populations and match value sets
+    const processedPopulations = (parsed.populations || []).map((pop: any) => ({
+      type: pop.type,
+      description: pop.description,
+      criteria: (pop.criteria || []).map((crit: any) => ({
+        ...crit,
+        valueSetMatch: matchValueSets(crit.valueSetName || crit.description, crit.valueSetOid),
+      })),
+    }));
 
-      const content = result.content;
+    setAiExtractedData({
+      metadata: parsed.metadata,
+      populations: processedPopulations,
+    });
 
-      setAiProgress('Parsing AI response...');
+    // Auto-populate metadata
+    if (parsed.metadata) {
+      if (parsed.metadata.measureId) setMeasureId(parsed.metadata.measureId);
+      if (parsed.metadata.title) setTitle(parsed.metadata.title);
+      if (parsed.metadata.description) setDescription(parsed.metadata.description);
+      if (parsed.metadata.measureType) setMeasureType(parsed.metadata.measureType);
+      if (parsed.metadata.steward) setSteward(parsed.metadata.steward);
 
-      // Parse the JSON response
-      let parsed;
-      try {
-        parsed = JSON.parse(content);
-      } catch {
-        // Try to extract JSON from the response
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('Failed to parse AI response as JSON');
-        }
+      if (parsed.metadata.program) {
+        const programMap: Record<string, MeasureProgram> = {
+          'MIPS_CQM': 'MIPS_CQM',
+          'MIPS': 'MIPS_CQM',
+          'eCQM': 'eCQM',
+          'HEDIS': 'HEDIS',
+          'QOF': 'QOF',
+          'Registry': 'Registry',
+          'Custom': 'Custom',
+        };
+        const mappedProgram = programMap[parsed.metadata.program] || 'Custom';
+        setProgram(mappedProgram);
       }
 
-      setAiProgress('Matching value sets...');
+      if (parsed.metadata.ageRange) {
+        setInitialPopCriteria(prev => ({
+          ...prev,
+          ageRange: parsed.metadata.ageRange,
+        }));
+      }
+    }
 
-      // Process populations and match value sets
-      const processedPopulations = (parsed.populations || []).map((pop: any) => ({
-        type: pop.type,
-        description: pop.description,
-        criteria: (pop.criteria || []).map((crit: any) => ({
-          ...crit,
-          valueSetMatch: matchValueSets(crit.valueSetName || crit.description, crit.valueSetOid),
-        })),
-      }));
+    // Auto-populate criteria blocks for each population
+    for (const pop of processedPopulations) {
+      const blocks = convertToCriteriaBlocks(pop.criteria);
 
-      setAiExtractedData({
-        metadata: parsed.metadata,
-        populations: processedPopulations,
-      });
-
-      // Auto-populate metadata
-      if (parsed.metadata) {
-        if (parsed.metadata.measureId) setMeasureId(parsed.metadata.measureId);
-        if (parsed.metadata.title) setTitle(parsed.metadata.title);
-        if (parsed.metadata.description) setDescription(parsed.metadata.description);
-        if (parsed.metadata.measureType) setMeasureType(parsed.metadata.measureType);
-
-        // Map program to dropdown value
-        if (parsed.metadata.program) {
-          const programMap: Record<string, MeasureProgram> = {
-            'MIPS_CQM': 'MIPS_CQM',
-            'MIPS': 'MIPS_CQM',
-            'eCQM': 'eCQM',
-            'ECQM': 'eCQM',
-            'HEDIS': 'HEDIS',
-            'QOF': 'QOF',
-            'Registry': 'Registry',
-            'Custom': 'Custom',
-          };
-          const mappedProgram = programMap[parsed.metadata.program] ||
-            Object.entries(programMap).find(([key]) =>
-              parsed.metadata.program.toUpperCase().includes(key.toUpperCase())
-            )?.[1];
-          if (mappedProgram) setProgram(mappedProgram);
-        }
-
-        // Set steward
-        if (parsed.metadata.steward) {
-          setSteward(parsed.metadata.steward);
-        }
-
-        if (parsed.metadata.ageRange) {
+      switch (pop.type) {
+        case 'initial_population':
           setInitialPopCriteria(prev => ({
             ...prev,
-            ageRange: parsed.metadata.ageRange,
+            description: pop.description,
+            criteriaBlocks: blocks,
           }));
-        }
+          break;
+        case 'denominator':
+          setDenominatorCriteria(prev => ({
+            ...prev,
+            description: pop.description,
+            criteriaBlocks: blocks,
+          }));
+          break;
+        case 'numerator':
+          setNumeratorCriteria(prev => ({
+            ...prev,
+            description: pop.description,
+            criteriaBlocks: blocks,
+          }));
+          break;
+        case 'denominator_exclusion':
+        case 'denominator_exception':
+          setExclusionCriteria(prev => ({
+            ...prev,
+            description: pop.description,
+            criteriaBlocks: blocks,
+          }));
+          break;
       }
-
-      // Auto-populate criteria blocks for each population
-      for (const pop of processedPopulations) {
-        const blocks = convertToCriteriaBlocks(pop.criteria);
-
-        switch (pop.type) {
-          case 'initial_population':
-            setInitialPopCriteria(prev => ({
-              ...prev,
-              description: pop.description,
-              criteriaBlocks: blocks,
-            }));
-            break;
-          case 'denominator':
-            setDenominatorCriteria(prev => ({
-              ...prev,
-              description: pop.description,
-              criteriaBlocks: blocks,
-            }));
-            break;
-          case 'numerator':
-            setNumeratorCriteria(prev => ({
-              ...prev,
-              description: pop.description,
-              criteriaBlocks: blocks,
-            }));
-            break;
-          case 'denominator_exclusion':
-          case 'denominator_exception':
-            setExclusionCriteria(prev => ({
-              ...prev,
-              description: pop.description,
-              criteriaBlocks: blocks,
-            }));
-            break;
-        }
-      }
-
-      setAiProgress('Complete! Review the extracted data below.');
-      setAiProcessing(false);
-
-    } catch (err) {
-      console.error('AI extraction error:', err);
-      setAiError(err instanceof Error ? err.message : 'Unknown error occurred');
-      setAiProcessing(false);
     }
-  }, [aiInputText, extractedContent, selectedProvider, getCurrentApiKey, matchValueSets, convertToCriteriaBlocks]);
+
+    setAiProgress('Complete! Review the extracted data below.');
+    setAiProcessing(false);
+  }, [selectedProvider, selectedModel, getCurrentApiKey, getCustomLlmConfig, matchValueSets, convertToCriteriaBlocks]);
 
   const canGoNext = () => {
     switch (currentStep) {
       case 'start':
         return mode === 'copy' ? !!sourceMeasureId : true;
       case 'ai_input':
-        // Can proceed if AI has extracted data OR user wants to skip (no files and no text)
-        return aiExtractedData !== null || (uploadedFiles.length === 0 && aiInputText.trim() === '');
+        // Can proceed if AI has extracted data (including extractedUMS) OR user wants to skip (no files and no text)
+        return aiExtractedData !== null || extractedUMS !== null || (uploadedFiles.length === 0 && aiInputText.trim() === '');
       case 'metadata':
         return measureId.trim() && title.trim();
       case 'initial_pop':
@@ -783,8 +845,46 @@ Return ONLY valid JSON, no markdown or explanation.`;
         pending: newMeasure.reviewProgress.total,
         flagged: 0,
       };
+    } else if (extractedUMS) {
+      // Use the extracted UMS from backend extraction service
+      // This preserves the full population trees with criteria and data elements
+      newMeasure = {
+        ...extractedUMS,
+        id,
+        resourceType: 'Measure',
+        metadata: {
+          ...extractedUMS.metadata,
+          // Allow form field overrides
+          measureId: measureId || extractedUMS.metadata.measureId,
+          title: title || extractedUMS.metadata.title,
+          description: description || extractedUMS.metadata.description,
+          steward: steward || extractedUMS.metadata.steward,
+          program: program || extractedUMS.metadata.program,
+          measureType: measureType || extractedUMS.metadata.measureType,
+          lastUpdated: now,
+        },
+        status: 'in_progress',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // Count reviewable items
+      let totalReviewable = 0;
+      const countReviewable = (obj: any) => {
+        if (obj?.reviewStatus) totalReviewable++;
+        if (obj?.criteria) countReviewable(obj.criteria);
+        if (obj?.children) obj.children.forEach(countReviewable);
+      };
+      newMeasure.populations.forEach(countReviewable);
+
+      newMeasure.reviewProgress = {
+        total: totalReviewable,
+        approved: 0,
+        pending: totalReviewable,
+        flagged: 0,
+      };
     } else {
-      // Create new measure (blank or guided)
+      // Create new measure (blank or guided without backend extraction)
       // Collect all value sets from all population criteria
       const allSelectedVSIds = new Set<string>([
         ...(initialPopCriteria.valueSets || []),
