@@ -44,6 +44,12 @@ security:
   auth:
     enabled: ${SECURITY_AUTH_ENABLED:true}
 
+# Spring Security basic auth credentials
+spring.security:
+  user:
+    name: username
+    password: password
+
 # LLM configuration - API keys read from environment variables for security
 llm:
   default-provider: ${LLM_DEFAULT_PROVIDER:anthropic}
