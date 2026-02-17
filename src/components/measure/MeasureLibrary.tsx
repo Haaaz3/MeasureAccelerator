@@ -31,7 +31,7 @@ function resetReviewStatus(obj: any): any {
 }
 
 export function MeasureLibrary() {
-  const { measures, addMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus, updateMeasure } = useMeasureStore();
+  const { measures, addMeasure, importMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus, updateMeasure } = useMeasureStore();
   const { linkMeasureComponents, rebuildUsageIndex } = useComponentLibraryStore();
   const {
     selectedProvider,
@@ -136,7 +136,12 @@ export function MeasureLibrary() {
 
       if (result.success && result.ums) {
         const measureWithStatus = { ...result.ums, status: 'in_progress' as MeasureStatus };
-        addMeasure(measureWithStatus);
+
+        // Import to backend for persistence (falls back to local if backend fails)
+        const importResult = await importMeasure(measureWithStatus);
+        if (!importResult.success) {
+          console.warn('Backend import failed, measure saved locally only:', importResult.error);
+        }
 
         // Immediately match against component library — link to existing approved components
         const linkMap = linkMeasureComponents(
@@ -183,7 +188,7 @@ export function MeasureLibrary() {
 
     // Brief pause then process next
     setTimeout(() => processNext(), 1500);
-  }, [getActiveApiKey, addMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, rebuildUsageIndex, measures]);
+  }, [getActiveApiKey, importMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, rebuildUsageIndex, measures]);
 
   // Handle files: either start processing or add to queue
   const handleFiles = useCallback(async (files: File[]) => {
