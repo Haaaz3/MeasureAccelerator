@@ -94,15 +94,15 @@ export function getComponentCodeForElement(
   }
 
   // Try to find a linked component by:
-  // 1. Direct linkedComponentId on the DataElement
+  // 1. Direct libraryComponentId on the DataElement
   // 2. Matching by value set OID
   // 3. Matching by name similarity
 
   let linkedComponent: LibraryComponent | undefined;
 
-  // Method 1: Direct link
-  if (element.linkedComponentId) {
-    linkedComponent = allComponents.find(c => c.id === element.linkedComponentId);
+  // Method 1: Direct link via libraryComponentId
+  if (element.libraryComponentId) {
+    linkedComponent = allComponents.find(c => c.id === element.libraryComponentId);
   }
 
   // Method 2: Value set OID match

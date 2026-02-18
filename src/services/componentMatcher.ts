@@ -46,20 +46,28 @@ function djb2Hash(input: string): string {
  */
 function buildAtomicIdentityKey(component: {
   valueSetOid?: string;
+  valueSetName?: string;
   oid?: string;
   timing?: TimingExpression;
   negation?: boolean;
-  valueSet?: { oid: string };
+  valueSet?: { oid?: string; name?: string };
 }): Record<string, unknown> {
   const oid =
     (component as AtomicComponent).valueSet?.oid ??
     (component as ParsedComponent & { valueSetOid?: string }).valueSetOid ??
     '';
 
+  // Use valueSetName as fallback identifier when OID is missing
+  const name =
+    (component as AtomicComponent).valueSet?.name ??
+    (component as ParsedComponent & { valueSetName?: string }).valueSetName ??
+    '';
+
   const timing = component.timing;
 
   return {
-    oid,
+    // Primary identifier is OID, fallback to name when OID is missing
+    oid: oid || name,
     timingOperator: timing?.operator ?? null,
     timingQuantity: timing?.quantity ?? null,
     timingUnit: timing?.unit ?? null,
@@ -590,8 +598,14 @@ function formatTiming(timing: TimingExpression): string {
  * Returns null if the element has no value set (e.g., demographics without OID).
  */
 export function parseDataElementToComponent(element: DataElement): ParsedComponent | null {
-  // Skip elements without value sets (demographics, etc.)
-  if (!element.valueSet?.oid || element.valueSet.oid === 'N/A') {
+  // Skip elements without ANY value set information (no oid, no name, no codes)
+  // Accept elements with: OID, or name, or codes
+  const hasValueSetInfo = !!(element.valueSet?.oid && element.valueSet.oid !== 'N/A') ||
+                          !!(element.valueSet?.name) ||
+                          (element.valueSet?.codes?.length ?? 0) > 0 ||
+                          (element.directCodes?.length ?? 0) > 0;
+
+  if (!hasValueSetInfo) {
     return null;
   }
 
@@ -656,10 +670,14 @@ export function parseDataElementToComponent(element: DataElement): ParsedCompone
   const desc = element.description?.toLowerCase() || '';
   const negation = element.negation || desc.includes('absence of') || desc.includes('without');
 
+  // Get value set info with fallbacks
+  const vsOid = element.valueSet?.oid || '';
+  const vsName = element.valueSet?.name || element.description || '';
+
   return {
-    name: element.description || element.valueSet.name,
-    valueSetOid: element.valueSet.oid,
-    valueSetName: element.valueSet.name,
+    name: element.description || vsName,
+    valueSetOid: vsOid,
+    valueSetName: vsName,
     timing,
     negation,
   };

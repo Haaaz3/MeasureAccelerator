@@ -100,9 +100,11 @@ export function MeasureLibrary() {
 
   // Process the next item in the queue (or the first file group)
   const processNext = useCallback(async () => {
+    console.log('[processNext] START - queue length:', batchQueueRef.current.length);
     const queue = batchQueueRef.current;
     if (queue.length === 0) {
       // All done
+      console.log('[processNext] Queue empty, stopping');
       processingRef.current = false;
       setIsProcessing(false);
       setBatchIndex(0);
@@ -132,7 +134,9 @@ export function MeasureLibrary() {
     };
 
     try {
+      console.log('[processNext] Calling ingestMeasureFiles...');
       const result = await ingestMeasureFiles(files, activeApiKey, wrappedSetProgress, selectedProvider, selectedModel, customConfig);
+      console.log('[processNext] ingestMeasureFiles returned:', { success: result.success, hasUms: !!result.ums, error: result.error });
 
       if (result.success && result.ums) {
         const measureWithStatus = { ...result.ums, status: 'in_progress' as MeasureStatus };
@@ -144,10 +148,13 @@ export function MeasureLibrary() {
         }
 
         // Immediately match against component library — link to existing approved components
+        console.log('[MeasureLibrary] About to call linkMeasureComponents for:', measureWithStatus.metadata.measureId);
+        console.log('[MeasureLibrary] Populations:', JSON.stringify(measureWithStatus.populations, null, 2).slice(0, 2000));
         const linkMap = linkMeasureComponents(
           measureWithStatus.metadata.measureId,
           measureWithStatus.populations,
         );
+        console.log('[MeasureLibrary] linkMeasureComponents returned linkMap:', linkMap);
 
         // Write libraryComponentId (or ingestionWarning for zero-code elements)
         if (Object.keys(linkMap).length > 0) {
@@ -171,10 +178,14 @@ export function MeasureLibrary() {
           };
           const linkedPopulations = measureWithStatus.populations.map(stampLinks);
           updateMeasure(measureWithStatus.id, { populations: linkedPopulations });
-        }
 
-        // Rebuild usage index across all measures (including the new one)
-        rebuildUsageIndex([...measures, measureWithStatus]);
+          // Rebuild usage index with the LINKED measure (not the original without links)
+          const measureWithLinks = { ...measureWithStatus, populations: linkedPopulations };
+          rebuildUsageIndex([...measures, measureWithLinks]);
+        } else {
+          // No links created - still rebuild with the new measure
+          rebuildUsageIndex([...measures, measureWithStatus]);
+        }
 
         const ct = batchCounterRef.current;
         const lbl = ct.total > 1 ? `[${ct.index}/${ct.total}] ` : '';
@@ -192,9 +203,12 @@ export function MeasureLibrary() {
 
   // Handle files: either start processing or add to queue
   const handleFiles = useCallback(async (files: File[]) => {
+    console.log('[handleFiles] START - received', files.length, 'files:', files.map(f => f.name));
     const supportedFiles = files.filter(isFileSupported);
+    console.log('[handleFiles] Supported files:', supportedFiles.length);
 
     if (supportedFiles.length === 0) {
+      console.log('[handleFiles] REJECTED - no supported files');
       setError('Please upload measure specification files (PDF, HTML, Excel, XML, JSON, CQL, or ZIP)');
       return;
     }
@@ -203,16 +217,20 @@ export function MeasureLibrary() {
     const activeApiKey = getActiveApiKey();
     const activeProvider = getActiveProvider();
     const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
+    console.log('[handleFiles] API key check:', { hasKey: !!activeApiKey, provider: selectedProvider });
 
     if (selectedProvider === 'custom') {
       if (!customConfig?.baseUrl) {
+        console.log('[handleFiles] REJECTED - no custom LLM config');
         setError('Please configure your Custom LLM base URL in Settings to use AI-powered extraction');
         return;
       }
     } else if (!activeApiKey) {
+      console.log('[handleFiles] REJECTED - no API key for provider:', activeProvider.name);
       setError(`Please configure your ${activeProvider.name} API key in Settings to use AI-powered extraction`);
       return;
     }
+    console.log('[handleFiles] API key validated, adding to queue');
 
     // Add to queue
     batchQueueRef.current = [...batchQueueRef.current, supportedFiles];

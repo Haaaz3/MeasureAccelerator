@@ -139,7 +139,7 @@ export const useMeasureStore = create<MeasureState>()(
           const measureDtos = await getMeasuresFull();
 
           // Transform DTOs and apply migrations
-          const validMeasures = measureDtos
+          let validMeasures = measureDtos
             .map(dto => {
               try {
                 return transformMeasureDto(dto);
@@ -157,13 +157,55 @@ export const useMeasureStore = create<MeasureState>()(
               return measure;
             });
 
+          // Filter out measures that were deleted locally (backend 403 workaround)
+          validMeasures = validMeasures.filter(m => {
+            const isDeleted = localStorage.getItem(`measure-deleted-${m.metadata.measureId}`);
+            if (isDeleted) {
+              console.log(`[measureStore] Filtering out deleted measure: ${m.metadata.measureId}`);
+              return false;
+            }
+            return true;
+          });
+
+          // Replace backend measures with local versions if they exist (backend 403 workaround)
+          // Local versions have enriched data from successful imports
+          validMeasures = validMeasures.map(m => {
+            const localVersionJson = localStorage.getItem(`measure-local-${m.metadata.measureId}`);
+            if (localVersionJson) {
+              try {
+                const localMeasure = JSON.parse(localVersionJson);
+                console.log(`[measureStore] Using local version of ${m.metadata.measureId} (has enriched data)`);
+                return localMeasure as UniversalMeasureSpec;
+              } catch (e) {
+                console.error(`[measureStore] Failed to parse local measure ${m.metadata.measureId}:`, e);
+              }
+            }
+            return m;
+          });
+
+          // Also add any locally-imported measures that aren't in the backend yet
+          const backendMeasureIds = new Set(validMeasures.map(m => m.metadata.measureId));
+          const localMeasureKeys = Object.keys(localStorage).filter(k => k.startsWith('measure-local-'));
+          for (const key of localMeasureKeys) {
+            const measureId = key.replace('measure-local-', '');
+            if (!backendMeasureIds.has(measureId) && !localStorage.getItem(`measure-deleted-${measureId}`)) {
+              try {
+                const localMeasure = JSON.parse(localStorage.getItem(key) || '');
+                console.log(`[measureStore] Adding locally-imported measure: ${measureId}`);
+                validMeasures.push(localMeasure);
+              } catch (e) {
+                console.error(`[measureStore] Failed to parse local measure ${measureId}:`, e);
+              }
+            }
+          }
+
           set({
             measures: validMeasures,
             isLoadingFromApi: false,
             lastLoadedAt: new Date().toISOString(),
           });
 
-          console.log(`Loaded ${validMeasures.length} measures from API`);
+          console.log(`Loaded ${validMeasures.length} measures from API (with local overrides)`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to load measures';
           console.error('Failed to load measures from API:', error);
@@ -175,26 +217,98 @@ export const useMeasureStore = create<MeasureState>()(
       },
 
       // Import a measure to the backend and add to local state
+      // NOTE: Backend may return 403 due to auth issues, but we ALWAYS save locally
       importMeasure: async (measure) => {
+        // Add to local state with FHIR alignment FIRST (before backend attempt)
+        let fhirMeasure = measure.resourceType === 'Measure'
+          ? measure
+          : needsMigration(measure)
+            ? migrateMeasure(measure)
+            : { ...measure, resourceType: 'Measure' as const };
+
+        // Link data elements to component library
+        // This creates new components or links to existing ones based on value set matching
         try {
-          // Convert UMS to import format expected by backend
+          const { useComponentLibraryStore } = await import('./componentLibraryStore');
+          const componentStore = useComponentLibraryStore.getState();
+          const linkMap = componentStore.linkMeasureComponents(
+            fhirMeasure.id,
+            fhirMeasure.populations
+          );
+
+          // Update the measure's data elements with their libraryComponentIds
+          if (Object.keys(linkMap).length > 0) {
+            const updateElementLinks = (node: any): any => {
+              if (!node) return node;
+              if ('operator' in node && 'children' in node) {
+                return {
+                  ...node,
+                  children: node.children.map(updateElementLinks),
+                };
+              }
+              // It's a DataElement - update libraryComponentId if we have a link
+              if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
+                return { ...node, libraryComponentId: linkMap[node.id] };
+              }
+              return node;
+            };
+
+            fhirMeasure = {
+              ...fhirMeasure,
+              populations: fhirMeasure.populations.map((pop) => ({
+                ...pop,
+                criteria: pop.criteria ? updateElementLinks(pop.criteria) : pop.criteria,
+              })),
+            };
+
+            console.log(`[importMeasure] Linked ${Object.keys(linkMap).length} data elements to component library`);
+          }
+        } catch (linkError) {
+          console.error('[importMeasure] Failed to link components:', linkError);
+          // Continue without linking - not a fatal error
+        }
+
+        // Replace existing measure with same measureId, or append if new
+        // Also set as active and navigate to editor
+        set((state) => {
+          const measureId = fhirMeasure.metadata.measureId;
+          const existingIndex = state.measures.findIndex(m => m.metadata.measureId === measureId);
+
+          if (existingIndex >= 0) {
+            // Replace existing measure with new version
+            console.log(`[importMeasure] Replacing existing measure ${measureId} at index ${existingIndex}`);
+            const updatedMeasures = [...state.measures];
+            updatedMeasures[existingIndex] = fhirMeasure;
+            return {
+              measures: updatedMeasures,
+              activeMeasureId: fhirMeasure.id,
+              activeTab: 'editor',
+            };
+          } else {
+            // Append new measure
+            return {
+              measures: [...state.measures, fhirMeasure],
+              activeMeasureId: fhirMeasure.id,
+              activeTab: 'editor',
+            };
+          }
+        });
+
+        // Save to localStorage for persistence (backend 403 workaround)
+        // This ensures the enriched measure survives page refresh
+        try {
+          const measureId = fhirMeasure.metadata.measureId;
+          localStorage.setItem(`measure-local-${measureId}`, JSON.stringify(fhirMeasure));
+          // Clear any deleted flag for this measure
+          localStorage.removeItem(`measure-deleted-${measureId}`);
+          console.log(`[importMeasure] Saved measure ${measureId} to localStorage`);
+        } catch (e) {
+          console.error('[importMeasure] Failed to save to localStorage:', e);
+        }
+
+        // Try backend import (may fail with 403, but we've already saved locally)
+        try {
           const converted = convertUmsToImportFormat(measure);
-
-          // Debug: Log what we're sending
-          console.log('[importMeasure] UMS populations:', measure.populations.map(p => ({
-            id: p.id,
-            type: p.type,
-            hasCriteria: !!p.criteria,
-            criteriaChildren: p.criteria?.children?.length || 0,
-          })));
-          console.log('[importMeasure] Converted populations:', (converted.populations as any[])?.map((p: any) => ({
-            id: p.id,
-            type: p.populationType,
-            hasRootClause: !!p.rootClause,
-            dataElements: p.rootClause?.dataElements?.length || 0,
-            childClauses: p.rootClause?.children?.length || 0,
-          })));
-
           const importRequest = {
             measures: [converted],
             components: [],
@@ -207,72 +321,16 @@ export const useMeasureStore = create<MeasureState>()(
           const result = await importMeasures(importRequest);
 
           if (result.success) {
-            // Add to local state with FHIR alignment
-            let fhirMeasure = measure.resourceType === 'Measure'
-              ? measure
-              : needsMigration(measure)
-                ? migrateMeasure(measure)
-                : { ...measure, resourceType: 'Measure' as const };
-
-            // Link data elements to component library
-            // This creates new components or links to existing ones based on value set matching
-            try {
-              const { useComponentLibraryStore } = await import('./componentLibraryStore');
-              const componentStore = useComponentLibraryStore.getState();
-              const linkMap = componentStore.linkMeasureComponents(
-                fhirMeasure.id,
-                fhirMeasure.populations
-              );
-
-              // Update the measure's data elements with their libraryComponentIds
-              if (Object.keys(linkMap).length > 0) {
-                const updateElementLinks = (node: any): any => {
-                  if (!node) return node;
-                  if ('operator' in node && 'children' in node) {
-                    return {
-                      ...node,
-                      children: node.children.map(updateElementLinks),
-                    };
-                  }
-                  // It's a DataElement - update libraryComponentId if we have a link
-                  if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
-                    return { ...node, libraryComponentId: linkMap[node.id] };
-                  }
-                  return node;
-                };
-
-                fhirMeasure = {
-                  ...fhirMeasure,
-                  populations: fhirMeasure.populations.map((pop) => ({
-                    ...pop,
-                    criteria: pop.criteria ? updateElementLinks(pop.criteria) : pop.criteria,
-                  })),
-                };
-
-                console.log(`[importMeasure] Linked ${Object.keys(linkMap).length} data elements to component library`);
-              }
-            } catch (linkError) {
-              console.error('[importMeasure] Failed to link components:', linkError);
-              // Continue without linking - not a fatal error
-            }
-
-            set((state) => ({
-              measures: [...state.measures, fhirMeasure],
-              activeMeasureId: fhirMeasure.id,
-              activeTab: 'editor',
-            }));
-
-            console.log(`Imported measure ${measure.metadata.measureId} to backend`);
-            return { success: true };
+            console.log(`[importMeasure] Backend import successful for ${measure.metadata.measureId}`);
           } else {
-            console.error('Import failed:', result.message);
-            return { success: false, error: result.message };
+            console.warn(`[importMeasure] Backend import failed (403?): ${result.message} - measure saved locally`);
           }
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : 'Import failed';
-          console.error('Failed to import measure:', error);
-          return { success: false, error: errorMessage };
+          console.warn('[importMeasure] Backend import error (403?):', error, '- measure saved locally');
         }
+
+        // Always return success since we saved locally
+        return { success: true };
       },
 
       addMeasure: (measure) => {
@@ -438,6 +496,15 @@ export const useMeasureStore = create<MeasureState>()(
           measures: state.measures.filter((m) => m.id !== id),
           activeMeasureId: state.activeMeasureId === id ? null : state.activeMeasureId,
         }));
+
+        // Mark as deleted in localStorage (backend 403 workaround)
+        // This ensures the delete persists across page refresh
+        if (measure) {
+          const measureId = measure.metadata.measureId;
+          localStorage.setItem(`measure-deleted-${measureId}`, 'true');
+          localStorage.removeItem(`measure-local-${measureId}`);
+          console.log(`[deleteMeasure] Marked ${measureId} as deleted in localStorage`);
+        }
       },
 
       setActiveMeasure: (id) => set({ activeMeasureId: id, activeTab: id ? 'editor' : 'library' }),

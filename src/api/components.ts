@@ -79,24 +79,45 @@ export interface CreateAtomicComponentRequest {
   /** Optional client-provided ID. If not provided, backend generates one. */
   id?: string;
   name: string;
-  category: string;
   description?: string;
-  cqlExpression?: string;
-  sqlTemplate?: string;
-  valueSet?: {
-    oid?: string;
-    name?: string;
+
+  // Value set info - FLAT fields to match backend DTO
+  valueSetOid: string;
+  valueSetName: string;
+  valueSetVersion?: string;
+  codes?: Array<{
+    code: string;
+    system: string;
+    display?: string;
+    version?: string;
+  }>;
+  additionalValueSets?: Array<{
+    oid: string;
+    name: string;
+    version?: string;
     codes?: Array<{
       code: string;
       system: string;
       display?: string;
+      version?: string;
     }>;
-  };
+  }>;
+
+  // Timing
   timing?: {
-    type: string;
-    duration?: number;
+    operator?: string;
+    quantity?: number;
     unit?: string;
+    position?: string;
+    reference?: string;
+    displayExpression?: string;
   };
+
+  // Other fields
+  negation?: boolean;
+  resourceType?: string;
+  genderValue?: string;
+  category?: string;
   tags?: string[];
 }
 
@@ -231,6 +252,13 @@ export async function approveComponent(
   approvedBy: string
 ): Promise<ComponentDto> {
   return post<ComponentDto>(`/components/${id}/approve`, { approvedBy });
+}
+
+/**
+ * Archive a component.
+ */
+export async function archiveComponent(id: string): Promise<ComponentDto> {
+  return post<ComponentDto>(`/components/${id}/archive`, {});
 }
 
 /**

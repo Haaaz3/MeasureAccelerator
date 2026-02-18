@@ -155,7 +155,36 @@ interface ComponentLibraryState {
 // ============================================================================
 
 export const useComponentLibraryStore = create<ComponentLibraryState>()(
-    (set, get) => ({
+    (set, get) => {
+      // ==========================================================================
+      // SAFE SET COMPONENTS HELPER - Prevents accidental component wipes
+      // ==========================================================================
+      // This helper ensures that setting components ALWAYS merges with existing
+      // components instead of replacing them. It makes it physically impossible
+      // for any action to wipe the component library.
+      const safeSetComponents = (
+        newComponents: LibraryComponent[],
+        additionalState?: Partial<Omit<ComponentLibraryState, 'components'>>
+      ) => {
+        set((state) => {
+          // Never allow complete wipe if we have existing components
+          if (newComponents.length === 0 && state.components.length > 0) {
+            console.error('[BLOCKED] Attempted to set components to empty array');
+            return additionalState ? { ...additionalState } : {};
+          }
+
+          // Always merge: new components + preserved existing components
+          const newIds = new Set(newComponents.map(c => c.id));
+          const preserved = state.components.filter(c => !newIds.has(c.id));
+          const merged = [...newComponents, ...preserved];
+
+          console.log(`[safeSetComponents] ${newComponents.length} updated/new + ${preserved.length} preserved = ${merged.length} total`);
+
+          return { components: merged, ...(additionalState || {}) };
+        });
+      };
+
+      return {
       // Initial state
       components: [],
       initialized: false,
@@ -230,25 +259,16 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
               return component;
             });
 
-          // MERGE: Keep local components that don't exist in API response
+          // Use safeSetComponents to MERGE API components with local-only components
           // This prevents wiping out locally created components that haven't been synced yet
-          const currentComponents = get().components;
-          const apiComponentIds = new Set(apiComponents.map(c => c.id));
+          const now = new Date().toISOString();
+          console.log(`[loadFromApi] Loaded ${apiComponents.length} components from API`);
 
-          // Keep local-only components (not in API response)
-          const localOnlyComponents = currentComponents.filter(c => !apiComponentIds.has(c.id));
-
-          // Merge: API components take precedence, but keep local-only components
-          const mergedComponents = [...apiComponents, ...localOnlyComponents];
-
-          set({
-            components: mergedComponents,
+          safeSetComponents(apiComponents, {
             initialized: true,
             isLoadingFromApi: false,
-            lastLoadedAt: new Date().toISOString(),
+            lastLoadedAt: now,
           });
-
-          console.log(`Loaded ${apiComponents.length} components from API, kept ${localOnlyComponents.length} local-only components`);
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : 'Failed to load components';
           console.error('Failed to load components from API:', error);
@@ -282,10 +302,11 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           ),
         }));
 
-        set({
-          components: [...hydratedAtomics, ...hydratedComposites],
-          initialized: true,
-        });
+        // Use safeSetComponents to MERGE with any existing components
+        safeSetComponents(
+          [...hydratedAtomics, ...hydratedComposites],
+          { initialized: true }
+        );
       },
 
       // CRUD Actions
@@ -323,26 +344,37 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           components: [...state.components, component],
         }));
 
-        // Persist to backend
+        // Persist to backend - use FLAT format matching backend DTO
         try {
           const { createAtomicComponent } = await import('../api/components');
           if (component.type === 'atomic') {
             const atomicComp = component as import('../types/componentLibrary').AtomicComponent;
             await createAtomicComponent({
+              id: atomicComp.id,
               name: atomicComp.name,
-              category: atomicComp.metadata?.category || 'uncategorized',
-              description: atomicComp.description || undefined,
-              cqlExpression: atomicComp.cqlExpression || undefined,
-              sqlTemplate: atomicComp.sqlTemplate || undefined,
-              valueSet: atomicComp.valueSet ? {
-                oid: atomicComp.valueSet.oid || undefined,
-                name: atomicComp.valueSet.name || undefined,
-                codes: atomicComp.valueSet.codes?.map(c => ({
-                  code: c.code,
-                  system: c.system,
-                  display: c.display || undefined,
-                })),
+              description: atomicComp.description || '',
+              // FLAT value set fields - required by backend
+              valueSetOid: atomicComp.valueSet?.oid || atomicComp.name || 'unknown',
+              valueSetName: atomicComp.valueSet?.name || atomicComp.name || 'Unknown',
+              valueSetVersion: atomicComp.valueSet?.version || undefined,
+              codes: atomicComp.valueSet?.codes?.map(c => ({
+                code: c.code,
+                system: c.system,
+                display: c.display || undefined,
+                version: undefined,
+              })),
+              timing: atomicComp.timing ? {
+                operator: atomicComp.timing.operator || 'during',
+                quantity: atomicComp.timing.quantity,
+                unit: atomicComp.timing.unit,
+                position: atomicComp.timing.position,
+                reference: atomicComp.timing.reference || 'Measurement Period',
+                displayExpression: atomicComp.timing.displayExpression,
               } : undefined,
+              negation: atomicComp.negation || false,
+              resourceType: atomicComp.resourceType || undefined,
+              genderValue: atomicComp.genderValue || undefined,
+              category: atomicComp.metadata?.category || 'uncategorized',
               tags: atomicComp.metadata?.tags || undefined,
             });
             console.log(`Component ${component.id} persisted to backend`);
@@ -391,9 +423,26 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
             };
           }
 
+          // CRITICAL FIX: Regenerate code when code-affecting fields change
+          // Fields that affect generated code: valueSet, timing, negation, resourceType, name
+          const codeAffectingFields = ['valueSet', 'timing', 'negation', 'resourceType', 'name', 'childComponents'];
+          const needsCodeRegen = codeAffectingFields.some(field => field in updates);
+
+          let finalUpdates = updates;
+          if (needsCodeRegen && !updates.generatedCode && !updates.codeOverrides) {
+            try {
+              const merged = { ...existing, ...updates } as LibraryComponent;
+              const generatedCode = generateAndPackageCode(merged, state.components);
+              finalUpdates = { ...updates, generatedCode };
+              console.log(`[ComponentLibrary] Regenerated code for updated component ${id}`);
+            } catch (err) {
+              console.warn(`[ComponentLibrary] Failed to regenerate code for ${id}:`, err);
+            }
+          }
+
           return {
             components: state.components.map((c) =>
-              c.id === id ? ({ ...c, ...updates } as LibraryComponent) : c
+              c.id === id ? ({ ...c, ...finalUpdates } as LibraryComponent) : c
             ),
           };
         }),
@@ -439,7 +488,7 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           };
         }),
 
-      archiveComponentVersion: (id, supersededBy) =>
+      archiveComponentVersion: (id, supersededBy) => {
         set((state) => {
           const component = state.components.find((c) => c.id === id);
           if (!component) return state;
@@ -447,9 +496,20 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           return {
             components: state.components.map((c) => (c.id === id ? archived : c)),
           };
-        }),
+        });
 
-      approve: (id, approvedBy) =>
+        // Persist archive status to backend
+        import('../api/components').then(async ({ archiveComponent }) => {
+          try {
+            await archiveComponent(id);
+            console.log(`[archiveComponentVersion] Persisted archive status for ${id} to backend`);
+          } catch (err) {
+            console.warn(`[archiveComponentVersion] Failed to persist archive status for ${id}:`, err);
+          }
+        });
+      },
+
+      approve: (id, approvedBy) => {
         set((state) => {
           const component = state.components.find((c) => c.id === id);
           if (!component) return state;
@@ -457,10 +517,21 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           return {
             components: state.components.map((c) => (c.id === id ? approved : c)),
           };
-        }),
+        });
+
+        // Persist approval to backend
+        import('../api/components').then(async ({ approveComponent: approveApi }) => {
+          try {
+            await approveApi(id, approvedBy);
+            console.log(`[approve] Persisted approval for ${id} to backend`);
+          } catch (err) {
+            console.warn(`[approve] Failed to persist approval for ${id}:`, err);
+          }
+        });
+      },
 
       // Usage
-      addUsage: (componentId, measureId) =>
+      addUsage: (componentId, measureId) => {
         set((state) => {
           const component = state.components.find((c) => c.id === componentId);
           if (!component) return state;
@@ -468,7 +539,18 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           return {
             components: state.components.map((c) => (c.id === componentId ? updated : c)),
           };
-        }),
+        });
+
+        // Persist usage to backend
+        import('../api/components').then(async ({ recordUsage }) => {
+          try {
+            await recordUsage(componentId, measureId);
+            console.log(`[addUsage] Persisted usage: component ${componentId} → measure ${measureId}`);
+          } catch (err) {
+            console.warn(`[addUsage] Failed to persist usage for ${componentId}:`, err);
+          }
+        });
+      },
 
       removeUsage: (componentId, measureId) =>
         set((state) => {
@@ -529,6 +611,8 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
 
       // Measure linking - extract data elements and match/create in library
       linkMeasureComponents: (measureId, populations) => {
+        console.log('[linkMeasureComponents] START - measureId:', measureId, 'current components:', get().components.length);
+
         const state = get();
         const linkMap: Record<string, string> = {}; // dataElementId -> componentId
 
@@ -580,10 +664,25 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
         const newComponents: LibraryComponent[] = [];
         const updatedComponents: LibraryComponent[] = [];
 
+        console.log('[linkMeasureComponents] Found', allElements.length, 'data elements to process');
+
         // Step 1: Match individual data elements (atomics) - prioritize approved components
         for (const element of allElements) {
+          console.log('[linkMeasureComponents] Processing element:', {
+            id: element.id,
+            description: element.description,
+            hasValueSet: !!element.valueSet,
+            valueSetOid: element.valueSet?.oid,
+            valueSetName: element.valueSet?.name,
+            codesCount: element.valueSet?.codes?.length || 0,
+            directCodesCount: element.directCodes?.length || 0,
+          });
+
           const parsed = parseDataElementToComponent(element);
-          if (!parsed) continue; // Skip elements without value sets
+          if (!parsed) {
+            console.log('[linkMeasureComponents] SKIPPED - parseDataElementToComponent returned null for:', element.description);
+            continue; // Skip elements without value sets
+          }
 
           // Try exact match against library, prioritizing approved components
           const { match, isApproved, alternateApproved } = findExactMatchPrioritizeApproved(parsed, libraryRecord);
@@ -621,12 +720,23 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
               updatedComponents.push(componentToUpdate);
             }
           } else {
-            // Check if the element has any codes before creating a component
-            const hasCodes = (element.valueSet?.codes?.length ?? 0) > 0 ||
-                             (element.directCodes?.length ?? 0) > 0;
+            // Check if the element has enough value set information to create a component
+            // Accept: OID, name, OR codes — any of these is sufficient for component creation
+            const hasValueSetInfo = !!(element.valueSet?.oid && element.valueSet.oid !== 'N/A') ||
+                                    !!(element.valueSet?.name) ||
+                                    (element.valueSet?.codes?.length ?? 0) > 0 ||
+                                    (element.directCodes?.length ?? 0) > 0;
 
-            if (!hasCodes) {
-              // Zero codes — do NOT create a component. Mark with sentinel for warning.
+            console.log('[linkMeasureComponents] NO MATCH found for:', element.description, '- hasValueSetInfo:', hasValueSetInfo, {
+              oid: element.valueSet?.oid,
+              name: element.valueSet?.name,
+              codesCount: element.valueSet?.codes?.length ?? 0,
+              directCodesCount: element.directCodes?.length ?? 0,
+            });
+
+            if (!hasValueSetInfo) {
+              // No value set info — cannot create meaningful component. Mark with sentinel for warning.
+              console.log('[linkMeasureComponents] SKIPPING (no value set info) - element:', element.description);
               linkMap[element.id] = '__ZERO_CODES__';
               continue;
             }
@@ -671,6 +781,13 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
             newComponents.push(withUsage);
             libraryRecord[withUsage.id] = withUsage;
             linkMap[element.id] = withUsage.id;
+            console.log('[linkMeasureComponents] CREATED new component:', {
+              id: withUsage.id,
+              name: withUsage.name,
+              valueSetOid: (withUsage as AtomicComponent).valueSet?.oid,
+              valueSetName: (withUsage as AtomicComponent).valueSet?.name,
+              codesCount: (withUsage as AtomicComponent).valueSet?.codes?.length || 0,
+            });
           }
         }
 
@@ -703,50 +820,74 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           }
         }
 
-        // Update store
+        // Update store using safeSetComponents to MERGE, never replace
+        console.log('[linkMeasureComponents] SUMMARY:', {
+          newComponentsCount: newComponents.length,
+          updatedComponentsCount: updatedComponents.length,
+          linkMapSize: Object.keys(linkMap).length,
+        });
+
         if (newComponents.length > 0 || updatedComponents.length > 0) {
-          set((s) => {
-            let components = [...s.components];
-            // Update existing components with new usage
-            for (const updated of updatedComponents) {
-              components = components.map((c) => c.id === updated.id ? updated : c);
-            }
-            // Add new components
-            components = [...components, ...newComponents];
-            return { components, initialized: true };
-          });
+          console.log(`[linkMeasureComponents] Calling safeSetComponents with ${newComponents.length} new + ${updatedComponents.length} updated components`);
+
+          // Pass all updated and new components to safeSetComponents
+          // It will merge with existing components, preserving any not in this set
+          safeSetComponents(
+            [...updatedComponents, ...newComponents],
+            { initialized: true }
+          );
+
+          console.log('[linkMeasureComponents] After safeSetComponents - total components:', get().components.length);
 
           // Persist new components to backend (async, non-blocking)
           if (newComponents.length > 0) {
-            import('../api/components').then(({ createAtomicComponent: createAtomicApi }) => {
+            import('../api/components').then(async ({ createAtomicComponent: createAtomicApi }) => {
               for (const comp of newComponents) {
                 if (comp.type === 'atomic') {
                   const atomicComp = comp as AtomicComponent;
-                  createAtomicApi({
+                  // Build request in FLAT format matching backend DTO
+                  const requestBody = {
                     // IMPORTANT: Send the local ID to backend so IDs match
                     id: atomicComp.id,
                     name: atomicComp.name,
-                    category: atomicComp.metadata?.category || 'uncategorized',
-                    description: atomicComp.description || undefined,
-                    cqlExpression: atomicComp.cqlExpression || undefined,
-                    sqlTemplate: atomicComp.sqlTemplate || undefined,
-                    valueSet: atomicComp.valueSet ? {
-                      oid: atomicComp.valueSet.oid || undefined,
-                      name: atomicComp.valueSet.name || undefined,
-                      codes: atomicComp.valueSet.codes?.map(c => ({
-                        code: c.code,
-                        system: c.system,
-                        display: c.display || undefined,
-                      })),
+                    description: atomicComp.description || '',
+                    // FLAT value set fields - required by backend @NotBlank validation
+                    valueSetOid: atomicComp.valueSet?.oid || atomicComp.name || 'unknown',
+                    valueSetName: atomicComp.valueSet?.name || atomicComp.name || 'Unknown',
+                    valueSetVersion: atomicComp.valueSet?.version || undefined,
+                    codes: atomicComp.valueSet?.codes?.map(c => ({
+                      code: c.code,
+                      system: c.system,
+                      display: c.display || undefined,
+                      version: undefined,
+                    })),
+                    // Timing in backend format
+                    timing: atomicComp.timing ? {
+                      operator: atomicComp.timing.operator || 'during',
+                      quantity: atomicComp.timing.quantity,
+                      unit: atomicComp.timing.unit,
+                      position: atomicComp.timing.position,
+                      reference: atomicComp.timing.reference || 'Measurement Period',
+                      displayExpression: atomicComp.timing.displayExpression,
                     } : undefined,
+                    negation: atomicComp.negation || false,
+                    resourceType: atomicComp.resourceType || undefined,
+                    genderValue: atomicComp.genderValue || undefined,
+                    category: atomicComp.metadata?.category || 'uncategorized',
                     tags: atomicComp.metadata?.tags || undefined,
-                  }).then(() => {
-                    console.log(`[linkMeasureComponents] Persisted component ${comp.id} to backend`);
-                  }).catch((err) => {
-                    console.warn(`[linkMeasureComponents] Failed to persist component ${comp.id}:`, err);
-                  });
+                  };
+                  console.log('[linkMeasureComponents] POSTing component to backend:', requestBody);
+                  try {
+                    const result = await createAtomicApi(requestBody);
+                    console.log('[linkMeasureComponents] ✅ Persisted to backend:', comp.id, comp.name, result);
+                  } catch (err) {
+                    console.error('[linkMeasureComponents] ❌ FAILED to persist:', comp.id, comp.name, err);
+                    console.error('[linkMeasureComponents] Request body was:', JSON.stringify(requestBody, null, 2).slice(0, 1000));
+                  }
                 }
               }
+            }).catch(err => {
+              console.error('[linkMeasureComponents] ❌ FAILED to import api/components module:', err);
             });
           }
         }
@@ -756,8 +897,6 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
 
       // Recalculate usage from actual measures (resets all counts, rebuilds from scratch)
       recalculateUsage: (measures) => {
-        const state = get();
-
         // Helper to collect all data elements from a criteria tree
         const collectElements = (node: LogicalClause | DataElement): DataElement[] => {
           if ('operator' in node && 'children' in node) {
@@ -785,106 +924,107 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           return results;
         };
 
-        // Build a set of (componentId -> Set<measureId>) from actual measures
-        const usageMap = new Map<string, Set<string>>();
+        // Use updater function to get CURRENT state and avoid race conditions
+        set((state) => {
+          // Build a set of (componentId -> Set<measureId>) from actual measures
+          const usageMap = new Map<string, Set<string>>();
 
-        // Also build a library lookup for matching
-        const libraryRecord: Record<string, LibraryComponent> = {};
-        state.components.forEach((c) => { libraryRecord[c.id] = c; });
+          // Build a library lookup for matching using CURRENT state
+          const libraryRecord: Record<string, LibraryComponent> = {};
+          state.components.forEach((c) => { libraryRecord[c.id] = c; });
 
-        for (const measure of measures) {
-          const measureId = measure.metadata.measureId;
-          for (const pop of measure.populations) {
-            if (!pop.criteria) continue;
+          for (const measure of measures) {
+            const measureId = measure.metadata.measureId;
+            for (const pop of measure.populations) {
+              if (!pop.criteria) continue;
 
-            // Match individual data elements (atomics)
-            const elements = collectElements(pop.criteria as LogicalClause | DataElement);
-            for (const element of elements) {
-              let componentId = element.libraryComponentId;
+              // Match individual data elements (atomics)
+              const elements = collectElements(pop.criteria as LogicalClause | DataElement);
+              for (const element of elements) {
+                let componentId = element.libraryComponentId;
 
-              if (!componentId) {
-                const parsed = parseDataElementToComponent(element);
-                if (parsed) {
-                  const match = findExactMatch(parsed, libraryRecord);
-                  if (match) {
-                    componentId = match.id;
+                if (!componentId) {
+                  const parsed = parseDataElementToComponent(element);
+                  if (parsed) {
+                    const match = findExactMatch(parsed, libraryRecord);
+                    if (match) {
+                      componentId = match.id;
+                    }
                   }
                 }
+
+                if (componentId && libraryRecord[componentId]) {
+                  if (!usageMap.has(componentId)) {
+                    usageMap.set(componentId, new Set());
+                  }
+                  usageMap.get(componentId)!.add(measureId);
+                }
               }
 
-              if (componentId && libraryRecord[componentId]) {
-                if (!usageMap.has(componentId)) {
-                  usageMap.set(componentId, new Set());
-                }
-                usageMap.get(componentId)!.add(measureId);
-              }
-            }
+              // Match composite patterns (OR/AND clauses against library composites)
+              const clauses = collectClausesWithElements(pop.criteria as LogicalClause | DataElement);
+              for (const clause of clauses) {
+                const childElements = clause.children as DataElement[];
+                const childParsed = childElements
+                  .map((el) => parseDataElementToComponent(el))
+                  .filter((p): p is NonNullable<typeof p> => p !== null);
+                if (childParsed.length < 2) continue;
 
-            // Match composite patterns (OR/AND clauses against library composites)
-            const clauses = collectClausesWithElements(pop.criteria as LogicalClause | DataElement);
-            for (const clause of clauses) {
-              const childElements = clause.children as DataElement[];
-              const childParsed = childElements
-                .map((el) => parseDataElementToComponent(el))
-                .filter((p): p is NonNullable<typeof p> => p !== null);
-              if (childParsed.length < 2) continue;
-
-              const compositeParsed = {
-                name: clause.description || 'Composite',
-                children: childParsed,
-                operator: clause.operator as 'AND' | 'OR',
-              };
-              const compositeMatch = findExactMatch(compositeParsed, libraryRecord);
-              if (compositeMatch) {
-                if (!usageMap.has(compositeMatch.id)) {
-                  usageMap.set(compositeMatch.id, new Set());
+                const compositeParsed = {
+                  name: clause.description || 'Composite',
+                  children: childParsed,
+                  operator: clause.operator as 'AND' | 'OR',
+                };
+                const compositeMatch = findExactMatch(compositeParsed, libraryRecord);
+                if (compositeMatch) {
+                  if (!usageMap.has(compositeMatch.id)) {
+                    usageMap.set(compositeMatch.id, new Set());
+                  }
+                  usageMap.get(compositeMatch.id)!.add(measureId);
                 }
-                usageMap.get(compositeMatch.id)!.add(measureId);
               }
             }
           }
-        }
 
-        // Reset all components' usage, rebuild from usageMap, and auto-archive/unarchive
-        const updatedComponents = state.components.map((c) => {
-          const measureIds = usageMap.has(c.id) ? Array.from(usageMap.get(c.id)!) : [];
-          const hasUsage = measureIds.length > 0;
+          // Reset all components' usage, rebuild from usageMap
+          // Do NOT auto-archive - only update usage counts
+          const now = new Date().toISOString();
+          const updatedComponents = state.components.map((c) => {
+            const measureIds = usageMap.has(c.id) ? Array.from(usageMap.get(c.id)!) : [];
+            const hasUsage = measureIds.length > 0;
 
-          // Auto-archive if no usage (and not already archived)
-          // Un-archive if it gained usage (restore to approved or draft)
-          let newStatus = c.versionInfo.status;
-          if (!hasUsage && c.versionInfo.status !== 'archived') {
-            newStatus = 'archived';
-          } else if (hasUsage && c.versionInfo.status === 'archived') {
-            // Restore: find the last non-archived status from history, default to 'approved'
-            const lastNonArchived = [...c.versionInfo.versionHistory]
-              .reverse()
-              .find((v) => v.status !== 'archived');
-            newStatus = lastNonArchived?.status || 'approved';
-          }
+            // ONLY un-archive if it gained usage (restore from archived state)
+            // Do NOT auto-archive components just because they have no usage
+            let newStatus = c.versionInfo.status;
+            if (hasUsage && c.versionInfo.status === 'archived') {
+              // Restore: find the last non-archived status from history, default to 'approved'
+              const lastNonArchived = [...c.versionInfo.versionHistory]
+                .reverse()
+                .find((v) => v.status !== 'archived');
+              newStatus = lastNonArchived?.status || 'approved';
+            }
 
-          return {
-            ...c,
-            usage: {
-              ...c.usage,
-              measureIds,
-              usageCount: measureIds.length,
-              lastUsedAt: hasUsage ? new Date().toISOString() : c.usage.lastUsedAt,
-            },
-            versionInfo: {
-              ...c.versionInfo,
-              status: newStatus,
-            },
-          } as LibraryComponent;
+            return {
+              ...c,
+              usage: {
+                ...c.usage,
+                measureIds,
+                usageCount: measureIds.length,
+                lastUsedAt: hasUsage ? now : c.usage.lastUsedAt,
+              },
+              versionInfo: {
+                ...c.versionInfo,
+                status: newStatus,
+              },
+            } as LibraryComponent;
+          });
+
+          return { components: updatedComponents };
         });
-
-        set({ components: updatedComponents });
       },
 
       // Rebuild usage index from scratch - measures are the single source of truth
       rebuildUsageIndex: (measures) => {
-        const state = get();
-
         // Helper to collect all data elements with their libraryComponentId from a criteria tree
         const collectLinkedElements = (node: LogicalClause | DataElement): Array<{ elementId: string; componentId: string }> => {
           if ('operator' in node && 'children' in node) {
@@ -915,40 +1055,42 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
           }
         }
 
-        // Reset all components' usage from the freshly computed map
+        // Use updater function to get CURRENT state and avoid race conditions
         const now = new Date().toISOString();
-        const updatedComponents = state.components.map((c) => {
-          const measureIds = usageMap.has(c.id) ? Array.from(usageMap.get(c.id)!) : [];
-          const hasUsage = measureIds.length > 0;
+        set((state) => {
+          // Map over CURRENT components, not a stale snapshot
+          const updatedComponents = state.components.map((c) => {
+            const measureIds = usageMap.has(c.id) ? Array.from(usageMap.get(c.id)!) : [];
+            const hasUsage = measureIds.length > 0;
 
-          // Auto-archive if no usage (and not already archived)
-          // Un-archive if it gained usage
-          let newStatus = c.versionInfo.status;
-          if (!hasUsage && c.versionInfo.status !== 'archived') {
-            newStatus = 'archived';
-          } else if (hasUsage && c.versionInfo.status === 'archived') {
-            const lastNonArchived = [...c.versionInfo.versionHistory]
-              .reverse()
-              .find((v) => v.status !== 'archived');
-            newStatus = lastNonArchived?.status || 'approved';
-          }
+            // ONLY update usage counts - do NOT auto-archive components
+            // Components should only be archived through explicit user action or merge
+            // Un-archive if it gained usage (restore from archived state)
+            let newStatus = c.versionInfo.status;
+            if (hasUsage && c.versionInfo.status === 'archived') {
+              const lastNonArchived = [...c.versionInfo.versionHistory]
+                .reverse()
+                .find((v) => v.status !== 'archived');
+              newStatus = lastNonArchived?.status || 'approved';
+            }
 
-          return {
-            ...c,
-            usage: {
-              ...c.usage,
-              measureIds,
-              usageCount: measureIds.length,
-              lastUsedAt: hasUsage ? now : c.usage.lastUsedAt,
-            },
-            versionInfo: {
-              ...c.versionInfo,
-              status: newStatus,
-            },
-          } as LibraryComponent;
+            return {
+              ...c,
+              usage: {
+                ...c.usage,
+                measureIds,
+                usageCount: measureIds.length,
+                lastUsedAt: hasUsage ? now : c.usage.lastUsedAt,
+              },
+              versionInfo: {
+                ...c.versionInfo,
+                status: newStatus,
+              },
+            } as LibraryComponent;
+          });
+
+          return { components: updatedComponents };
         });
-
-        set({ components: updatedComponents });
       },
 
       // Update all measure DataElements that reference archived components to point to the new merged component
@@ -1320,5 +1462,18 @@ export const useComponentLibraryStore = create<ComponentLibraryState>()(
         }
         return counts as Record<ComponentCategory, number>;
       },
-    })
+    }; // Close return object
+  } // Close function body
 );
+
+// TEMPORARY: Detect component wipes with stack traces
+if (typeof window !== 'undefined') {
+  useComponentLibraryStore.subscribe((state, prevState) => {
+    if (prevState.components.length > 0 && state.components.length < prevState.components.length) {
+      console.error(
+        `[COMPONENT WIPE] ${prevState.components.length} → ${state.components.length}`,
+        new Error().stack
+      );
+    }
+  });
+}

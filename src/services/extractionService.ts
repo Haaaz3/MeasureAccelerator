@@ -16,6 +16,8 @@ import type {
   ReviewStatus,
   MeasureMetadata,
 } from '../types/ums';
+import { parseHtmlSpec, type HtmlSpecParseResult } from './htmlSpecParser';
+import type { CqlParseResult } from './cqlParser';
 
 // ============================================================================
 // Types
@@ -77,11 +79,18 @@ interface ExtractedCriteria {
   children?: (ExtractedCriterion | ExtractedCriteria)[];
 }
 
+interface ExtractedCode {
+  code: string;
+  display?: string;
+  system?: string;
+}
+
 interface ExtractedCriterion {
   type?: string;
   dataType?: string;
   description: string;
-  valueSet?: { oid?: string; name?: string };
+  valueSet?: { oid?: string; name?: string; codes?: ExtractedCode[] };
+  directCodes?: ExtractedCode[];
   timing?: {
     type: string;
     period?: string;
@@ -95,6 +104,8 @@ interface ExtractedValueSet {
   name: string;
   purpose?: string;
   version?: string;
+  codeSystem?: string;
+  codes?: ExtractedCode[];
 }
 
 interface LlmResponse {
@@ -147,6 +158,7 @@ Extract the following information in valid JSON format:
             "type": "dataElement|reference|logicalClause",
             "dataType": "Condition|Procedure|Encounter|Observation|MedicationRequest|etc.",
             "valueSet": { "oid": "2.16.840.1...", "name": "Value Set Name" },
+            "directCodes": [{ "code": "E11.9", "display": "Type 2 diabetes", "system": "ICD10" }],
             "timing": { "type": "during|before|after|within", "period": "measurement_period|custom", "offset": "90 days", "offsetUnit": "days" },
             "description": "Description of this criterion"
           }
@@ -158,7 +170,12 @@ Extract the following information in valid JSON format:
     {
       "oid": "2.16.840.1.xxx",
       "name": "Value Set Name",
-      "purpose": "What this value set represents"
+      "purpose": "What this value set represents",
+      "codeSystem": "Primary code system (ICD10, SNOMED, CPT, LOINC, CVX, RxNorm)",
+      "codes": [
+        { "code": "E11.9", "display": "Type 2 diabetes mellitus", "system": "ICD10" },
+        { "code": "44054006", "display": "Type 2 diabetes mellitus", "system": "SNOMED" }
+      ]
     }
   ]
 }
@@ -172,6 +189,9 @@ Important guidelines:
 6. For age constraints, identify the calculation method (at start, at end, or during period)
 7. Preserve the logical structure (AND/OR groupings) of criteria
 8. Each data element in children MUST have: dataType (FHIR resource type), description (what this criterion checks for), and valueSet if applicable
+9. CRITICAL - EXTRACT CODES: For each value set, extract ALL individual codes found in the document (look in CQL valueset declarations, XML, tables, appendices). Include code, display name, and system (ICD10, SNOMED, CPT, LOINC, CVX, RxNorm, HCPCS).
+10. Look for CQL "valueset" declarations like: valueset "DTaP Vaccine": 'urn:oid:2.16.840.1...' and "code" declarations like: code "Disorder Name": '12345' from "SNOMEDCT"
+11. For directCodes in criteria, extract individual codes that are NOT part of a value set but are directly referenced
 
 Return ONLY the JSON object, no additional text or markdown.`;
 
@@ -280,6 +300,8 @@ export async function extractMeasure(
 
     // Debug: Log extracted data
     console.log('[extractMeasure] Raw LLM response:', fullResult.content.substring(0, 500));
+    console.log('[EXTRACT-RAW] First population first criterion:',
+      JSON.stringify(extractedData?.populations?.[0]?.criteria?.children?.[0], null, 2));
     console.log('[extractMeasure] Extracted populations:', extractedData.populations?.map(p => ({
       type: p.type,
       hasCriteria: !!p.criteria,
@@ -293,7 +315,87 @@ export async function extractMeasure(
 
     const ums = convertToUMS(extractedData);
 
-    onProgress?.('complete', 'Extraction complete');
+    // Debug: Log first UMS data element
+    console.log('=== POST-EXTRACT-UMS REACHED ===');
+    console.log('[EXTRACT-UMS] First population first data element:',
+      JSON.stringify(ums?.populations?.[0]?.criteria?.children?.[0], null, 2));
+
+    // Count DataElements with value sets for verification
+    try {
+      let vsCount = 0;
+      function countVs(node: any): void {
+        if (!node) return;
+        if (node.valueSet?.oid || node.valueSet?.name) vsCount++;
+        if (node.children) node.children.forEach(countVs);
+      }
+      for (const pop of (ums?.populations || [])) {
+        if (pop.criteria) countVs(pop.criteria);
+      }
+      console.log('[extractMeasure] FINAL: UMS has', vsCount, 'DataElements with value sets out of', (ums?.populations || []).length, 'populations');
+    } catch (crashErr) {
+      console.error('💥💥💥 CRASH AFTER [EXTRACT-UMS] 💥💥💥');
+      console.error('💥 Error:', crashErr);
+      console.error('💥 Message:', crashErr instanceof Error ? crashErr.message : String(crashErr));
+      console.error('💥 Stack:', crashErr instanceof Error ? crashErr.stack : 'no stack');
+    }
+
+    try { console.log('=== LINE AFTER VSCOUNT TRY/CATCH ==='); } catch(e) { console.error('CRASH after vsCount:', e); }
+
+    // Phase 4: Enrich DataElements with HTML and CQL parsing
+    // This extracts real OIDs, codes, and mappings from the source document
+    onProgress?.('enriching', 'Enriching data elements with codes and value sets...');
+    try {
+      console.log('[extractMeasure] Starting enrichment phase');
+
+      // Parse HTML specification to extract value sets and data element mappings
+      const htmlParsed = parseHtmlSpec(documentText);
+      console.log('[extractMeasure] HTML parsing complete:', {
+        valueSets: htmlParsed.valueSets.length,
+        codes: htmlParsed.codes.length,
+        mappings: htmlParsed.dataElementMappings.length,
+      });
+
+      // Parse CQL to extract value set declarations and code definitions
+      const { parseCqlFromDocument, normalizeCodeSystem } = await import('./cqlParser');
+      const cqlParsed = parseCqlFromDocument(documentText);
+      console.log('[extractMeasure] CQL parsing complete:', {
+        valueSets: cqlParsed.valueSets.length,
+        codes: cqlParsed.codes.length,
+      });
+
+      // Enrich DataElements with HTML-parsed data FIRST
+      // HTML enrichment replaces placeholder OIDs with real OIDs from the spec
+      enrichDataElementsWithHtmlSpec(ums, htmlParsed);
+
+      // THEN enrich with CQL-parsed data (can now match on real OIDs)
+      enrichDataElementsWithCqlCodes(ums, cqlParsed, normalizeCodeSystem);
+
+      // Count enriched DataElements
+      let enrichedCount = 0;
+      function countEnriched(node: any): void {
+        if (!node) return;
+        if (node.valueSet?.oid && /^\d+\.\d+/.test(node.valueSet.oid)) enrichedCount++;
+        if (node.children) node.children.forEach(countEnriched);
+      }
+      for (const pop of (ums?.populations || [])) {
+        if (pop.criteria) countEnriched(pop.criteria);
+      }
+      console.log('[extractMeasure] After enrichment:', enrichedCount, 'DataElements have real OIDs');
+
+    } catch (enrichErr) {
+      console.error('[extractMeasure] Enrichment error (continuing anyway):', enrichErr);
+      // Continue without enrichment - we still have the LLM-extracted data
+    }
+
+    try {
+      console.log('=== BEFORE onProgress ===');
+      onProgress?.('complete', 'Extraction complete');
+      console.log('=== AFTER onProgress ===');
+    } catch(e) {
+      console.error('=== onProgress CRASHED ===', e);
+    }
+
+    try { console.log('=== BEFORE RETURN ==='); } catch(e) { console.error('CRASH before return:', e); }
 
     return {
       success: true,
@@ -303,7 +405,10 @@ export async function extractMeasure(
       tokensUsed: (skeletonResult.tokensUsed || 0) + (fullResult.tokensUsed || 0),
     };
   } catch (error) {
-    console.error('Extraction error:', error);
+    console.error('💥💥💥 OUTER CATCH in extractMeasure 💥💥💥');
+    console.error('💥 Extraction error:', error);
+    console.error('💥 Message:', error instanceof Error ? error.message : String(error));
+    console.error('💥 Stack:', error instanceof Error ? error.stack : 'no stack');
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Extraction failed',
@@ -569,14 +674,18 @@ function convertToUMS(extractedData: ExtractedData): UniversalMeasureSpec {
     }
   }
 
-  // Build value sets array
+  // Build value sets array - preserve codes from LLM extraction
   const valueSets: ValueSetReference[] = (extractedData.valueSets || []).map((vs, idx) => ({
     id: `vs-${uniqueId()}`,
     oid: vs.oid || '',
     name: vs.name || 'Unnamed Value Set',
     purpose: vs.purpose || '',
     version: vs.version || '',
-    codes: [],
+    codes: (vs.codes || []).map(c => ({
+      code: c.code,
+      display: c.display || '',
+      system: c.system || '',
+    })),
   }));
 
   return {
@@ -624,12 +733,17 @@ function convertToUMS(extractedData: ExtractedData): UniversalMeasureSpec {
 /**
  * Convert extracted criteria to UMS LogicalClause format.
  */
+let convertCriteriaDepth = 0;
 function convertCriteria(criteria?: ExtractedCriteria): LogicalClause {
+  convertCriteriaDepth++;
+  console.log('[convertCriteria] ENTER depth=' + convertCriteriaDepth);
+
   // Helper to generate truly unique IDs
   const uniqueId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   if (!criteria) {
     console.log('[convertCriteria] No criteria provided, returning empty clause');
+    convertCriteriaDepth--;
     return {
       id: `clause-${uniqueId()}`,
       operator: 'AND',
@@ -668,19 +782,40 @@ function convertCriteria(criteria?: ExtractedCriteria): LogicalClause {
         reviewStatus: 'pending' as ReviewStatus,
       };
 
-      if (criterion.valueSet) {
+      if (criterion.valueSet && (criterion.valueSet.oid || criterion.valueSet.name)) {
         dataElement.valueSet = {
           id: `vs-${uniqueId()}`,
           oid: criterion.valueSet.oid || '',
           name: criterion.valueSet.name || '',
-          codes: [],
+          // Preserve codes from LLM extraction
+          codes: (criterion.valueSet.codes || []).map(c => ({
+            code: c.code,
+            display: c.display || '',
+            system: c.system || '',
+          })),
+          confidence: 'medium' as ConfidenceLevel,
         };
+        // DTaP trace logging
+        if (criterion.description?.includes('DTaP') || criterion.valueSet?.name?.includes('DTaP')) {
+          console.log('[TRACE-DTaP] Criterion:', JSON.stringify({ desc: criterion.description?.substring(0, 40), vsOid: criterion.valueSet.oid, vsName: criterion.valueSet.name }));
+          console.log('[TRACE-DTaP] DataElement:', JSON.stringify({ id: dataElement.id, desc: dataElement.description?.substring(0, 40), vsOid: dataElement.valueSet?.oid, vsName: dataElement.valueSet?.name }));
+        }
+      }
+
+      // Handle directCodes (codes not part of a value set)
+      if (criterion.directCodes && criterion.directCodes.length > 0) {
+        dataElement.directCodes = criterion.directCodes.map(c => ({
+          code: c.code,
+          display: c.display || '',
+          system: c.system || '',
+        }));
       }
 
       return dataElement;
     });
   }
 
+  convertCriteriaDepth--;
   return clause;
 }
 
@@ -839,6 +974,300 @@ export async function extractTextFromFiles(files: File[]): Promise<string> {
   }
 
   return textParts.join('\n\n');
+}
+
+// ============================================================================
+// Enrichment Functions
+// These enrich DataElements with real OIDs, codes, and mappings from HTML/CQL
+// ============================================================================
+
+/**
+ * Enrich UMS DataElements with HTML-parsed value sets and data element mappings.
+ * This replaces placeholder OIDs with real OIDs from the specification.
+ */
+export function enrichDataElementsWithHtmlSpec(
+  ums: UniversalMeasureSpec,
+  htmlResult: HtmlSpecParseResult
+): void {
+  // Build lookup maps
+  const vsNameToOid = new Map<string, string>();
+  const oidToVsName = new Map<string, string>();
+  for (const vs of htmlResult.valueSets) {
+    vsNameToOid.set(vs.name.toLowerCase(), vs.oid);
+    oidToVsName.set(vs.oid, vs.name);
+  }
+
+  // Build data element mapping index
+  const descriptionToMapping = new Map<string, typeof htmlResult.dataElementMappings[0]>();
+  for (const mapping of htmlResult.dataElementMappings) {
+    descriptionToMapping.set(mapping.fullDescription.toLowerCase(), mapping);
+    descriptionToMapping.set(mapping.description.toLowerCase(), mapping);
+  }
+
+  // Build a map of value set names to associated codes
+  // We match codes to value sets based on description similarity
+  const vsNameToCodes = new Map<string, Array<{ code: string; display: string; system: string }>>();
+  for (const vs of htmlResult.valueSets) {
+    const vsNameLower = vs.name.toLowerCase();
+    const matchingCodes: Array<{ code: string; display: string; system: string }> = [];
+
+    for (const code of htmlResult.codes) {
+      const codeDisplayLower = code.display.toLowerCase();
+      // Match if code display contains key words from value set name or vice versa
+      // Split VS name into significant words (3+ chars)
+      const vsWords = vsNameLower.split(/\s+/).filter(w => w.length >= 3);
+      const codeWords = codeDisplayLower.split(/\s+/).filter(w => w.length >= 3);
+
+      // Check for word overlap (at least 2 matching words or name contains key phrase)
+      const matchingWords = vsWords.filter(vw =>
+        codeWords.some(cw => cw.includes(vw) || vw.includes(cw))
+      );
+
+      if (matchingWords.length >= 2 ||
+          codeDisplayLower.includes(vsNameLower) ||
+          vsNameLower.includes(codeDisplayLower.split('(')[0].trim())) {
+        matchingCodes.push({
+          code: code.code,
+          display: code.display,
+          system: code.system,
+        });
+      }
+    }
+
+    if (matchingCodes.length > 0) {
+      vsNameToCodes.set(vsNameLower, matchingCodes);
+      console.log(`[enrichHtml] Matched ${matchingCodes.length} codes to value set "${vs.name}"`);
+    }
+  }
+
+  let enrichedCount = 0;
+  let oidsAttached = 0;
+  let codesAttached = 0;
+
+  function isDataElement(node: DataElement | LogicalClause): node is DataElement {
+    return 'type' in node && !('children' in node);
+  }
+
+  // Helper: check if an OID looks like a real OID (starts with digit and has dots)
+  const isRealOid = (oid: string) => /^\d+\.\d+/.test(oid);
+
+  // Helper: attach codes to a DataElement's valueSet if it doesn't already have codes
+  function attachCodesToValueSet(elem: DataElement): void {
+    if (!elem.valueSet?.name) return;
+    if (elem.valueSet.codes && elem.valueSet.codes.length > 0) return; // Already has codes
+
+    const vsNameLower = elem.valueSet.name.toLowerCase();
+    const matchedCodes = vsNameToCodes.get(vsNameLower);
+
+    if (matchedCodes && matchedCodes.length > 0) {
+      elem.valueSet.codes = matchedCodes.map(c => ({
+        code: c.code,
+        display: c.display,
+        system: c.system as any,
+      }));
+      codesAttached += matchedCodes.length;
+      console.log(`[enrichHtml] Attached ${matchedCodes.length} codes to "${elem.valueSet.name}"`);
+    }
+  }
+
+  function walkAndEnrich(node: DataElement | LogicalClause): void {
+    if (!node) return;
+
+    if (isDataElement(node)) {
+      const elem = node;
+      const desc = (elem.description || '').toLowerCase().trim();
+      const vsName = (elem.valueSet?.name || '').toLowerCase().trim();
+
+      // Strategy 1: Match by description against Data Criteria mappings
+      let mapping = descriptionToMapping.get(desc);
+      if (!mapping && vsName) {
+        mapping = descriptionToMapping.get(vsName);
+      }
+      // Try partial matching
+      if (!mapping) {
+        for (const [key, m] of descriptionToMapping.entries()) {
+          if (desc && (key.includes(desc) || desc.includes(key))) {
+            mapping = m;
+            break;
+          }
+        }
+      }
+
+      if (mapping) {
+        if (mapping.valueSetOid) {
+          if (!elem.valueSet) {
+            (elem as any).valueSet = { id: '', oid: '', name: '', codes: [], confidence: 'medium' };
+          }
+          if (!elem.valueSet!.oid || !isRealOid(elem.valueSet!.oid)) {
+            elem.valueSet!.oid = mapping.valueSetOid;
+            oidsAttached++;
+          }
+          if (!elem.valueSet!.name || elem.valueSet!.name === '') {
+            elem.valueSet!.name = mapping.valueSetName || oidToVsName.get(mapping.valueSetOid) || '';
+          }
+        }
+
+        // Attach direct code from mapping
+        if (mapping.directCode && (!elem.directCodes || elem.directCodes.length === 0)) {
+          elem.directCodes = [{
+            code: mapping.directCode,
+            display: mapping.directCodeDisplay || mapping.description,
+            system: (mapping.directCodeSystem as any) || 'SNOMED',
+          }];
+        }
+      }
+
+      // Strategy 2: If element has a value set name, look up its OID from HTML
+      if (elem.valueSet?.name) {
+        const realOid = vsNameToOid.get(elem.valueSet.name.toLowerCase());
+        if (realOid) {
+          const currentOid = elem.valueSet.oid || '';
+          if (!currentOid || !isRealOid(currentOid)) {
+            console.log(`[enrichHtml] Replacing OID for ${elem.valueSet.name}: "${currentOid}" → "${realOid}"`);
+            elem.valueSet.oid = realOid;
+            oidsAttached++;
+          }
+        }
+      }
+
+      // Strategy 3: If element has a value set OID, look up its name from HTML
+      if (elem.valueSet?.oid && (!elem.valueSet?.name || elem.valueSet.name === '')) {
+        const name = oidToVsName.get(elem.valueSet.oid);
+        if (name) {
+          elem.valueSet.name = name;
+          enrichedCount++;
+        }
+      }
+
+      // Strategy 4: Attach codes to the DataElement's valueSet from parsed HTML codes
+      // This populates valueSet.codes based on name matching
+      attachCodesToValueSet(elem);
+
+      if (mapping || (elem.valueSet?.oid && isRealOid(elem.valueSet.oid))) enrichedCount++;
+    } else {
+      // LogicalClause — recurse into children
+      const clause = node as LogicalClause;
+      if (clause.children) clause.children.forEach(walkAndEnrich);
+    }
+  }
+
+  // Walk all populations
+  for (const pop of ums.populations || []) {
+    if (pop.criteria) walkAndEnrich(pop.criteria);
+  }
+
+  // Also add HTML-parsed value sets to the UMS valueSets array
+  // Include any matched codes for each value set
+  const existingOids = new Set((ums.valueSets || []).map(vs => vs.oid));
+  for (const htmlVs of htmlResult.valueSets) {
+    if (!existingOids.has(htmlVs.oid)) {
+      if (!ums.valueSets) ums.valueSets = [];
+      const matchedCodes = vsNameToCodes.get(htmlVs.name.toLowerCase()) || [];
+      ums.valueSets.push({
+        id: `vs-html-${htmlVs.oid.replace(/\./g, '-')}`,
+        oid: htmlVs.oid,
+        name: htmlVs.name,
+        purpose: '',
+        version: '',
+        codes: matchedCodes.map(c => ({
+          code: c.code,
+          display: c.display,
+          system: c.system as any,
+        })),
+        confidence: 'high',
+        verified: true,
+      });
+    }
+  }
+
+  console.log(`[enrichDataElementsWithHtmlSpec] Enriched ${enrichedCount} DataElements, ${oidsAttached} OIDs attached, ${codesAttached} codes attached`);
+}
+
+/**
+ * Enrich UMS DataElements with CQL-parsed value sets and codes.
+ * Fills in missing OIDs/names from CQL valueset declarations.
+ */
+export function enrichDataElementsWithCqlCodes(
+  ums: UniversalMeasureSpec,
+  cqlResult: CqlParseResult,
+  normalizeCodeSystem: (s: string) => string
+): void {
+  // Build OID -> valueset lookup
+  const oidToVs = new Map<string, typeof cqlResult.valueSets[0]>();
+  const nameToVs = new Map<string, typeof cqlResult.valueSets[0]>();
+  for (const vs of cqlResult.valueSets) {
+    oidToVs.set(vs.oid, vs);
+    nameToVs.set(vs.name.toLowerCase(), vs);
+  }
+
+  let enrichedCount = 0;
+  let codesAttached = 0;
+
+  // Helper: check if an OID looks like a real OID
+  const isRealOid = (oid: string) => /^\d+\.\d+/.test(oid);
+
+  function walkAndEnrich(node: DataElement | LogicalClause): void {
+    if (!node) return;
+
+    if ('type' in node && !('children' in node)) {
+      // DataElement
+      const elem = node as DataElement;
+
+      // 1. If DataElement has valueSet with OID, try to fill in name from CQL
+      if (elem.valueSet?.oid && isRealOid(elem.valueSet.oid)) {
+        const cqlVs = oidToVs.get(elem.valueSet.oid);
+        if (cqlVs) {
+          if (!elem.valueSet.name || elem.valueSet.name === '') {
+            elem.valueSet.name = cqlVs.name;
+            enrichedCount++;
+          }
+          elem.valueSet.version = elem.valueSet.version || cqlVs.version;
+        }
+      }
+
+      // 2. If DataElement has valueSet with name, try to fill in/replace OID from CQL
+      if (elem.valueSet?.name) {
+        const cqlVs = nameToVs.get(elem.valueSet.name.toLowerCase());
+        if (cqlVs) {
+          const currentOid = elem.valueSet.oid || '';
+          if (!currentOid || !isRealOid(currentOid)) {
+            console.log(`[enrichCql] Replacing OID for ${elem.valueSet.name}: "${currentOid}" → "${cqlVs.oid}"`);
+            elem.valueSet.oid = cqlVs.oid;
+            elem.valueSet.version = elem.valueSet.version || cqlVs.version;
+            enrichedCount++;
+          }
+        }
+      }
+
+      // 3. Try to match CQL codes to DataElement by description
+      if (!elem.directCodes || elem.directCodes.length === 0) {
+        const descLower = (elem.description || '').toLowerCase();
+        for (const cqlCode of cqlResult.codes) {
+          const codeNameLower = cqlCode.name.toLowerCase();
+          if (descLower.includes(codeNameLower) || codeNameLower.includes(descLower.split(' ').slice(0, 3).join(' '))) {
+            elem.directCodes = [{
+              code: cqlCode.code,
+              display: cqlCode.name,
+              system: normalizeCodeSystem(cqlCode.system),
+            }];
+            codesAttached++;
+            break;
+          }
+        }
+      }
+    } else {
+      // LogicalClause — recurse
+      const clause = node as LogicalClause;
+      if (clause.children) clause.children.forEach(walkAndEnrich);
+    }
+  }
+
+  // Walk all populations
+  for (const pop of ums.populations || []) {
+    if (pop.criteria) walkAndEnrich(pop.criteria);
+  }
+
+  console.log('[enrichDataElementsWithCqlCodes] Enriched', enrichedCount, 'DataElements,', codesAttached, 'codes attached');
 }
 
 export default {

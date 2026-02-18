@@ -588,11 +588,20 @@ function AtomicDetails({ component }: { component: AtomicComponent }) {
   const [showAllCodes, setShowAllCodes] = useState<Record<number, boolean>>({});
 
   // Support multiple value sets - use valueSets array if available, otherwise fall back to single valueSet
-  const allValueSets = component.valueSets || [component.valueSet];
+  // IMPORTANT: If valueSets exists but has no codes, check if valueSet (singular) has codes and use those
+  let allValueSets = component.valueSets || [component.valueSet];
+
+  // Check if allValueSets has any codes - if not, try falling back to component.valueSet
+  const totalCodesInValueSets = allValueSets.reduce((sum, vs) => sum + (vs?.codes?.length || 0), 0);
+  if (totalCodesInValueSets === 0 && component.valueSet?.codes?.length) {
+    // valueSets has no codes but valueSet does - use valueSet instead
+    allValueSets = [component.valueSet];
+  }
+
   const hasMultipleValueSets = allValueSets.length > 1;
 
   // Calculate total codes across all value sets
-  const totalCodes = allValueSets.reduce((sum, vs) => sum + (vs.codes?.length || 0), 0);
+  const totalCodes = allValueSets.reduce((sum, vs) => sum + (vs?.codes?.length || 0), 0);
 
   return (
     <div className="space-y-4">

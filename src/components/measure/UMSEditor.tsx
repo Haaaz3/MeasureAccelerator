@@ -548,7 +548,9 @@ export function UMSEditor() {
       // Rebuild usage index from all actual measures
       rebuildUsageIndex(measures);
     }
-  }, [measure?.id, measures.length]);
+    // Only re-run when the SPECIFIC measure changes, not when measures array length changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [measure?.id]);
 
   // Force re-render when measures change (for progress bar)
   const [, forceUpdate] = useState({});
@@ -1629,6 +1631,7 @@ function PopulationSection({
           <p className="text-sm text-[var(--text-muted)] ml-7">{population.narrative}</p>
 
           {/* Criteria tree */}
+          {console.log(`[PopulationSection] ${population.type} criteria has ${population.criteria?.children?.length || 0} children`)}
           {population.criteria && (
             <CriteriaNode
               node={population.criteria}
@@ -1745,8 +1748,12 @@ function CriteriaNode({
   const canMoveUp = index > 0;
   const canMoveDown = index < totalSiblings - 1;
 
+  // DEBUG: Log what we're rendering
+  console.log(`[CriteriaNode] Rendering node: isClause=${isClause}, id=${node.id}, depth=${depth}`);
+
   if (isClause) {
     const clause = node as LogicalClause;
+    console.log(`[CriteriaNode] Clause has ${clause.children?.length || 0} children`);
     return (
       <div className="ml-7 space-y-2">
         {/* Clause header - description only, no operator badge (operators only appear between siblings) */}
@@ -1786,6 +1793,8 @@ function CriteriaNode({
             </div>
           )}
         </div>
+        {/* DEBUG: Log children count */}
+        {console.log(`[CriteriaNode] Rendering clause "${clause.description?.substring(0, 30)}" with ${clause.children?.length || 0} children`, clause.children?.map(c => c.id))}
         {clause.children.map((child, idx) => {
           const siblingOp = idx > 0 ? getOperatorBetween(clause, idx - 1, idx) : clause.operator;
           const isOverride = idx > 0 && siblingOp !== clause.operator;
