@@ -8,7 +8,7 @@
  * - Integrates with component library and UMS editor
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Code2,
   Edit3,
@@ -19,7 +19,11 @@ import {
   Lock,
   Copy,
   Check,
+  CheckCircle,
+  XCircle,
+  GitCompare,
 } from 'lucide-react';
+import { diffLines, type Change } from 'diff';
 
 import type { DataElement } from '../../types/ums';
 import type {
@@ -36,6 +40,7 @@ import {
 
 import { generateComponentCode } from '../../services/componentCodeGenerator';
 import { useComponentCodeStore, getStoreKey } from '../../stores/componentCodeStore';
+import { validateCQLSyntax, type CQLValidationResult } from '../../services/cqlValidator';
 
 // ============================================================================
 // Sub-Components
@@ -234,6 +239,14 @@ export const ComponentCodeViewer = ({
   const [noteContent, setNoteContent] = useState('');
   const [copied, setCopied] = useState(false);
 
+  // CQL syntax validation state
+  const [syntaxValidation, setSyntaxValidation] = useState<CQLValidationResult | null>(null);
+  const [showSyntaxWarnings, setShowSyntaxWarnings] = useState(false);
+  const syntaxCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Diff view state
+  const [showDiff, setShowDiff] = useState(false);
+
   // Compound store key for measure-scoped isolation
   const storeKey = getStoreKey(measureId, element.id);
 
@@ -254,12 +267,47 @@ export const ComponentCodeViewer = ({
     return getAllNotesForComponent(codeState.overrides);
   }, [codeState.overrides]);
 
+  // Compute diff when override is active
+  const diffResult = useMemo(() => {
+    if (!currentOverride?.isLocked || !currentOverride.originalGeneratedCode) {
+      return null;
+    }
+    return diffLines(currentOverride.originalGeneratedCode, currentOverride.code);
+  }, [currentOverride]);
+
   // Initialize edited code when entering edit mode
   useEffect(() => {
     if (isEditing) {
       setEditedCode(currentOverride?.code || generatedResult.code);
+      setSyntaxValidation(null);
+      setShowSyntaxWarnings(false);
     }
   }, [isEditing]);
+
+  // Debounced syntax validation as user types (for CQL only)
+  useEffect(() => {
+    if (!isEditing || codeState.selectedFormat !== 'cql') {
+      setSyntaxValidation(null);
+      return;
+    }
+
+    // Clear previous timeout
+    if (syntaxCheckTimeoutRef.current) {
+      clearTimeout(syntaxCheckTimeoutRef.current);
+    }
+
+    // Debounce: validate after 800ms of no typing
+    syntaxCheckTimeoutRef.current = setTimeout(() => {
+      const result = validateCQLSyntax(editedCode);
+      setSyntaxValidation(result);
+    }, 800);
+
+    return () => {
+      if (syntaxCheckTimeoutRef.current) {
+        clearTimeout(syntaxCheckTimeoutRef.current);
+      }
+    };
+  }, [editedCode, isEditing, codeState.selectedFormat]);
 
   const handleFormatChange = (format: CodeOutputFormat) => {
     onCodeStateChange({
@@ -283,6 +331,27 @@ export const ComponentCodeViewer = ({
   const handleSaveCode = () => {
     if (noteContent.trim().length < 10) return;
 
+    // For CQL, check syntax before saving
+    if (codeState.selectedFormat === 'cql') {
+      const syntaxCheck = validateCQLSyntax(editedCode);
+      if (!syntaxCheck.valid && syntaxCheck.errors.length > 0) {
+        // Show warnings and require explicit acknowledgement
+        setSyntaxValidation(syntaxCheck);
+        setShowSyntaxWarnings(true);
+        return;
+      }
+    }
+
+    // Proceed with save
+    performSave();
+  };
+
+  const handleSaveAnyway = () => {
+    // User acknowledged warnings, proceed with save
+    performSave();
+  };
+
+  const performSave = () => {
     // CRITICAL: Use compound storeKey (measureId::elementId) for isolation
     // This ensures overrides are scoped to the specific measure
     const store = useComponentCodeStore.getState();
@@ -298,6 +367,8 @@ export const ComponentCodeViewer = ({
     setIsEditing(false);
     setEditedCode('');
     setNoteContent('');
+    setSyntaxValidation(null);
+    setShowSyntaxWarnings(false);
   };
 
   const handleRevertToGenerated = () => {
@@ -362,6 +433,59 @@ export const ComponentCodeViewer = ({
         </div>
       )}
 
+      {/* Syntax Indicator (when editing CQL) */}
+      {isEditing && codeState.selectedFormat === 'cql' && (
+        <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-2">
+          {syntaxValidation === null ? (
+            <span className="flex items-center gap-1.5 text-xs text-[var(--text-dim)]">
+              Checking syntax...
+            </span>
+          ) : syntaxValidation.valid ? (
+            <span className="flex items-center gap-1.5 text-xs text-green-500">
+              <CheckCircle size={14} />
+              Valid CQL syntax
+            </span>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs text-amber-500">
+              <AlertTriangle size={14} />
+              {syntaxValidation.errors.length} syntax issue{syntaxValidation.errors.length !== 1 ? 's' : ''} found
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Diff View Toggle (only when override is active) */}
+      {!isEditing && currentOverride?.isLocked && diffResult && (
+        <div className="px-4 py-2 border-b border-[var(--border)] flex items-center gap-4">
+          <button
+            onClick={() => setShowDiff(false)}
+            className={`
+              flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all
+              ${!showDiff
+                ? 'bg-[var(--primary)] text-white'
+                : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)]'
+              }
+            `}
+          >
+            <Code2 size={14} />
+            Code
+          </button>
+          <button
+            onClick={() => setShowDiff(true)}
+            className={`
+              flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all
+              ${showDiff
+                ? 'bg-[var(--primary)] text-white'
+                : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-tertiary)]'
+              }
+            `}
+          >
+            <GitCompare size={14} />
+            Diff
+          </button>
+        </div>
+      )}
+
       {/* Code Display */}
       <div className="relative">
         {isEditing ? (
@@ -375,6 +499,47 @@ export const ComponentCodeViewer = ({
             "
             spellCheck={false}
           />
+        ) : showDiff && diffResult ? (
+          /* Diff View */
+          <div className="p-4 font-mono text-sm bg-[var(--bg-secondary)] max-h-[400px] overflow-y-auto">
+            {/* Override notes above diff */}
+            {currentOverride?.notes && currentOverride.notes.length > 0 && (
+              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageSquare size={14} className="text-blue-400" />
+                  <span className="text-xs font-medium text-blue-400">Override Notes</span>
+                </div>
+                <div className="space-y-1">
+                  {currentOverride.notes.map((note) => (
+                    <p key={note.id} className="text-xs text-blue-300">{note.content}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Diff output */}
+            {diffResult.map((part, index) => (
+              <div
+                key={index}
+                className={`
+                  ${part.added ? 'bg-green-500/20 text-green-400' : ''}
+                  ${part.removed ? 'bg-red-500/20 text-red-400' : ''}
+                  ${!part.added && !part.removed ? 'text-[var(--text-dim)]' : ''}
+                `}
+              >
+                {part.value.split('\n').map((line, lineIndex, lines) => (
+                  // Skip the last empty line from split
+                  lineIndex === lines.length - 1 && line === '' ? null : (
+                    <div key={lineIndex} className="flex">
+                      <span className="w-6 flex-shrink-0 text-right pr-2 opacity-50 select-none">
+                        {part.added ? '+' : part.removed ? '-' : ' '}
+                      </span>
+                      <span className="flex-1 whitespace-pre">{line}</span>
+                    </div>
+                  )
+                ))}
+              </div>
+            ))}
+          </div>
         ) : (
           <pre className="
             p-4 font-mono text-sm overflow-x-auto
@@ -385,8 +550,8 @@ export const ComponentCodeViewer = ({
           </pre>
         )}
 
-        {/* Copy button (when not editing) */}
-        {!isEditing && (
+        {/* Copy button (when not editing and not in diff view) */}
+        {!isEditing && !showDiff && (
           <button
             onClick={handleCopyCode}
             className="
@@ -405,12 +570,56 @@ export const ComponentCodeViewer = ({
       {/* Footer / Actions */}
       <div className="px-4 py-3 border-t border-[var(--border)]">
         {isEditing ? (
-          <NoteInput
-            value={noteContent}
-            onChange={setNoteContent}
-            onSubmit={handleSaveCode}
-            onCancel={handleCancelEditing}
-          />
+          <>
+            {/* Syntax Warnings Display */}
+            {showSyntaxWarnings && syntaxValidation && !syntaxValidation.valid && (
+              <div className="mb-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={16} className="text-amber-500" />
+                  <span className="text-sm font-medium text-amber-500">
+                    CQL Syntax Warnings ({syntaxValidation.errors.length})
+                  </span>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {syntaxValidation.errors.slice(0, 3).map((error, i) => (
+                    <div key={i} className="text-xs text-amber-500 flex items-start gap-1">
+                      <span className="flex-shrink-0">•</span>
+                      <span>
+                        {error.line && <span className="font-mono">Line {error.line}: </span>}
+                        {error.message}
+                      </span>
+                    </div>
+                  ))}
+                  {syntaxValidation.errors.length > 3 && (
+                    <div className="text-xs text-[var(--text-dim)]">
+                      ... and {syntaxValidation.errors.length - 3} more
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowSyntaxWarnings(false)}
+                    className="px-3 py-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)]"
+                  >
+                    Fix Issues
+                  </button>
+                  <button
+                    onClick={handleSaveAnyway}
+                    className="px-3 py-1.5 text-sm font-medium bg-amber-500 text-white rounded-lg hover:bg-amber-600"
+                  >
+                    Save Anyway
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <NoteInput
+              value={noteContent}
+              onChange={setNoteContent}
+              onSubmit={handleSaveCode}
+              onCancel={handleCancelEditing}
+            />
+          </>
         ) : (
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">

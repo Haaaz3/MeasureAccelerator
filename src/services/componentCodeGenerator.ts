@@ -103,19 +103,34 @@ function generateCQLForDataElement(
       return `exists ["Condition": ${vsRef}] C where C.prevalenceInterval() overlaps ${measurementPeriodRef}`;
 
     case 'encounter':
-      return `["Encounter": ${vsRef}] E where E.period during ${measurementPeriodRef}`;
+      return `["Encounter": ${vsRef}] E where E.period during ${measurementPeriodRef} and E.status = 'finished'`;
 
     case 'observation':
-      return `["Observation": ${vsRef}] O where O.effective.toInterval() ${timingClause}`;
+      return `["Observation": ${vsRef}] O where O.effective.toInterval() ${timingClause} and O.status in { 'final', 'amended', 'corrected' }`;
 
     case 'medication':
-      return `["MedicationRequest": ${vsRef}] M where M.authoredOn during ${measurementPeriodRef}`;
+      return `["MedicationRequest": ${vsRef}] M where M.authoredOn during ${measurementPeriodRef} and M.intent = 'order'`;
 
     case 'immunization':
       return `["Immunization": ${vsRef}] I where I.occurrence.toInterval() ${timingClause}`;
 
     case 'assessment':
-      return `["Observation": ${vsRef}] A where A.effective.toInterval() during ${measurementPeriodRef}`;
+      return `["Observation": ${vsRef}] A where A.effective.toInterval() during ${measurementPeriodRef} and A.status in { 'final', 'amended', 'corrected' }`;
+
+    case 'device':
+      return `["DeviceRequest": ${vsRef}] D where D.authoredOn during ${measurementPeriodRef}`;
+
+    case 'communication':
+      return `["Communication": ${vsRef}] C where C.sent during ${measurementPeriodRef}`;
+
+    case 'allergy':
+      if (element.negation) {
+        return `not exists ["AllergyIntolerance": ${vsRef}] A where A.recordedDate before end of ${measurementPeriodRef}`;
+      }
+      return `exists ["AllergyIntolerance": ${vsRef}] A where A.recordedDate before end of ${measurementPeriodRef}`;
+
+    case 'goal':
+      return `exists ["Goal": ${vsRef}] G where G.statusDate during ${measurementPeriodRef}`;
 
     case 'demographic':
       if (element.thresholds?.ageMin !== undefined || element.thresholds?.ageMax !== undefined) {
@@ -217,7 +232,8 @@ WHERE ${alias}.population_id = '${populationId}'
     SELECT 1 FROM valueset_codes VS
     WHERE VS.valueset_oid = '${vsOid}'
       AND VS.code = ${alias}.encounter_type_code
-  )`;
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'encounter_date') : ''}`;
 
     case 'observation':
       return `-- ${vsName}
@@ -230,6 +246,90 @@ WHERE ${alias}.population_id = '${populationId}'
       AND VS.code = ${alias}.result_code
   )
   ${dateClause ? dateClause.replace('effective_date', 'service_date') : ''}`;
+
+    case 'medication':
+      return `-- ${vsName}
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_medication ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.medication_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'prescribed_date') : ''}`;
+
+    case 'immunization':
+      return `-- ${vsName}
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_immunization ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.vaccine_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'administered_date') : ''}`;
+
+    case 'assessment':
+      return `-- ${vsName} (Assessment)
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_result ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.result_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'service_date') : ''}`;
+
+    case 'device':
+      return `-- ${vsName} (Device - placeholder table name)
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_device ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.device_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'ordered_date') : ''}`;
+
+    case 'communication':
+      return `-- ${vsName} (Communication - placeholder table name)
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_communication ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.communication_type_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'sent_date') : ''}`;
+
+    case 'allergy':
+      return `-- ${vsName}
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_allergy ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND ${element.negation ? 'NOT ' : ''}EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.allergy_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'recorded_date') : ''}`;
+
+    case 'goal':
+      return `-- ${vsName} (Goal - placeholder table name)
+SELECT DISTINCT ${alias}.empi_id
+FROM ph_f_goal ${alias}
+WHERE ${alias}.population_id = '${populationId}'
+  AND EXISTS (
+    SELECT 1 FROM valueset_codes VS
+    WHERE VS.valueset_oid = '${vsOid}'
+      AND VS.code = ${alias}.goal_type_code
+  )
+  ${dateClause ? dateClause.replace('effective_date', 'status_date') : ''}`;
 
     case 'demographic':
       if (element.thresholds?.ageMin !== undefined || element.thresholds?.ageMax !== undefined) {

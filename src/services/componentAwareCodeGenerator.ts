@@ -350,8 +350,18 @@ function composeClauseCode(
       const element = child as DataElement;
       const componentCode = getComponentCodeForElement(element, allComponents, measureId);
       codes.push(componentCode);
-      cqlParts.push(componentCode.cql);
-      sqlParts.push(componentCode.sql);
+
+      // PHASE 1A FIX: Add [CQL OVERRIDE] markers when using measure-scoped overrides
+      if (componentCode.isMeasureScopedOverride && componentCode.hasOverride) {
+        const notesComment = componentCode.overrideNotes?.length
+          ? `// Notes: ${componentCode.overrideNotes.join(' | ')}`
+          : '';
+        cqlParts.push(`// [CQL OVERRIDE] ${componentCode.elementId}\n${notesComment ? notesComment + '\n' : ''}${componentCode.cql}`);
+        sqlParts.push(`-- [SYNAPSE SQL OVERRIDE] ${componentCode.elementId}\n${notesComment ? notesComment.replace('//', '--') + '\n' : ''}${componentCode.sql}`);
+      } else {
+        cqlParts.push(componentCode.cql);
+        sqlParts.push(componentCode.sql);
+      }
     }
   }
 

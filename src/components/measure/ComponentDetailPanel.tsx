@@ -11,7 +11,7 @@
  * Used in the UMS Editor sidebar when a component is selected.
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X,
   Code2,
@@ -27,6 +27,9 @@ import {
   Check,
   AlertTriangle,
   Bookmark,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
 } from 'lucide-react';
 
 import type { DataElement, ValueSetReference, TimingConstraint, TimingWindow } from '../../types/ums';
@@ -36,6 +39,7 @@ import { ComponentCodeViewer } from './ComponentCodeViewer';
 import { TimingBadge, TimingEditorPanel, TimingWindowLabel, TimingWindowEditor } from './TimingEditor';
 import { useComponentCodeStore, getStoreKey } from '../../stores/componentCodeStore';
 import { formatNoteTimestamp, getAllNotesForComponent } from '../../types/componentCode';
+import { validateOID, type OIDValidationResult } from '../../services/oidValidator';
 
 // ============================================================================
 // Sub-Components
@@ -85,10 +89,22 @@ const ValueSetDisplay = ({
 }: ValueSetDisplayProps) => {
   const [showAllCodes, setShowAllCodes] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [oidValidation, setOidValidation] = useState<OIDValidationResult | null>(null);
+  const [showValidationDetails, setShowValidationDetails] = useState(false);
 
   const codes = valueSet.codes || [];
   const visibleCodes = showAllCodes ? codes : codes.slice(0, maxCodes);
   const hasMore = codes.length > maxCodes;
+
+  // Validate OID on mount/change
+  useEffect(() => {
+    if (valueSet.oid) {
+      const result = validateOID(valueSet.oid, valueSet.name);
+      setOidValidation(result);
+    } else {
+      setOidValidation(null);
+    }
+  }, [valueSet.oid, valueSet.name]);
 
   const handleCopyOid = async () => {
     if (valueSet.oid) {
@@ -107,16 +123,100 @@ const ValueSetDisplay = ({
             {valueSet.name}
           </h4>
           {valueSet.oid && (
-            <button
-              onClick={handleCopyOid}
-              className="
-                flex items-center gap-1 mt-1 text-xs text-[var(--text-dim)]
-                hover:text-[var(--text-muted)]
-              "
-            >
-              <span className="font-mono">{valueSet.oid}</span>
-              {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
-            </button>
+            <div className="flex items-center gap-2 mt-1">
+              <button
+                onClick={handleCopyOid}
+                className="
+                  flex items-center gap-1 text-xs text-[var(--text-dim)]
+                  hover:text-[var(--text-muted)]
+                "
+              >
+                <span className="font-mono">{valueSet.oid}</span>
+                {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+              </button>
+
+              {/* OID Validation Indicator */}
+              {oidValidation && (
+                <button
+                  onClick={() => setShowValidationDetails(!showValidationDetails)}
+                  className={`
+                    flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium
+                    ${oidValidation.valid && oidValidation.warnings.length === 0
+                      ? 'bg-green-500/10 text-green-500'
+                      : oidValidation.valid && oidValidation.warnings.length > 0
+                      ? 'bg-amber-500/10 text-amber-500'
+                      : 'bg-red-500/10 text-red-500'
+                    }
+                  `}
+                  title={oidValidation.valid ? 'Click for details' : 'Click to see validation errors'}
+                >
+                  {oidValidation.valid && oidValidation.warnings.length === 0 ? (
+                    <>
+                      <CheckCircle size={10} />
+                      Valid
+                    </>
+                  ) : oidValidation.valid && oidValidation.warnings.length > 0 ? (
+                    <>
+                      <AlertTriangle size={10} />
+                      Warnings
+                    </>
+                  ) : (
+                    <>
+                      <XCircle size={10} />
+                      Invalid
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* OID Validation Details */}
+          {showValidationDetails && oidValidation && (
+            <div className={`
+              mt-2 p-2 rounded-lg text-xs
+              ${oidValidation.valid
+                ? oidValidation.warnings.length > 0
+                  ? 'bg-amber-500/10 border border-amber-500/30'
+                  : 'bg-green-500/10 border border-green-500/30'
+                : 'bg-red-500/10 border border-red-500/30'
+              }
+            `}>
+              {/* Catalog match info */}
+              {oidValidation.catalogMatch && (
+                <div className="mb-2">
+                  <span className="text-green-500 font-medium">Catalog Match:</span>{' '}
+                  <span className="text-[var(--text)]">{oidValidation.catalogMatch.name}</span>
+                  {oidValidation.catalogMatch.steward && (
+                    <span className="text-[var(--text-dim)]"> ({oidValidation.catalogMatch.steward})</span>
+                  )}
+                </div>
+              )}
+
+              {/* Errors */}
+              {oidValidation.errors.length > 0 && (
+                <div className="space-y-1">
+                  {oidValidation.errors.map((error, i) => (
+                    <div key={i} className="flex items-start gap-1 text-red-400">
+                      <XCircle size={12} className="flex-shrink-0 mt-0.5" />
+                      <span>{error.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Warnings */}
+              {oidValidation.warnings.length > 0 && (
+                <div className="space-y-1 mt-1">
+                  {oidValidation.warnings.map((warning, i) => (
+                    <div key={i} className="flex items-start gap-1 text-amber-400">
+                      <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
+                      <span>{warning.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -276,6 +376,19 @@ export const ComponentDetailPanel = ({
   // Timing editor state
   const [isEditingTiming, setIsEditingTiming] = useState(false);
   const [isEditingTimingWindow, setIsEditingTimingWindow] = useState(false);
+
+  // Code regeneration key (increment to force re-render of code viewer)
+  const [codeRegenerationKey, setCodeRegenerationKey] = useState(0);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Handle code regeneration
+  const handleRegenerateCode = () => {
+    setIsRegenerating(true);
+    // Force ComponentCodeViewer to remount and regenerate by changing key
+    setCodeRegenerationKey(prev => prev + 1);
+    // Brief animation delay
+    setTimeout(() => setIsRegenerating(false), 500);
+  };
 
   // Code state from store - use compound key (measureId::elementId) for isolation
   const storeKey = getStoreKey(measureId, element.id);
@@ -547,8 +660,29 @@ export const ComponentDetailPanel = ({
         />
         {expandedSections.code && (
           <div className="p-4 border-b border-[var(--border)]">
+            {/* Regenerate button */}
+            <div className="flex justify-end mb-3">
+              <button
+                onClick={handleRegenerateCode}
+                disabled={isRegenerating}
+                className={`
+                  flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg
+                  border border-[var(--border)]
+                  ${isRegenerating
+                    ? 'text-[var(--text-dim)] cursor-not-allowed'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-secondary)]'
+                  }
+                  transition-colors
+                `}
+                title="Regenerate code from current component state"
+              >
+                <RefreshCw size={14} className={isRegenerating ? 'animate-spin' : ''} />
+                {isRegenerating ? 'Regenerating...' : 'Regenerate'}
+              </button>
+            </div>
+
             <ComponentCodeViewer
-              key={element.id}  // Force remount when element changes to reset edit state
+              key={`${element.id}-${codeRegenerationKey}`}  // Force remount on regenerate
               element={element}
               measureId={measureId}
               codeState={effectiveCodeState}

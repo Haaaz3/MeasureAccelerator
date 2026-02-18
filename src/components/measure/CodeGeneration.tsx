@@ -9,6 +9,7 @@ import type { SQLGenerationResult, SQLGenerationConfig } from '../../types/hdiDa
 import { InlineErrorBanner } from '../shared/ErrorBoundary';
 import { applyCQLOverrides, applySQLOverrides, getOverrideCountForMeasure, getOverridesForMeasure } from '../../services/codeOverrideHelper';
 import { useComponentCodeStore } from '../../stores/componentCodeStore';
+import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { generateComponentAwareMeasureCode, type ComposedMeasureCode } from '../../services/componentAwareCodeGenerator';
 
 export function CodeGeneration() {
@@ -19,6 +20,11 @@ export function CodeGeneration() {
   );
   const format = selectedCodeFormat;
   const setFormat = setSelectedCodeFormat;
+
+  // Subscribe to code stores for reactivity when components are edited or overridden
+  const codeStates = useComponentCodeStore((state) => state.codeStates);
+  const libraryComponents = useComponentLibraryStore((state) => state.components);
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [cqlServiceAvailable, setCqlServiceAvailable] = useState<boolean | null>(null);
@@ -50,6 +56,9 @@ export function CodeGeneration() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const currentMatchRef = useRef<HTMLElement>(null);
 
+  // Override audit panel state
+  const [showAuditDetails, setShowAuditDetails] = useState(false);
+
   // Override count for current measure and format
   const overrideCount = useMemo(() => {
     if (!measure) return 0;
@@ -59,7 +68,7 @@ export function CodeGeneration() {
       'synapse': 'synapse-sql',
     };
     return getOverrideCountForMeasure(measure, formatMap[format]);
-  }, [measure, format]);
+  }, [measure, format, codeStates]);
 
   // Check CQL service availability on mount
   useEffect(() => {
@@ -294,7 +303,7 @@ export function CodeGeneration() {
         setSyntaxValidationResult(null);
       }
     }
-  }, [measure, format, useComponentAware]);
+  }, [measure, format, useComponentAware, codeStates, libraryComponents]);
 
   // Generate Synapse SQL when format is 'synapse'
   useEffect(() => {
@@ -375,7 +384,7 @@ export function CodeGeneration() {
         setComposedResult(null);
       }
     }
-  }, [measure, format, useComponentAware]);
+  }, [measure, format, useComponentAware, codeStates, libraryComponents]);
 
   if (!measure) {
     return (
@@ -401,9 +410,12 @@ export function CodeGeneration() {
   }
 
   const handleCopy = async () => {
-    const code = format === 'synapse' && synapseResult?.sql
+    // Phase 1C: Single authoritative code path - no getGeneratedCode fallback
+    const code = (format === 'cql' && generationResult?.cql)
+      ? generationResult.cql
+      : (format === 'synapse' && synapseResult?.sql)
       ? synapseResult.sql
-      : getGeneratedCode(measure, format);
+      : '// Generating...';
     await navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -556,67 +568,138 @@ export function CodeGeneration() {
           </div>
         )}
 
-        {/* Override indicator */}
-        {overrideCount > 0 && (
-          <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-            <div className="flex items-start gap-3">
-              <Edit3 className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="font-medium text-amber-500">Manual Overrides Applied</h3>
-                <p className="text-sm text-amber-500/80 mt-1">
-                  {overrideCount} component(s) using manually overridden code. These edits will be included in the generated output with their associated notes.
-                </p>
-                <div className="flex items-center gap-2 mt-3">
-                  <button
-                    onClick={() => {
-                      // Find the language-specific OVERRIDE marker in the code and scroll to it
-                      // CQL uses "[CQL OVERRIDE]", Synapse SQL uses "[SYNAPSE SQL OVERRIDE]"
-                      const overrideMarker = format === 'cql' ? '[CQL OVERRIDE]' : '[SYNAPSE SQL OVERRIDE]';
-                      if (codeRef.current) {
-                        const codeText = codeRef.current.textContent || '';
-                        const overriddenIndex = codeText.indexOf(overrideMarker);
-                        if (overriddenIndex !== -1) {
-                          const codeElement = codeRef.current;
+        {/* Override Audit Summary Panel */}
+        {overrideCount > 0 && (() => {
+          const overrideSummary = measure ? getOverridesForMeasure(measure) : null;
 
-                          // Highlight the override section
-                          setSearchQuery(overrideMarker);
+          return (
+            <div className="mb-6 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+              <div className="flex items-start gap-3">
+                <Edit3 className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-amber-500">Manual Overrides Applied ({overrideCount})</h3>
+                    <button
+                      onClick={() => setShowAuditDetails(!showAuditDetails)}
+                      className="flex items-center gap-1 text-xs text-amber-500 hover:text-amber-400"
+                    >
+                      {showAuditDetails ? (
+                        <>
+                          <ChevronUp className="w-4 h-4" />
+                          Hide Details
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="w-4 h-4" />
+                          Show Audit Details
+                        </>
+                      )}
+                    </button>
+                  </div>
 
-                          // Scroll to the first match
-                          setTimeout(() => {
-                            const highlightedSpan = codeElement.querySelector('.bg-amber-400\\/30');
-                            if (highlightedSpan) {
-                              highlightedSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            }
-                          }, 100);
+                  {/* Collapsed view */}
+                  {!showAuditDetails && (
+                    <p className="text-sm text-amber-500/80 mt-1">
+                      {overrideCount} component(s) using manually overridden code. Click "Show Audit Details" to see all overrides.
+                    </p>
+                  )}
+
+                  {/* Expanded Audit Details */}
+                  {showAuditDetails && overrideSummary && (
+                    <div className="mt-4 space-y-3">
+                      {overrideSummary.overrideInfos.map((info, index) => (
+                        <div
+                          key={info.componentId}
+                          className="p-3 bg-[var(--bg)] rounded-lg border border-amber-500/20"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[10px] rounded uppercase font-medium">
+                                  {info.override.format}
+                                </span>
+                                <span className="text-sm font-medium text-[var(--text)]">
+                                  {info.componentDescription}
+                                </span>
+                              </div>
+                              <div className="text-xs text-[var(--text-dim)] mt-1">
+                                Modified: {new Date(info.override.updatedAt).toLocaleString()}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => {
+                                useComponentCodeStore.getState().setInspectingComponent(info.componentId);
+                                setActiveTab('editor');
+                              }}
+                              className="text-xs text-[var(--primary)] hover:underline"
+                            >
+                              Edit
+                            </button>
+                          </div>
+
+                          {/* Notes for this override */}
+                          {info.override.notes.length > 0 && (
+                            <div className="mt-2 pl-3 border-l-2 border-amber-500/30">
+                              {info.override.notes.slice(0, 2).map((note, noteIndex) => (
+                                <p key={noteIndex} className="text-xs text-[var(--text-muted)] italic">
+                                  "{note.content}"
+                                </p>
+                              ))}
+                              {info.override.notes.length > 2 && (
+                                <p className="text-xs text-[var(--text-dim)]">
+                                  + {info.override.notes.length - 2} more note(s)
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      onClick={() => {
+                        const overrideMarker = format === 'cql' ? '[CQL OVERRIDE]' : '[SYNAPSE SQL OVERRIDE]';
+                        if (codeRef.current) {
+                          const codeText = codeRef.current.textContent || '';
+                          const overriddenIndex = codeText.indexOf(overrideMarker);
+                          if (overriddenIndex !== -1) {
+                            const codeElement = codeRef.current;
+                            setSearchQuery(overrideMarker);
+                            setTimeout(() => {
+                              const highlightedSpan = codeElement.querySelector('.bg-amber-400\\/30');
+                              if (highlightedSpan) {
+                                highlightedSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }
+                            }, 100);
+                          }
                         }
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
-                  >
-                    <Search className="w-4 h-4" />
-                    Find in Code
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Navigate to UMS Editor and select the first overridden component
-                      const overrides = measure ? getOverridesForMeasure(measure) : null;
-                      if (overrides && overrides.overrideInfos.length > 0) {
-                        const firstOverride = overrides.overrideInfos[0];
-                        // Set the component as inspecting in the code store
-                        useComponentCodeStore.getState().setInspectingComponent(firstOverride.componentId);
-                      }
-                      setActiveTab('editor');
-                    }}
-                    className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
-                  >
-                    <Edit3 className="w-4 h-4" />
-                    View in UMS Editor
-                  </button>
+                      }}
+                      className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
+                    >
+                      <Search className="w-4 h-4" />
+                      Find in Code
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (overrideSummary && overrideSummary.overrideInfos.length > 0) {
+                          const firstOverride = overrideSummary.overrideInfos[0];
+                          useComponentCodeStore.getState().setInspectingComponent(firstOverride.componentId);
+                        }
+                        setActiveTab('editor');
+                      }}
+                      className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
+                    >
+                      <Edit3 className="w-4 h-4" />
+                      View in UMS Editor
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Format selector */}
         <div className="flex items-center justify-between mb-6">
@@ -870,11 +953,12 @@ export function CodeGeneration() {
             <pre ref={codeRef} className="p-4 text-sm font-mono overflow-auto max-h-[600px] text-[var(--text)]">
               <code className={!canGenerate ? 'opacity-50' : ''}>
                 {(() => {
-                  const code = format === 'cql' && generationResult?.cql
+                  // Phase 1C: Single authoritative code path - no getGeneratedCode fallback
+                  const code = (format === 'cql' && generationResult?.cql)
                     ? generationResult.cql
-                    : format === 'synapse' && synapseResult?.sql
+                    : (format === 'synapse' && synapseResult?.sql)
                     ? synapseResult.sql
-                    : getGeneratedCode(measure, format);
+                    : '// Generating...';
                   return searchQuery && searchResults.length > 0 ? highlightCode(code) : code;
                 })()}
               </code>

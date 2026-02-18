@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useMeasureStore } from './stores/measureStore';
 import { useComponentLibraryStore } from './stores/componentLibraryStore';
 import { Sidebar } from './components/layout/Sidebar';
@@ -13,15 +13,26 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 function App() {
-  const { activeTab, loadFromApi: loadMeasures, isLoadingFromApi: measuresLoading, apiError: measuresError } = useMeasureStore();
-  const { loadFromApi: loadComponents, isLoadingFromApi: componentsLoading, apiError: componentsError } = useComponentLibraryStore();
+  const { activeTab, measures, loadFromApi: loadMeasures, isLoadingFromApi: measuresLoading, apiError: measuresError } = useMeasureStore();
+  const { loadFromApi: loadComponents, rebuildUsageIndex, isLoadingFromApi: componentsLoading, apiError: componentsError } = useComponentLibraryStore();
   const [isRetrying, setIsRetrying] = useState(false);
+
+  // Phase 1D: Load measures and components, then rebuild usage index
+  const initializeStores = useCallback(async () => {
+    await Promise.all([loadMeasures(), loadComponents()]);
+  }, [loadMeasures, loadComponents]);
 
   // Load measures and components from backend API on mount
   useEffect(() => {
-    loadMeasures();
-    loadComponents();
-  }, [loadMeasures, loadComponents]);
+    initializeStores();
+  }, [initializeStores]);
+
+  // Phase 1D: Rebuild usage index after both stores are loaded
+  useEffect(() => {
+    if (!measuresLoading && !componentsLoading && measures.length > 0) {
+      rebuildUsageIndex(measures);
+    }
+  }, [measuresLoading, componentsLoading, measures, rebuildUsageIndex]);
 
   const isLoading = measuresLoading || componentsLoading;
   const hasError = !isLoading && (measuresError || componentsError);
@@ -29,7 +40,7 @@ function App() {
 
   const handleRetry = async () => {
     setIsRetrying(true);
-    await Promise.all([loadMeasures(), loadComponents()]);
+    await initializeStores();
     setIsRetrying(false);
   };
 
