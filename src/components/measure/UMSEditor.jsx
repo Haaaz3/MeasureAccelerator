@@ -2177,7 +2177,7 @@ function SelectedComponentDetailPanel({
 
 
  ) {
-  const { measures, updateDataElement } = useMeasureStore();
+  const { measures, updateElementField } = useMeasureStore();
 
   // Feedback capture: store snapshot before edit for comparison
   const beforeSnapshotRef = useRef                          (null);
@@ -2232,8 +2232,8 @@ function SelectedComponentDetailPanel({
       onResetTiming={onResetTiming}
       onSaveTimingWindow={onSaveTimingWindow}
       onResetTimingWindow={onResetTimingWindow}
-      onSaveElementField={(componentId, field, value) => {
-        updateDataElement(measureId, componentId, { [field]: value }, 'field_update');
+      onSaveElementField={(elementId, field, value) => {
+        updateElementField(measureId, elementId, field, value);
       }}
     />
   );

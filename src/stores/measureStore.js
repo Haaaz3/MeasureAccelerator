@@ -843,6 +843,33 @@ export const useMeasureStore = create              ()(
           };
         }),
 
+      // Update a single field on a data element WITHOUT creating a correction record
+      // Used for configuration changes like status/intent filters
+      updateElementField: (measureId, elementId, field, value) =>
+        set((state) => {
+          const measure = state.measures.find((m) => m.id === measureId);
+          if (!measure) return state;
+
+          const updateNode = (obj) => {
+            if (!obj) return obj;
+            if (obj.id === elementId) return { ...obj, [field]: value };
+            if (obj.criteria) return { ...obj, criteria: updateNode(obj.criteria) };
+            if (obj.children) return { ...obj, children: obj.children.map(updateNode) };
+            return obj;
+          };
+
+          return {
+            measures: state.measures.map((m) => {
+              if (m.id !== measureId) return m;
+              return {
+                ...m,
+                populations: m.populations.map(updateNode),
+                updatedAt: new Date().toISOString(),
+              };
+            }),
+          };
+        }),
+
       // Global constraint synchronization - updates age everywhere in the measure
       syncAgeRange: (measureId, minAge, maxAge) =>
         set((state) => {
