@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Code, Copy, Check, Download, RefreshCw, FileCode, Database, Sparkles, Library, ChevronRight, CheckCircle, XCircle, AlertTriangle, Loader2, Server, Search, X, ChevronUp, ChevronDown, Edit3 } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { generateCQL, validateCQL, isCQLServiceAvailable } from '../../services/cqlGenerator';
@@ -12,7 +13,8 @@ import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { generateComponentAwareMeasureCode } from '../../services/componentAwareCodeGenerator';
 
 export function CodeGeneration() {
-  const { selectedCodeFormat, setSelectedCodeFormat, setActiveTab } = useMeasureStore();
+  const navigate = useNavigate();
+  const { selectedCodeFormat, setSelectedCodeFormat } = useMeasureStore();
   // Use Zustand selector for reactive updates when measure is edited
   const measure = useMeasureStore((state) =>
     state.measures.find((m) => m.id === state.activeMeasureId) || null
@@ -397,7 +399,7 @@ export function CodeGeneration() {
             Select a measure from the library to generate CQL, SQL, or Synapse code.
           </p>
           <button
-            onClick={() => setActiveTab('library')}
+            onClick={() => navigate('/library')}
             className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2"
           >
             <Library className="w-4 h-4" />
@@ -526,7 +528,7 @@ export function CodeGeneration() {
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm mb-4">
           <button
-            onClick={() => setActiveTab('library')}
+            onClick={() => navigate('/library')}
             className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
           >
             Measure Library
@@ -557,7 +559,7 @@ export function CodeGeneration() {
                   Currently {approvalPercent}% approved ({reviewProgress.approved}/{reviewProgress.total} components).
                 </p>
                 <button
-                  onClick={() => useMeasureStore.getState().setActiveTab('editor')}
+                  onClick={() => navigate('/editor')}
                   className="mt-3 px-3 py-1.5 bg-[var(--warning-light)] text-[var(--warning)] rounded-lg text-sm font-medium hover:opacity-80 transition-all border border-[var(--warning)]/20"
                 >
                   Continue Review
@@ -628,7 +630,7 @@ export function CodeGeneration() {
                             <button
                               onClick={() => {
                                 useComponentCodeStore.getState().setInspectingComponent(info.componentId);
-                                setActiveTab('editor');
+                                navigate('/editor');
                               }}
                               className="text-xs text-[var(--primary)] hover:underline"
                             >
@@ -686,7 +688,7 @@ export function CodeGeneration() {
                           const firstOverride = overrideSummary.overrideInfos[0];
                           useComponentCodeStore.getState().setInspectingComponent(firstOverride.componentId);
                         }
-                        setActiveTab('editor');
+                        navigate('/editor');
                       }}
                       className="px-3 py-1.5 bg-amber-500/10 text-amber-500 rounded-lg text-sm font-medium hover:bg-amber-500/20 transition-all border border-amber-500/20 flex items-center gap-1.5"
                     >

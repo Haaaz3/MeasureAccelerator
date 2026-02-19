@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Plus, FileText, Copy, ChevronRight, ChevronLeft, Check, Users, Target, AlertTriangle, Minus, Sparkles, ArrowRight, Info, Save, Wand2, Loader2, AlertCircle, Brain, Upload, File, Trash2 } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -26,7 +27,8 @@ const STEPS                                                                     
 // AI extraction result for criteria
 
 export function MeasureCreator({ isOpen, onClose }                     ) {
-  const { measures, addMeasure, importMeasure, setActiveMeasure, setActiveTab } = useMeasureStore();
+  const navigate = useNavigate();
+  const { measures, addMeasure, importMeasure, setActiveMeasure } = useMeasureStore();
   const { selectedProvider, selectedModel, apiKeys, getActiveApiKey, getCustomLlmConfig } = useSettingsStore();
 
   // Wizard state
@@ -758,7 +760,7 @@ export function MeasureCreator({ isOpen, onClose }                     ) {
 
       if (result.success) {
         setActiveMeasure(newMeasure.id);
-        setActiveTab('editor');
+        navigate('/editor');
         handleCloseAfterSave();
       } else {
         // Fallback to local-only add if import fails
@@ -766,7 +768,7 @@ export function MeasureCreator({ isOpen, onClose }                     ) {
         setImportError(`Backend save failed: ${result.error}. Measure saved locally only.`);
         addMeasure(newMeasure);
         setActiveMeasure(newMeasure.id);
-        setActiveTab('editor');
+        navigate('/editor');
         // Don't close immediately so user sees the error
         setTimeout(() => handleCloseAfterSave(), 2000);
       }
@@ -776,7 +778,7 @@ export function MeasureCreator({ isOpen, onClose }                     ) {
       setImportError(`Error saving to backend. Measure saved locally only.`);
       addMeasure(newMeasure);
       setActiveMeasure(newMeasure.id);
-      setActiveTab('editor');
+      navigate('/editor');
       setTimeout(() => handleCloseAfterSave(), 2000);
     } finally {
       setIsImporting(false);

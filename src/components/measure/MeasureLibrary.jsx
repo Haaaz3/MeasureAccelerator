@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload, FileText, Trash2, Clock, CheckCircle, AlertTriangle, Lock, Unlock, Shield, Brain, Zap, ChevronDown, Send, Edit3, Plus, Copy, X, ArrowUp, ArrowDown, Building2, Filter } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -26,6 +27,7 @@ function resetReviewStatus(obj     )      {
 }
 
 export function MeasureLibrary() {
+  const navigate = useNavigate();
   const { measures, addMeasure, importMeasure, deleteMeasure, setActiveMeasure, getReviewProgress, lockMeasure, unlockMeasure, setMeasureStatus, updateMeasure } = useMeasureStore();
   const { linkMeasureComponents, rebuildUsageIndex } = useComponentLibraryStore();
   const {
@@ -82,9 +84,7 @@ export function MeasureLibrary() {
     });
   };
 
-  // Get store's setActiveTab for navigation
-  const { setActiveTab } = useMeasureStore();
-
+  
   // Supported file extensions
   const SUPPORTED_EXTENSIONS = ['.pdf', '.html', '.htm', '.xlsx', '.xls', '.csv', '.xml', '.json', '.cql', '.txt', '.zip'];
 
@@ -374,7 +374,8 @@ export function MeasureLibrary() {
     rebuildUsageIndex([...measures, copiedMeasure]);
 
     setActiveMeasure(copiedMeasure.id);
-  }, [addMeasure, setActiveMeasure, rebuildUsageIndex, measures]);
+    navigate('/editor');
+  }, [addMeasure, setActiveMeasure, rebuildUsageIndex, measures, navigate]);
 
   return (
     <div className="flex-1 overflow-auto">
@@ -543,7 +544,7 @@ export function MeasureLibrary() {
               <p className="text-sm text-[var(--text-muted)] mt-1 whitespace-pre-wrap">{error}</p>
               {error.includes('Settings') && (
                 <button
-                  onClick={() => setActiveTab('settings')}
+                  onClick={() => navigate('/settings')}
                   className="mt-2 text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] underline"
                 >
                   Go to Settings
@@ -697,7 +698,10 @@ export function MeasureLibrary() {
                 key={measure.id}
                 measure={measure}
                 reviewProgress={getReviewProgress(measure.id)}
-                onSelect={() => setActiveMeasure(measure.id)}
+                onSelect={() => {
+                  setActiveMeasure(measure.id);
+                  navigate('/editor');
+                }}
                 onDelete={() => {
                   if (measure.lockedAt) {
                     alert('Cannot delete a locked measure. Unlock it first.');

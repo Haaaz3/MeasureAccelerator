@@ -39,28 +39,17 @@ const TAB_TO_ROUTE = {
 
 // Inner app component that has access to router hooks
 function AppContent({ puzzleFailed, bannerDismissed, setBannerDismissed }) {
-  const navigate = useNavigate();
   const location = useLocation();
 
-  const { activeTab, setActiveTab, measures, loadFromApi: loadMeasures, isLoadingFromApi: measuresLoading, apiError: measuresError } = useMeasureStore();
+  const { setActiveTab, measures, loadFromApi: loadMeasures, isLoadingFromApi: measuresLoading, apiError: measuresError } = useMeasureStore();
   const { loadFromApi: loadComponents, rebuildUsageIndex, isLoadingFromApi: componentsLoading, apiError: componentsError } = useComponentLibraryStore();
   const [isRetrying, setIsRetrying] = useState(false);
 
-  // Sync URL to store on location change
+  // Sync URL to store on location change (one-way: URL -> store)
   useEffect(() => {
     const tabFromRoute = ROUTE_TO_TAB[location.pathname] || 'library';
-    if (tabFromRoute !== activeTab) {
-      setActiveTab(tabFromRoute);
-    }
-  }, [location.pathname, activeTab, setActiveTab]);
-
-  // Sync store to URL on activeTab change
-  useEffect(() => {
-    const expectedRoute = TAB_TO_ROUTE[activeTab] || '/library';
-    if (location.pathname !== expectedRoute) {
-      navigate(expectedRoute, { replace: false });
-    }
-  }, [activeTab, location.pathname, navigate]);
+    setActiveTab(tabFromRoute);
+  }, [location.pathname, setActiveTab]);
 
   // Load measures and components on mount
   const initializeStores = useCallback(async () => {

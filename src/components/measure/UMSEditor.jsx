@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, Fragment, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ChevronRight, ChevronDown, CheckCircle, AlertTriangle, HelpCircle, X, Code, Sparkles, Send, Bot, User, ExternalLink, Plus, Trash2, Download, History, Edit3, Save, XCircle, Settings2, ArrowUp, ArrowDown, Search, Library as LibraryIcon, Import, FileText, Link, ShieldCheck, GripVertical, Loader2, Combine, Square, CheckSquare } from 'lucide-react';
 import { InlineErrorBanner, InlineSuccessBanner } from '../shared/ErrorBoundary';
 import { validateReferentialIntegrity, formatMismatches } from '../../utils/integrityCheck';
@@ -42,7 +43,8 @@ function cleanDescription(desc                    )         {
 }
 
 export function UMSEditor() {
-  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, moveComponentToIndex, setOperatorBetweenSiblings, deleteComponent, setActiveTab, syncAgeRange, updateTimingOverride, updateTimingWindow, updateMeasurementPeriod, updateDataElement } = useMeasureStore();
+  const navigate = useNavigate();
+  const { getActiveMeasure, updateReviewStatus, approveAllLowComplexity, measures, exportCorrections, getCorrections, addComponentToPopulation, addValueSet, toggleLogicalOperator, reorderComponent, moveComponentToIndex, setOperatorBetweenSiblings, deleteComponent, syncAgeRange, updateTimingOverride, updateTimingWindow, updateMeasurementPeriod, updateDataElement } = useMeasureStore();
   const measure = getActiveMeasure();
   const {
     components: libraryComponents,
@@ -567,7 +569,7 @@ export function UMSEditor() {
             Select a measure from the library to view and edit its Universal Measure Specification.
           </p>
           <button
-            onClick={() => setActiveTab('library')}
+            onClick={() => navigate('/library')}
             className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2"
           >
             <LibraryIcon className="w-4 h-4" />
@@ -676,7 +678,7 @@ export function UMSEditor() {
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm mb-4">
             <button
-              onClick={() => setActiveTab('library')}
+              onClick={() => navigate('/library')}
               className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
             >
               Measure Library
@@ -724,7 +726,7 @@ export function UMSEditor() {
                   {/* Action buttons */}
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => setActiveTab('components')}
+                      onClick={() => navigate('/components')}
                       className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
                       title="Browse the Component Library"
                     >
@@ -834,7 +836,7 @@ export function UMSEditor() {
                   {/* Right side: Action buttons */}
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <button
-                      onClick={() => setActiveTab('components')}
+                      onClick={() => navigate('/components')}
                       className="px-3 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)]"
                       title="Browse the Component Library"
                     >
@@ -1116,7 +1118,7 @@ export function UMSEditor() {
               nodeId={selectedNode}
               onClose={() => setSelectedNode(null)}
               onNavigateToLibrary={(id) => {
-                setActiveTab('components');
+                navigate('/components');
               }}
               onSaveTiming={(componentId, modified) => {
                 handleTimingSaveWithWarning(componentId, modified);

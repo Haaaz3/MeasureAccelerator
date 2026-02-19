@@ -1,9 +1,22 @@
 import { FileText, CheckCircle, Code, Library, Database, Settings, X, ChevronRight, Layers } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useMeasureStore } from '../../stores/measureStore';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 
+// Map tab IDs to routes
+const TAB_TO_ROUTE = {
+  library: '/library',
+  editor: '/editor',
+  valuesets: '/valuesets',
+  validation: '/validation',
+  codegen: '/codegen',
+  components: '/components',
+  settings: '/settings',
+};
+
 export function Sidebar() {
-  const { activeTab, setActiveTab, activeMeasureId, setActiveMeasure, measures } = useMeasureStore();
+  const navigate = useNavigate();
+  const { activeTab, activeMeasureId, setActiveMeasure, measures } = useMeasureStore();
   const { components } = useComponentLibraryStore();
   const activeMeasure = measures.find(m => m.id === activeMeasureId);
 
@@ -34,7 +47,7 @@ export function Sidebar() {
 
   const handleCloseMeasure = () => {
     setActiveMeasure(null);
-    setActiveTab('library');
+    navigate('/library');
   };
 
   return (
@@ -56,7 +69,7 @@ export function Sidebar() {
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => navigate(TAB_TO_ROUTE[item.id])}
               className={`
                 w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all
                 ${isActive
@@ -115,7 +128,7 @@ export function Sidebar() {
               return (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => navigate(TAB_TO_ROUTE[item.id])}
                   className={`
                     w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all
                     ${isActive

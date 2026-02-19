@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CheckCircle, XCircle, Info, Code, FileText, User, AlertTriangle, Cpu, FileCode, Database, ChevronDown, ChevronUp, Heart, Calendar, Stethoscope, Pill, Syringe, Activity, Edit3, X, Save, Plus, Trash2, Library, ChevronRight, ArrowUpDown, Filter, ArrowUp, ArrowDown } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { generateTestPatients } from '../../services/testPatientGenerator';
@@ -1306,7 +1307,8 @@ function isScreeningMeasure(measureTitle        , measureId        )          {
 }
 
 export function ValidationTraceViewer() {
-  const { getActiveMeasure, selectedCodeFormat, setActiveTab } = useMeasureStore();
+  const navigate = useNavigate();
+  const { getActiveMeasure, selectedCodeFormat } = useMeasureStore();
   const measure = getActiveMeasure();
   const [selectedTrace, setSelectedTrace] = useState                               (null);
   const [selectedPatient, setSelectedPatient] = useState                    (null);
@@ -1555,7 +1557,7 @@ export function ValidationTraceViewer() {
             Select a measure from the library to generate test patients and validate measure logic.
           </p>
           <button
-            onClick={() => useMeasureStore.getState().setActiveTab('library')}
+            onClick={() => navigate('/library')}
             className="px-6 py-3 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors inline-flex items-center gap-2"
           >
             <Library className="w-4 h-4" />
@@ -1583,7 +1585,7 @@ export function ValidationTraceViewer() {
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm mb-4">
             <button
-              onClick={() => setActiveTab('library')}
+              onClick={() => navigate('/library')}
               className="text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
             >
               Measure Library
@@ -1620,7 +1622,7 @@ export function ValidationTraceViewer() {
             <div className="text-right">
               <div className="text-xs uppercase tracking-wider text-[var(--text-dim)] mb-1">Generated Code</div>
               <button
-                onClick={() => setActiveTab('codegen')}
+                onClick={() => navigate('/codegen')}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-tertiary)] border border-[var(--border)] hover:border-[var(--accent)]/30 transition-colors group"
               >
                 <CodeIcon className={`w-5 h-5 ${codeInfo.color}`} />
