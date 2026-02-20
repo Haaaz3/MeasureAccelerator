@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Info, Code, FileText, User, AlertTriangle, Cpu, FileCode, Database, ChevronDown, ChevronUp, Heart, Calendar, Stethoscope, Pill, Syringe, Activity, Edit3, X, Save, Plus, Trash2, Library, ChevronRight, ArrowUpDown, Filter, ArrowUp, ArrowDown } from 'lucide-react';
+import { CheckCircle, XCircle, Info, Code, FileText, User, AlertTriangle, Cpu, FileCode, Database, ChevronDown, ChevronUp, Heart, Calendar, Stethoscope, Pill, Syringe, Activity, Edit3, X, Save, Plus, Trash2, Library, ChevronRight, ArrowUpDown, Filter, ArrowUp, ArrowDown, BookOpen } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { generateTestPatients } from '../../services/testPatientGenerator';
 import { evaluatePatient } from '../../services/measureEvaluator';
+import { generateEvaluationNarrative, generateBriefSummary } from '../../services/narrativeGenerator';
 
 /** Strip standalone AND/OR/NOT operators that appear as line separators in descriptions */
 function cleanDescription(desc                    )         {
@@ -1317,6 +1318,7 @@ export function ValidationTraceViewer() {
   const [validationTraces, setValidationTraces] = useState                          ([]);
   const [testPatients, setTestPatients] = useState               ([]);
   const [showPatientDetails, setShowPatientDetails] = useState(true);
+  const [showNarrativePanel, setShowNarrativePanel] = useState(false);
   const [populationFilter, setPopulationFilter] = useState                  ('all');
   const [editingPatient, setEditingPatient] = useState                    (null);
   const [editedPatientData, setEditedPatientData] = useState                    (null);
@@ -1456,6 +1458,18 @@ export function ValidationTraceViewer() {
 
   // Keep filteredTraces as an alias for backwards compatibility
   const filteredTraces = filteredAndSortedTraces;
+
+  // Generate narrative for the selected patient/trace
+  const currentNarrative = useMemo(() => {
+    if (!selectedTrace || !selectedPatient || !measure) return null;
+
+    const measurementPeriod = {
+      start: measure.measurementPeriod?.start || `${new Date().getFullYear()}-01-01`,
+      end: measure.measurementPeriod?.end || `${new Date().getFullYear()}-12-31`
+    };
+
+    return generateEvaluationNarrative(selectedTrace, selectedPatient, measure, measurementPeriod);
+  }, [selectedTrace, selectedPatient, measure]);
 
   // Handle filter click
   const handleFilterClick = (filter                  ) => {
@@ -1943,6 +1957,17 @@ export function ValidationTraceViewer() {
                   )}
                 </div>
               </div>
+
+              {/* Detailed Evaluation Narrative */}
+              {currentNarrative && (
+                <div className="mb-6">
+                  <NarrativePanel
+                    narrative={currentNarrative}
+                    isExpanded={showNarrativePanel}
+                    onToggle={() => setShowNarrativePanel(!showNarrativePanel)}
+                  />
+                </div>
+              )}
 
               {/* Patient Clinical Details Panel */}
               {selectedPatient && (
@@ -2893,6 +2918,234 @@ function SummaryPill({ label, value, positive }                                 
       <span className="text-[var(--text-muted)]">{label}</span>
       <span className={`font-bold ${positive ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>{value}</span>
     </div>
+  );
+}
+
+/**
+ * NarrativePanel - Displays the full evaluation narrative with formatted sections
+ */
+function NarrativePanel({ narrative, isExpanded, onToggle }) {
+  if (!narrative) return null;
+
+  const { sections } = narrative;
+
+  return (
+    <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-light)] overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-[var(--bg-tertiary)]/50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+            <BookOpen className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div className="text-left">
+            <h3 className="font-semibold text-[var(--text)]">Detailed Evaluation Narrative</h3>
+            <p className="text-xs text-[var(--text-muted)]">
+              Step-by-step explanation of each criterion evaluation
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {isExpanded ? (
+            <ChevronUp className="w-5 h-5 text-[var(--text-muted)]" />
+          ) : (
+            <ChevronDown className="w-5 h-5 text-[var(--text-muted)]" />
+          )}
+        </div>
+      </button>
+
+      {isExpanded && (
+        <div className="px-5 pb-5 space-y-4">
+          {/* Measurement Period Header */}
+          <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] pb-3 border-b border-[var(--border)]">
+            <Calendar className="w-4 h-4" />
+            <span>Measurement Period: {narrative.measurementPeriod?.start} – {narrative.measurementPeriod?.end}</span>
+          </div>
+
+          {/* Render each section */}
+          {sections.filter(s => s.type !== 'header').map((section, idx) => (
+            <NarrativeSection key={idx} section={section} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * NarrativeSection - Renders a single population/outcome section
+ */
+function NarrativeSection({ section }) {
+  const [isExpanded, setIsExpanded] = useState(section.type === 'outcome' || section.met === false);
+
+  // Parse the content into lines for rendering
+  const lines = section.content.split('\n').filter(line => line.trim());
+
+  // Extract header and body
+  const headerLine = lines.find(l => l.startsWith('##'));
+  const bodyLines = lines.filter(l => !l.startsWith('#') && l !== '---');
+
+  // Determine section styling based on type and status
+  const getSectionStyle = () => {
+    if (section.type === 'exclusion') {
+      return 'border-l-4 border-l-[var(--warning)]';
+    }
+    if (section.type === 'outcome') {
+      return 'border-l-4 border-l-[var(--accent)]';
+    }
+    if (section.met === true) {
+      return 'border-l-4 border-l-[var(--success)]';
+    }
+    if (section.met === false && section.evaluated !== false) {
+      return 'border-l-4 border-l-[var(--danger)]';
+    }
+    return 'border-l-4 border-l-[var(--text-dim)]';
+  };
+
+  const getHeaderIcon = () => {
+    if (section.type === 'exclusion' || section.triggered) {
+      return <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />;
+    }
+    if (section.type === 'outcome') {
+      return <Info className="w-4 h-4 text-[var(--accent)]" />;
+    }
+    if (section.met === true) {
+      return <CheckCircle className="w-4 h-4 text-[var(--success)]" />;
+    }
+    if (section.met === false) {
+      return <XCircle className="w-4 h-4 text-[var(--danger)]" />;
+    }
+    return <Info className="w-4 h-4 text-[var(--text-dim)]" />;
+  };
+
+  return (
+    <div className={`bg-[var(--bg-tertiary)] rounded-lg ${getSectionStyle()}`}>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-primary)]/30 transition-colors rounded-lg"
+      >
+        <div className="flex items-center gap-2">
+          {getHeaderIcon()}
+          <span className="font-medium text-[var(--text)]">
+            {section.name || 'Outcome'}
+          </span>
+          {section.met !== undefined && section.type !== 'outcome' && (
+            <span className={`text-xs px-2 py-0.5 rounded ${
+              section.met
+                ? 'bg-[var(--success-light)] text-[var(--success)]'
+                : section.evaluated === false
+                  ? 'bg-[var(--bg-secondary)] text-[var(--text-dim)]'
+                  : 'bg-[var(--danger-light)] text-[var(--danger)]'
+            }`}>
+              {section.met ? 'Qualifies' : section.evaluated === false ? 'Not Evaluated' : 'Does Not Qualify'}
+            </span>
+          )}
+          {section.triggered && (
+            <span className="text-xs px-2 py-0.5 rounded bg-[var(--warning-light)] text-[var(--warning)]">
+              Excluded
+            </span>
+          )}
+        </div>
+        {isExpanded ? (
+          <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
+        ) : (
+          <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
+        )}
+      </button>
+
+      {isExpanded && (
+        <div className="px-4 pb-4 space-y-2">
+          {bodyLines.map((line, idx) => (
+            <NarrativeLine key={idx} line={line} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * NarrativeLine - Renders a single line of narrative content with proper formatting
+ */
+function NarrativeLine({ line }) {
+  // Check for criterion lines (start with emoji)
+  if (line.startsWith('✅') || line.startsWith('❌') || line.startsWith('⚠️')) {
+    const icon = line.charAt(0) === '✅' ? 'pass' : line.charAt(0) === '❌' ? 'fail' : 'warning';
+    const content = line.substring(2).trim();
+
+    // Parse bold text (component name)
+    const boldMatch = content.match(/\*\*([^*]+)\*\*/);
+    const componentName = boldMatch ? boldMatch[1] : '';
+    const narrativeText = content.replace(/\*\*[^*]+\*\*\s*—?\s*/, '');
+
+    return (
+      <div className="flex items-start gap-2 py-1.5">
+        <span className="text-lg leading-none mt-0.5">
+          {icon === 'pass' ? '✅' : icon === 'fail' ? '❌' : '⚠️'}
+        </span>
+        <div className="flex-1">
+          {componentName && (
+            <span className="font-semibold text-[var(--text)]">{componentName}</span>
+          )}
+          {componentName && narrativeText && <span className="text-[var(--text-muted)]"> — </span>}
+          <span className="text-[var(--text-muted)] text-sm">{narrativeText}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Check for gap items (start with -)
+  if (line.startsWith('-') || line.startsWith('•')) {
+    return (
+      <div className="flex items-start gap-2 py-0.5 pl-4">
+        <span className="text-[var(--warning)] mt-1">•</span>
+        <span className="text-sm text-[var(--text-muted)]">{line.substring(1).trim()}</span>
+      </div>
+    );
+  }
+
+  // Check for result line
+  if (line.startsWith('**Result:**') || line.startsWith('**Patient')) {
+    const content = line.replace(/\*\*/g, '');
+    return (
+      <div className="pt-2 mt-2 border-t border-[var(--border)]">
+        <p className="text-sm font-medium text-[var(--text)]">{content}</p>
+      </div>
+    );
+  }
+
+  // Check for section headers
+  if (line.startsWith('###')) {
+    return (
+      <h4 className="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider mt-3 mb-1">
+        {line.replace(/###\s*/, '')}
+      </h4>
+    );
+  }
+
+  // Check for preamble text
+  if (line.includes('must meet')) {
+    // Parse bold text
+    const parts = line.split(/(\*\*[^*]+\*\*)/);
+    return (
+      <p className="text-sm text-[var(--text-muted)] mb-2">
+        {parts.map((part, idx) =>
+          part.startsWith('**') ? (
+            <strong key={idx} className="text-[var(--text)] font-semibold">
+              {part.replace(/\*\*/g, '')}
+            </strong>
+          ) : (
+            <span key={idx}>{part}</span>
+          )
+        )}
+      </p>
+    );
+  }
+
+  // Default paragraph
+  return (
+    <p className="text-sm text-[var(--text-muted)]">{line}</p>
   );
 }
 
