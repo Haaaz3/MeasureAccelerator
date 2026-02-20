@@ -2424,11 +2424,7 @@ function ValidationNodeList({
   nodes,
   operator,
   onInspect,
-}   
-                          
-                                  
-                                            
- ) {
+}) {
   return (
     <div className="space-y-0">
       {nodes.map((node, i) => (
@@ -2436,12 +2432,18 @@ function ValidationNodeList({
           {i > 0 && <OperatorSeparator operator={operator} />}
           {node.children && node.children.length > 0 ? (
             /* Group node — render as a nested section */
-            <div className="ml-2 rounded-lg border border-[var(--border-light)] bg-[var(--bg-tertiary)]/50 p-3">
+            <div className={`ml-2 rounded-lg border p-3 ${
+              node.status === 'skipped'
+                ? 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/30 opacity-60'
+                : 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/50'
+            }`}>
               <div className="flex items-center gap-2 mb-2">
                 {node.status === 'pass' ? (
                   <CheckCircle className="w-4 h-4 text-[var(--success)]" />
                 ) : node.status === 'partial' ? (
                   <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />
+                ) : node.status === 'skipped' ? (
+                  <div className="w-4 h-4 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--text-dim)]">○</div>
                 ) : (
                   <XCircle className="w-4 h-4 text-[var(--danger)]" />
                 )}
@@ -2453,15 +2455,24 @@ function ValidationNodeList({
                   {node.operator}
                 </span>
                 <h4 className="text-sm font-medium text-[var(--text-muted)]">{cleanDescription(node.title)}</h4>
-                {node.facts[0] && (
+                {/* Show human-readable status instead of GROUP_MATCH */}
+                {node.status === 'pass' && node.operator === 'OR' && node.satisfiedBy && (
+                  <span className="text-xs text-[var(--success)] italic">via {node.satisfiedBy}</span>
+                )}
+                {node.status === 'skipped' && node.skipReason && (
+                  <span className="text-xs text-[var(--text-dim)] italic">{node.skipReason}</span>
+                )}
+                {node.facts?.[0] && !['GROUP_MATCH', 'OR_SATISFIED', 'AND_STATUS'].includes(node.facts[0].code) && (
                   <span className="text-xs text-[var(--text-dim)]">{node.facts[0].display}</span>
                 )}
               </div>
-              <ValidationNodeList
-                nodes={node.children}
-                operator={node.operator || 'AND'}
-                onInspect={onInspect}
-              />
+              {node.status !== 'skipped' && (
+                <ValidationNodeList
+                  nodes={node.children}
+                  operator={node.operator || 'AND'}
+                  onInspect={onInspect}
+                />
+              )}
             </div>
           ) : (
             /* Leaf node — render as a row */
@@ -2473,18 +2484,38 @@ function ValidationNodeList({
   );
 }
 
-function ValidationNodeRow({ node, onClick }                                               ) {
-  // Get the most relevant facts to show inline (skip summary/progress facts)
-  const detailFacts = node.facts.filter(f =>
-    f.code !== 'PROGRESS' && f.code !== 'NO_MATCH' && f.code !== 'NO_IMMUNIZATIONS'
-  );
-  const doseFact = node.facts.find(f => f.code === 'DOSE_COUNT' || f.code === 'INSUFFICIENT_DOSES');
-  const noMatchFact = node.facts.find(f => f.code === 'NO_MATCH' || f.code === 'NO_IMMUNIZATIONS');
+function ValidationNodeRow({ node, onClick }) {
+  // Get dose summary fact (new format)
+  const doseSummaryFact = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
+  // Get individual dose facts (have doseNumber property)
+  const doseFacts = node.facts?.filter(f => f.doseNumber !== undefined) || [];
+  // Get other detail facts (skip internal codes)
+  const detailFacts = node.facts?.filter(f =>
+    f.code !== 'PROGRESS' && f.code !== 'NO_MATCH' && f.code !== 'NO_IMMUNIZATIONS' &&
+    f.code !== 'DOSE_SUMMARY' && f.code !== 'DOSE_COUNT' && f.code !== 'INSUFFICIENT_DOSES' &&
+    f.doseNumber === undefined
+  ) || [];
+  const noMatchFact = node.facts?.find(f => f.code === 'NO_MATCH' || f.code === 'NO_IMMUNIZATIONS');
+
+  // Handle skipped nodes
+  if (node.status === 'skipped' || node.skipped) {
+    return (
+      <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-[var(--bg-tertiary)]/30 border-[var(--border-light)] opacity-60">
+        <div className="flex-shrink-0">
+          <div className="w-5 h-5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] flex items-center justify-center text-xs text-[var(--text-dim)]">○</div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-medium text-[var(--text-muted)] text-sm">{cleanDescription(node.title)}</h4>
+          <p className="text-xs text-[var(--text-dim)] mt-0.5 italic">{node.skipReason || 'Not evaluated'}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors border ${
+      className={`flex items-start gap-3 px-4 py-3 rounded-lg cursor-pointer transition-colors border ${
         node.status === 'pass'
           ? 'bg-[var(--success)]/5 border-[var(--success)]/20 hover:border-[var(--success)]/40'
           : node.status === 'not_applicable'
@@ -2493,7 +2524,7 @@ function ValidationNodeRow({ node, onClick }                                    
       }`}
     >
       {/* Pass/Fail icon */}
-      <div className="flex-shrink-0">
+      <div className="flex-shrink-0 mt-0.5">
         {node.status === 'pass' ? (
           <CheckCircle className="w-5 h-5 text-[var(--success)]" />
         ) : node.status === 'not_applicable' ? (
@@ -2503,35 +2534,58 @@ function ValidationNodeRow({ node, onClick }                                    
         )}
       </div>
 
-      {/* Criterion title and description */}
+      {/* Criterion title, dose summary, and dose-by-dose detail */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h4 className="font-medium text-[var(--text)] text-sm truncate">{cleanDescription(node.title)}</h4>
-          {doseFact && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <h4 className="font-medium text-[var(--text)] text-sm">{cleanDescription(node.title)}</h4>
+          {doseSummaryFact && (
             <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
               node.status === 'pass'
                 ? 'bg-[var(--success)]/15 text-[var(--success)]'
                 : 'bg-[var(--danger)]/15 text-[var(--danger)]'
             }`}>
-              {doseFact.display}
+              {doseSummaryFact.display}
             </span>
           )}
         </div>
-        {/* Show key supporting facts inline */}
-        {detailFacts.length > 0 ? (
-          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
-            {detailFacts.slice(0, 5).map((fact, i) => (
-              <span key={i} className="text-xs text-[var(--text-muted)]">
-                {fact.code && fact.code !== '—' && fact.code !== 'DOSE_COUNT' && fact.code !== 'INSUFFICIENT_DOSES' && (
-                  <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1 rounded text-[10px] font-mono mr-1">{fact.code}</code>
+
+        {/* Show dose-by-dose detail for immunizations */}
+        {doseFacts.length > 0 ? (
+          <div className="mt-2 ml-1 border-l-2 border-[var(--border-light)] pl-3 space-y-1">
+            {doseFacts.map((fact, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs">
+                <span className="text-[var(--text-dim)] w-12">Dose {fact.doseNumber}</span>
+                <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.5 rounded font-mono text-[10px]">
+                  {fact.system || 'CVX'} {fact.code}
+                </code>
+                <span className="text-[var(--text-muted)] flex-1 truncate">{fact.display}</span>
+                {fact.date && (
+                  <span className="text-[var(--text-dim)] flex-shrink-0">{new Date(fact.date).toLocaleDateString()}</span>
                 )}
-                {fact.display}
-                {fact.date && <span className="text-[var(--text-dim)]"> ({fact.date})</span>}
-              </span>
+              </div>
             ))}
-            {detailFacts.length > 5 && (
-              <span className="text-xs text-[var(--text-dim)]">+{detailFacts.length - 5} more</span>
+            {/* Show missing doses if not met */}
+            {node.status !== 'pass' && doseSummaryFact?.requiredCount > doseSummaryFact?.foundCount && (
+              Array.from({ length: doseSummaryFact.requiredCount - doseSummaryFact.foundCount }).map((_, i) => (
+                <div key={`missing-${i}`} className="flex items-center gap-2 text-xs text-[var(--danger)]">
+                  <span className="w-12">Dose {doseSummaryFact.foundCount + i + 1}</span>
+                  <span className="italic">Missing</span>
+                </div>
+              ))
             )}
+          </div>
+        ) : detailFacts.length > 0 ? (
+          /* Show other detail facts if no dose facts */
+          <div className="mt-1.5 space-y-0.5">
+            {detailFacts.map((fact, i) => (
+              <div key={i} className="text-xs text-[var(--text-muted)] flex items-center gap-2">
+                {fact.code && fact.code !== '—' && (
+                  <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1 rounded text-[10px] font-mono">{fact.code}</code>
+                )}
+                <span>{fact.display}</span>
+                {fact.date && <span className="text-[var(--text-dim)]">({new Date(fact.date).toLocaleDateString()})</span>}
+              </div>
+            ))}
           </div>
         ) : noMatchFact ? (
           <p className="text-xs text-[var(--text-dim)] mt-0.5">{noMatchFact.display}</p>
@@ -2541,7 +2595,7 @@ function ValidationNodeRow({ node, onClick }                                    
       </div>
 
       {/* Click-to-inspect indicator */}
-      <ChevronRight className="w-4 h-4 text-[var(--text-dim)] flex-shrink-0" />
+      <ChevronRight className="w-4 h-4 text-[var(--text-dim)] flex-shrink-0 mt-1" />
     </div>
   );
 }

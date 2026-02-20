@@ -646,13 +646,54 @@ function evaluateClause(
     return { met: clause.operator === 'AND', childNodes: [], matchCount: { met: 0, total: 0 } };
   }
 
+  // Track if we've already satisfied an OR group (for short-circuit evaluation)
+  let orSatisfied = false;
+  let orSatisfiedByIndex = -1;
+  let orSatisfiedByTitle = '';
+
   for (let i = 0; i < clause.children.length; i++) {
     const child = clause.children[i];
+    const isOrClause = clause.operator === 'OR';
+
+    // For OR clauses: if already satisfied, mark remaining children as skipped
+    if (isOrClause && orSatisfied) {
+      if ('operator' in child) {
+        const nestedClause = child                 ;
+        const skippedNode                 = {
+          id: nestedClause.id,
+          title: nestedClause.description || `${nestedClause.operator} Group`,
+          type: 'collector',
+          description: nestedClause.description || '',
+          status: 'skipped',
+          skipped: true,
+          skipReason: `Not needed — qualified via: ${orSatisfiedByTitle}`,
+          facts: [],
+          children: [],
+          operator: nestedClause.operator,
+        };
+        childNodes.push(skippedNode);
+      } else {
+        const element = child               ;
+        const skippedNode                 = {
+          id: element.id,
+          title: getElementTitle(element),
+          type: 'decision',
+          description: element.description,
+          status: 'skipped',
+          skipped: true,
+          skipReason: `Not needed — qualified via: ${orSatisfiedByTitle}`,
+          facts: [],
+        };
+        childNodes.push(skippedNode);
+      }
+      results.push(false); // Not evaluated, but doesn't affect OR result
+      continue;
+    }
 
     if ('operator' in child) {
       // It's a nested LogicalClause — produce a group node to preserve tree structure
       const nestedClause = child                 ;
-      const { met, childNodes: nestedNodes, matchCount } = evaluateClause(
+      const { met, childNodes: nestedNodes, matchCount, satisfiedBy } = evaluateClause(
         patient,
         nestedClause,
         measure,
@@ -660,20 +701,43 @@ function evaluateClause(
         mpEnd
       );
       results.push(met);
+
+      // For OR groups, track which path satisfied it
+      let groupSatisfiedBy = satisfiedBy;
+      if (met && nestedClause.operator === 'OR' && !groupSatisfiedBy) {
+        // Find the first passing child
+        const passingChild = nestedNodes.find(n => n.status === 'pass');
+        if (passingChild) {
+          groupSatisfiedBy = passingChild.title;
+        }
+      }
+
       const groupNode                 = {
         id: nestedClause.id,
         title: nestedClause.description || `${nestedClause.operator} Group`,
         type: 'collector',
         description: nestedClause.description || '',
         status: met ? 'pass' : matchCount && matchCount.met > 0 ? 'partial' : 'fail',
-        facts: matchCount ? [{
-          code: 'GROUP_MATCH',
-          display: `${matchCount.met} of ${matchCount.total} criteria met`,
-        }] : [],
+        // Replace GROUP_MATCH with human-readable text
+        facts: met && nestedClause.operator === 'OR' && groupSatisfiedBy ? [{
+          code: 'OR_SATISFIED',
+          display: `Qualified via: ${groupSatisfiedBy}`,
+        }] : (nestedClause.operator === 'AND' && matchCount ? [{
+          code: 'AND_STATUS',
+          display: met ? `All ${matchCount.total} criteria met` : `${matchCount.met} of ${matchCount.total} criteria met`,
+        }] : []),
         children: nestedNodes,
         operator: nestedClause.operator,
+        satisfiedBy: groupSatisfiedBy,
       };
       childNodes.push(groupNode);
+
+      // Track OR satisfaction for short-circuiting
+      if (isOrClause && met && !orSatisfied) {
+        orSatisfied = true;
+        orSatisfiedByIndex = i;
+        orSatisfiedByTitle = groupNode.title;
+      }
     } else {
       // It's a DataElement
       const { met, node } = evaluateDataElement(
@@ -686,6 +750,12 @@ function evaluateClause(
       results.push(met);
       if (node) {
         childNodes.push(node);
+        // Track OR satisfaction for short-circuiting
+        if (isOrClause && met && !orSatisfied) {
+          orSatisfied = true;
+          orSatisfiedByIndex = i;
+          orSatisfiedByTitle = node.title;
+        }
       }
     }
   }
@@ -718,7 +788,12 @@ function evaluateClause(
     }
   }
 
-  return { met, childNodes, matchCount: { met: metCount, total: totalCount } };
+  return {
+    met,
+    childNodes,
+    matchCount: { met: metCount, total: totalCount },
+    satisfiedBy: orSatisfied ? orSatisfiedByTitle : undefined
+  };
 }
 
 // ============================================================================
@@ -1530,43 +1605,67 @@ function evaluateImmunization(
 
       if (timingOk) {
         matchingImmunizations.push(imm);
-        facts.push({
-          code: imm.code,
-          display: imm.display,
-          date: imm.date,
-          source: 'Immunizations',
-        });
       }
     }
   }
 
+  // Sort by date descending (most recent first) and trim to required count
+  matchingImmunizations.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const satisfyingRecords = matchingImmunizations.slice(0, requiredDoses);
+
   const doseCount = matchingImmunizations.length;
   const met = doseCount >= requiredDoses;
 
-  // Add summary fact
-  if (requiredDoses > 1) {
-    facts.unshift({
-      code: 'DOSE_COUNT',
-      display: `${doseCount} of ${requiredDoses} required doses found`,
-      source: 'Immunization Evaluation',
+  // Build matching records for UI display (only the doses that satisfy the requirement)
+  const matchingRecords = satisfyingRecords.map((imm, idx) => ({
+    code: imm.code,
+    display: imm.display,
+    system: imm.system || 'CVX',
+    date: imm.date,
+    resourceType: 'Immunization',
+    doseNumber: idx + 1,
+  }));
+
+  // Add each satisfying dose as a fact (sorted by date ascending for display)
+  const sortedForDisplay = [...satisfyingRecords].sort((a, b) =>
+    new Date(a.date).getTime() - new Date(b.date).getTime()
+  );
+  for (let i = 0; i < sortedForDisplay.length; i++) {
+    const imm = sortedForDisplay[i];
+    facts.push({
+      code: imm.code,
+      display: imm.display,
+      date: imm.date,
+      source: 'Immunizations',
+      doseNumber: i + 1,
+      system: imm.system || 'CVX',
     });
   }
 
-  if (!met && doseCount === 0) {
-    facts.push({
-      code: 'NO_MATCH',
-      display: `No matching immunization found for: ${element.description}`,
-      source: 'Immunization Evaluation',
-    });
-  } else if (!met && doseCount > 0) {
-    facts.push({
-      code: 'INSUFFICIENT_DOSES',
-      display: `Only ${doseCount} of ${requiredDoses} required doses found`,
-      source: 'Immunization Evaluation',
-    });
-  }
+  // Add summary as first fact
+  const summaryDisplay = met
+    ? `${requiredDoses} of ${requiredDoses} required doses found`
+    : doseCount > 0
+      ? `${doseCount} of ${requiredDoses} required doses found (missing ${requiredDoses - doseCount})`
+      : `No matching immunization found`;
 
-  return { met, facts, incomplete: false };
+  facts.unshift({
+    code: 'DOSE_SUMMARY',
+    display: summaryDisplay,
+    source: 'Immunization Evaluation',
+    requiredCount: requiredDoses,
+    foundCount: Math.min(doseCount, requiredDoses),
+    totalFound: doseCount,
+  });
+
+  return {
+    met,
+    facts,
+    incomplete: false,
+    matchingRecords,
+    requiredCount: requiredDoses,
+    foundCount: Math.min(doseCount, requiredDoses),
+  };
 }
 
 function evaluateAssessment(
