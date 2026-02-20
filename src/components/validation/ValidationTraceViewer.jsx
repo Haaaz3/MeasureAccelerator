@@ -2463,13 +2463,12 @@ function VaccineResultCard({ node, onClick }) {
 
           {/* Individual doses */}
           {doseFacts.length > 0 ? (
-            <div className="ml-7 mt-2 space-y-0.5 font-mono text-xs">
+            <div className="ml-7 mt-2 space-y-0.5 text-xs">
               {doseFacts.map((dose, i) => (
-                <div key={i} className="flex items-center gap-3 text-[var(--text-muted)]">
-                  <code className="text-[var(--accent)] w-16">{dose.system || 'CVX'} {dose.code}</code>
-                  <span className="flex-1 truncate">{dose.display}</span>
+                <div key={i} className="flex items-center justify-between text-[var(--text-muted)]">
+                  <span>{dose.display}</span>
                   {dose.date && (
-                    <span className="text-[var(--text-dim)] flex-shrink-0">
+                    <span className="text-[var(--text-dim)]">
                       {new Date(dose.date).toLocaleDateString()}
                     </span>
                   )}

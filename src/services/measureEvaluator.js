@@ -617,6 +617,17 @@ function evaluatePopulation(
     return { met, nodes };
   }
 
+  // Debug: log numerator criteria count
+  if (population.type === 'numerator' || population.type === 'NUMERATOR') {
+    const criteriaCount = population.criteria?.children?.length || 0;
+    console.log('[DEBUG] Numerator criteria count:', criteriaCount);
+    if (population.criteria?.children) {
+      console.log('[DEBUG] Numerator criteria titles:',
+        population.criteria.children.map((c) => c.title || c.description || c.id)
+      );
+    }
+  }
+
   // Evaluate the criteria clause
   const { met, childNodes } = evaluateClause(
     patient,
