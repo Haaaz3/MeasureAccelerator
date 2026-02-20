@@ -3244,13 +3244,12 @@ function DetailedEvaluationSummary({ trace, patient, measure }) {
               {found} of {required} required dose{required !== 1 ? 's' : ''}
             </p>
 
-            {/* Individual doses */}
+            {/* Individual doses - just description and date */}
             {doseFacts.length > 0 ? (
-              <div className="ml-6 mt-2 space-y-0.5 font-mono text-xs">
+              <div className="ml-6 mt-2 space-y-0.5 text-xs">
                 {doseFacts.map((dose, i) => (
                   <div key={i} className="flex items-center gap-3 text-[var(--text-muted)]">
-                    <code className="text-[var(--accent)] w-16">{dose.system || 'CVX'} {dose.code}</code>
-                    <span className="flex-1 truncate">{dose.display}</span>
+                    <span className="flex-1">{dose.display}</span>
                     {dose.date && (
                       <span className="text-[var(--text-dim)] flex-shrink-0">
                         {new Date(dose.date).toLocaleDateString()}
