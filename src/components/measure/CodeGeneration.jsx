@@ -602,7 +602,7 @@ export function CodeGeneration() {
 
   return (
     <div className="flex-1 overflow-auto p-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="w-full">
         {/* Breadcrumb */}
         <nav className="flex items-center gap-2 text-sm mb-4">
           <button

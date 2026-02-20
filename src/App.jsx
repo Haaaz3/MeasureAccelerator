@@ -11,8 +11,6 @@ import { ValueSetManager } from './components/valueset/ValueSetManager';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { LibraryBrowser } from './components/library/LibraryBrowser';
 import { ErrorBoundary } from './components/shared/ErrorBoundary';
-import { ChessPuzzleGate } from './components/auth/ChessPuzzleGate';
-import { PuzzleFailBanner } from './components/auth/PuzzleFailBanner';
 import { CopilotPanel } from './components/copilot/CopilotPanel';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -39,7 +37,7 @@ const TAB_TO_ROUTE = {
 };
 
 // Inner app component that has access to router hooks
-function AppContent({ puzzleFailed, bannerDismissed, setBannerDismissed }) {
+function AppContent() {
   const location = useLocation();
 
   const { setActiveTab, measures, loadFromApi: loadMeasures, isLoadingFromApi: measuresLoading, apiError: measuresError } = useMeasureStore();
@@ -80,10 +78,6 @@ function AppContent({ puzzleFailed, bannerDismissed, setBannerDismissed }) {
 
   return (
     <div className="h-screen flex flex-col">
-      {/* Show shame banner if puzzle was failed */}
-      {puzzleFailed && !bannerDismissed && (
-        <PuzzleFailBanner onDismiss={() => setBannerDismissed(true)} />
-      )}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
         {isLoading && (
@@ -167,35 +161,9 @@ function AppContent({ puzzleFailed, bannerDismissed, setBannerDismissed }) {
 }
 
 function App() {
-  // Chess puzzle gate state - check sessionStorage for this session
-  const [puzzleCompleted, setPuzzleCompleted] = useState(() => {
-    return sessionStorage.getItem('puzzleCompleted') === 'true';
-  });
-  const [puzzleFailed, setPuzzleFailed] = useState(() => {
-    return sessionStorage.getItem('puzzleFailed') === 'true';
-  });
-  const [bannerDismissed, setBannerDismissed] = useState(false);
-
-  const handlePuzzleComplete = (wasCorrect) => {
-    setPuzzleCompleted(true);
-    setPuzzleFailed(!wasCorrect);
-    // Store in sessionStorage so it persists across route changes but not browser close
-    sessionStorage.setItem('puzzleCompleted', 'true');
-    sessionStorage.setItem('puzzleFailed', (!wasCorrect).toString());
-  };
-
-  // Show puzzle gate first (if not completed this session)
-  if (!puzzleCompleted) {
-    return <ChessPuzzleGate onComplete={handlePuzzleComplete} />;
-  }
-
   return (
     <BrowserRouter>
-      <AppContent
-        puzzleFailed={puzzleFailed}
-        bannerDismissed={bannerDismissed}
-        setBannerDismissed={setBannerDismissed}
-      />
+      <AppContent />
     </BrowserRouter>
   );
 }

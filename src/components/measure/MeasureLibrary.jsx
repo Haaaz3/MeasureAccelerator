@@ -381,7 +381,7 @@ export function MeasureLibrary() {
     <div className="flex-1 overflow-auto">
       {/* Page Header */}
       <div className="bg-[var(--bg-secondary)] border-b border-[var(--border)] px-6 py-5">
-        <div className="max-w-5xl mx-auto">
+        <div className="w-full">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-semibold text-[var(--text)]">Measure Library</h1>
@@ -404,7 +404,7 @@ export function MeasureLibrary() {
 
       {/* Main Content */}
       <div className="p-6">
-        <div className="max-w-5xl mx-auto">
+        <div className="w-full">
 
         {/* Upload Zone */}
         {isProcessing || batchQueue.length > 0 ? (

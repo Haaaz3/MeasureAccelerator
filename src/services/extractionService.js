@@ -339,53 +339,9 @@ export async function extractMeasure(
       console.error('💥 Stack:', crashErr instanceof Error ? crashErr.stack : 'no stack');
     }
 
-    try { console.log('=== LINE AFTER VSCOUNT TRY/CATCH ==='); } catch(e) { console.error('CRASH after vsCount:', e); }
-
-    // Phase 4: Enrich DataElements with HTML and CQL parsing
-    // This extracts real OIDs, codes, and mappings from the source document
-    onProgress?.('enriching', 'Enriching data elements with codes and value sets...');
-    try {
-      console.log('[extractMeasure] Starting enrichment phase');
-
-      // Parse HTML specification to extract value sets and data element mappings
-      const htmlParsed = parseHtmlSpec(documentText);
-      console.log('[extractMeasure] HTML parsing complete:', {
-        valueSets: htmlParsed.valueSets.length,
-        codes: htmlParsed.codes.length,
-        mappings: htmlParsed.dataElementMappings.length,
-      });
-
-      // Parse CQL to extract value set declarations and code definitions
-      const { parseCqlFromDocument, normalizeCodeSystem } = await import('./cqlParser');
-      const cqlParsed = parseCqlFromDocument(documentText);
-      console.log('[extractMeasure] CQL parsing complete:', {
-        valueSets: cqlParsed.valueSets.length,
-        codes: cqlParsed.codes.length,
-      });
-
-      // Enrich DataElements with HTML-parsed data FIRST
-      // HTML enrichment replaces placeholder OIDs with real OIDs from the spec
-      enrichDataElementsWithHtmlSpec(ums, htmlParsed);
-
-      // THEN enrich with CQL-parsed data (can now match on real OIDs)
-      enrichDataElementsWithCqlCodes(ums, cqlParsed, normalizeCodeSystem);
-
-      // Count enriched DataElements
-      let enrichedCount = 0;
-      function countEnriched(node     )       {
-        if (!node) return;
-        if (node.valueSet?.oid && /^\d+\.\d+/.test(node.valueSet.oid)) enrichedCount++;
-        if (node.children) node.children.forEach(countEnriched);
-      }
-      for (const pop of (ums?.populations || [])) {
-        if (pop.criteria) countEnriched(pop.criteria);
-      }
-      console.log('[extractMeasure] After enrichment:', enrichedCount, 'DataElements have real OIDs');
-
-    } catch (enrichErr) {
-      console.error('[extractMeasure] Enrichment error (continuing anyway):', enrichErr);
-      // Continue without enrichment - we still have the LLM-extracted data
-    }
+    // NOTE: Enrichment (HTML/CQL parsing, OID resolution, code population) is handled by
+    // measureIngestion.js AFTER this function returns. This avoids duplicate parsing and
+    // ensures the enrichment has access to the FULL document content (not truncated for LLM).
 
     try {
       console.log('=== BEFORE onProgress ===');
@@ -1004,41 +960,32 @@ export function enrichDataElementsWithHtmlSpec(
     descriptionToMapping.set(mapping.description.toLowerCase(), mapping);
   }
 
-  // Build a map of value set names to associated codes
-  // We match codes to value sets based on description similarity
-  const vsNameToCodes = new Map                                                                  ();
-  for (const vs of htmlResult.valueSets) {
-    const vsNameLower = vs.name.toLowerCase();
-    const matchingCodes                                                           = [];
-
-    for (const code of htmlResult.codes) {
-      const codeDisplayLower = code.display.toLowerCase();
-      // Match if code display contains key words from value set name or vice versa
-      // Split VS name into significant words (3+ chars)
-      const vsWords = vsNameLower.split(/\s+/).filter(w => w.length >= 3);
-      const codeWords = codeDisplayLower.split(/\s+/).filter(w => w.length >= 3);
-
-      // Check for word overlap (at least 2 matching words or name contains key phrase)
-      const matchingWords = vsWords.filter(vw =>
-        codeWords.some(cw => cw.includes(vw) || vw.includes(cw))
-      );
-
-      if (matchingWords.length >= 2 ||
-          codeDisplayLower.includes(vsNameLower) ||
-          vsNameLower.includes(codeDisplayLower.split('(')[0].trim())) {
-        matchingCodes.push({
-          code: code.code,
-          display: code.display,
-          system: code.system,
-        });
-      }
-    }
-
-    if (matchingCodes.length > 0) {
-      vsNameToCodes.set(vsNameLower, matchingCodes);
-      console.log(`[enrichHtml] Matched ${matchingCodes.length} codes to value set "${vs.name}"`);
-    }
+  // Build map of direct reference codes from HTML (these are typically anaphylaxis SNOMED codes)
+  // These codes should NOT be fuzzy-matched to value sets - they belong to specific data elements
+  // that reference them directly via the data element mappings
+  const directRefCodes = new Map                                                                  ();
+  for (const code of htmlResult.codes) {
+    // Key by code value + system for exact lookup
+    const key = `${code.system}:${code.code}`.toLowerCase();
+    directRefCodes.set(key, {
+      code: code.code,
+      display: code.display,
+      system: code.system,
+    });
   }
+
+  // NOTE: We intentionally DO NOT fuzzy-match codes to value sets here.
+  // The previous fuzzy matching caused cross-contamination (e.g., "Mumps" value set
+  // getting anaphylaxis codes because they mention "Mumps" in their description).
+  //
+  // Actual value set codes should come from:
+  // 1. VSAC API expansion (preferred)
+  // 2. Bundled value set expansion files
+  // 3. AI-assisted expansion during import
+  //
+  // Direct reference codes (like anaphylaxis SNOMED codes) are handled via
+  // the data element mappings below, which explicitly pair codes to specific data elements.
+  const vsNameToCodes = new Map                                                                  ();
 
   let enrichedCount = 0;
   let oidsAttached = 0;
@@ -1098,7 +1045,12 @@ export function enrichDataElementsWithHtmlSpec(
           if (!elem.valueSet) {
             (elem       ).valueSet = { id: '', oid: '', name: '', codes: [], confidence: 'medium' };
           }
-          if (!elem.valueSet .oid || !isRealOid(elem.valueSet .oid)) {
+          // ALWAYS override OID with HTML spec's OID — the HTML spec is authoritative
+          // Previous logic skipped elements with "real" OIDs, but MAT OIDs (2.16.840.1.113883.3.117.*)
+          // look real but are from a different namespace than VSAC OIDs (2.16.840.1.113883.3.464.*)
+          const previousOid = elem.valueSet?.oid;
+          if (previousOid !== mapping.valueSetOid) {
+            console.log(`[enrichHtml] Corrected OID for "${elem.description}": ${previousOid || '(none)'} → ${mapping.valueSetOid}`);
             elem.valueSet .oid = mapping.valueSetOid;
             oidsAttached++;
           }
@@ -1114,15 +1066,18 @@ export function enrichDataElementsWithHtmlSpec(
             display: mapping.directCodeDisplay || mapping.description,
             system: (mapping.directCodeSystem       ) || 'SNOMED',
           }];
+          codesAttached++;
+          console.log(`[enrichHtml] Attached direct code ${mapping.directCode} to "${elem.description}"`);
         }
       }
 
       // Strategy 2: If element has a value set name, look up its OID from HTML
+      // ALWAYS override if we find a matching OID — the HTML spec is authoritative
       if (elem.valueSet?.name) {
         const realOid = vsNameToOid.get(elem.valueSet.name.toLowerCase());
         if (realOid) {
           const currentOid = elem.valueSet.oid || '';
-          if (!currentOid || !isRealOid(currentOid)) {
+          if (currentOid !== realOid) {
             console.log(`[enrichHtml] Replacing OID for ${elem.valueSet.name}: "${currentOid}" → "${realOid}"`);
             elem.valueSet.oid = realOid;
             oidsAttached++;
@@ -1142,6 +1097,35 @@ export function enrichDataElementsWithHtmlSpec(
       // Strategy 4: Attach codes to the DataElement's valueSet from parsed HTML codes
       // This populates valueSet.codes based on name matching
       attachCodesToValueSet(elem);
+
+      // Strategy 5: For elements without direct codes, try to match against HTML codes by description
+      // This handles anaphylaxis codes that are direct references in the HTML spec
+      if (!elem.directCodes || elem.directCodes.length === 0) {
+        const descLower = (elem.description || '').toLowerCase();
+        for (const code of htmlResult.codes) {
+          const codeDisplayLower = (code.display || '').toLowerCase();
+          // Look for specific keyword matches (e.g., "dtap" in description matches "anaphylaxis...dtap")
+          // Only match if the description mentions anaphylaxis/adverse reaction AND matches a specific vaccine
+          const isAnaphylaxisElement = descLower.includes('anaphyla') || descLower.includes('adverse') || descLower.includes('reaction');
+          if (isAnaphylaxisElement) {
+            // Check for vaccine type overlap
+            const vaccineKeywords = ['dtap', 'dtp', 'ipv', 'polio', 'mmr', 'measles', 'mumps', 'rubella', 'hib', 'hep b', 'hepatitis b', 'hep a', 'hepatitis a', 'varicella', 'vzv', 'chickenpox', 'pneumococcal', 'pcv', 'rotavirus', 'influenza', 'flu'];
+            for (const keyword of vaccineKeywords) {
+              if (descLower.includes(keyword) && codeDisplayLower.includes(keyword)) {
+                elem.directCodes = [{
+                  code: code.code,
+                  display: code.display,
+                  system: code.system || 'SNOMED',
+                }];
+                codesAttached++;
+                console.log(`[enrichHtml] Matched code ${code.code} to anaphylaxis element "${elem.description}"`);
+                break;
+              }
+            }
+            if (elem.directCodes && elem.directCodes.length > 0) break;
+          }
+        }
+      }
 
       if (mapping || (elem.valueSet?.oid && isRealOid(elem.valueSet.oid))) enrichedCount++;
     } else {

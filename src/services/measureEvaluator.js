@@ -401,25 +401,35 @@ function checkAgeRequirement(
  */
 function checkGenderRequirement(
   patient             ,
-  measure                      
+  measure
 )                                                                   {
   const requiredGender = measure.globalConstraints?.gender;
-  if (requiredGender && requiredGender !== 'all') {
-    if (patient.demographics.gender !== requiredGender) {
-      return {
-        met: false,
-        reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`,
-        hasGenderRequirement: true
-      };
-    }
+
+  // No gender requirement if: null, undefined, empty string, 'all', 'any', or 'Any'
+  const noGenderRequirement = !requiredGender ||
+    requiredGender === '' ||
+    requiredGender.toLowerCase() === 'all' ||
+    requiredGender.toLowerCase() === 'any';
+
+  if (noGenderRequirement) {
+    // Measure has no gender restriction — all genders pass
+    return { met: true, hasGenderRequirement: false };
+  }
+
+  // Measure requires specific gender (male/female)
+  if (patient.demographics.gender?.toLowerCase() !== requiredGender.toLowerCase()) {
     return {
-      met: true,
-      reason: `Patient gender (${patient.demographics.gender}) meets requirement (${requiredGender})`,
+      met: false,
+      reason: `Patient gender (${patient.demographics.gender}) does not match required gender (${requiredGender})`,
       hasGenderRequirement: true
     };
   }
 
-  return { met: true, hasGenderRequirement: false };
+  return {
+    met: true,
+    reason: `Patient gender (${patient.demographics.gender}) meets requirement (${requiredGender})`,
+    hasGenderRequirement: true
+  };
 }
 
 /**
@@ -487,13 +497,15 @@ export function evaluatePatient(
     }
   }
 
-  // Find each population type
-  const ipPop = measure.populations.find(p => p.type === 'initial_population');
-  const denomPop = measure.populations.find(p => p.type === 'denominator');
-  const denomExclPop = measure.populations.find(p => p.type === 'denominator_exclusion');
-  const denomExcepPop = measure.populations.find(p => p.type === 'denominator_exception');
-  const numerPop = measure.populations.find(p => p.type === 'numerator');
-  const _numerExclPop = measure.populations.find(p => p.type === 'numerator_exclusion');
+  // Find each population type (handle both snake_case and kebab-case)
+  const findPop = (types) => measure.populations.find(p => types.includes(p.type));
+
+  const ipPop = findPop(['initial_population', 'initial-population']);
+  const denomPop = findPop(['denominator']);
+  const denomExclPop = findPop(['denominator_exclusion', 'denominator-exclusion']);
+  const denomExcepPop = findPop(['denominator_exception', 'denominator-exception']);
+  const numerPop = findPop(['numerator']);
+  const _numerExclPop = findPop(['numerator_exclusion', 'numerator-exclusion']);
 
   // Evaluate measure-defined IP criteria (only if pre-checks passed)
   const ipMeasureCriteria = (ipPop && ipPreChecksPassed)
@@ -582,9 +594,28 @@ function evaluatePopulation(
   population                      ,
   measure                      ,
   mpStart        ,
-  mpEnd        
+  mpEnd
 )                                            {
   const nodes                   = [];
+
+  // Handle case where criteria might be missing or malformed
+  if (!population.criteria) {
+    return { met: true, nodes: [] };
+  }
+
+  // Handle case where criteria is a DataElement directly (not wrapped in LogicalClause)
+  if (!population.criteria.children && population.criteria.type) {
+    // It's a single DataElement, evaluate it directly
+    const { met, node } = evaluateDataElement(
+      patient,
+      population.criteria               ,
+      measure,
+      mpStart,
+      mpEnd
+    );
+    if (node) nodes.push(node);
+    return { met, nodes };
+  }
 
   // Evaluate the criteria clause
   const { met, childNodes } = evaluateClause(
@@ -605,12 +636,19 @@ function evaluateClause(
   clause               ,
   measure                      ,
   mpStart        ,
-  mpEnd        
+  mpEnd
 )                                                                                              {
   const childNodes                   = [];
   const results            = [];
 
-  for (const child of clause.children) {
+  // Handle missing or empty children array
+  if (!clause.children || clause.children.length === 0) {
+    return { met: clause.operator === 'AND', childNodes: [], matchCount: { met: 0, total: 0 } };
+  }
+
+  for (let i = 0; i < clause.children.length; i++) {
+    const child = clause.children[i];
+
     if ('operator' in child) {
       // It's a nested LogicalClause — produce a group node to preserve tree structure
       const nestedClause = child                 ;
@@ -646,7 +684,9 @@ function evaluateClause(
         mpEnd
       );
       results.push(met);
-      if (node) childNodes.push(node);
+      if (node) {
+        childNodes.push(node);
+      }
     }
   }
 
@@ -710,10 +750,11 @@ function evaluateDataElement(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
+  mpEnd
 )                                                {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
   let description = element.description;
 
   // Check if description suggests this is about immunizations
@@ -731,7 +772,7 @@ function evaluateDataElement(
         title: getElementTitle(element),
         type: 'decision',
         description,
-        status: met ? 'pass' : 'fail',
+        status: 'pass',
         facts,
         cqlSnippet: generateCqlSnippet(element),
         source: 'Test Patient Data',
@@ -765,21 +806,24 @@ function evaluateDataElement(
     case 'diagnosis':
       const dxResult = evaluateDiagnosis(patient, element, measure, mpStart, mpEnd);
       met = dxResult.met;
+      incomplete = dxResult.incomplete || false;
       facts.push(...dxResult.facts);
       break;
 
     case 'encounter':
       const encResult = evaluateEncounter(patient, element, measure, mpStart, mpEnd);
       met = encResult.met;
+      incomplete = encResult.incomplete || false;
       facts.push(...encResult.facts);
       break;
 
     case 'procedure':
       const procResult = evaluateProcedure(patient, element, measure, mpStart, mpEnd);
       met = procResult.met;
+      incomplete = procResult.incomplete || false;
       facts.push(...procResult.facts);
       // If procedure didn't match but looks like immunization, try that too
-      if (!met && looksLikeImmunization) {
+      if (!met && !incomplete && looksLikeImmunization) {
         const immResult = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
         if (immResult.met) {
           met = immResult.met;
@@ -792,18 +836,21 @@ function evaluateDataElement(
     case 'observation':
       const obsResult = evaluateObservation(patient, element, measure, mpStart, mpEnd);
       met = obsResult.met;
+      incomplete = obsResult.incomplete || false;
       facts.push(...obsResult.facts);
       break;
 
     case 'medication':
       const medResult = evaluateMedication(patient, element, measure, mpStart, mpEnd);
       met = medResult.met;
+      incomplete = medResult.incomplete || false;
       facts.push(...medResult.facts);
       break;
 
     case 'immunization':
       const immResult2 = evaluateImmunization(patient, element, measure, mpStart, mpEnd);
       met = immResult2.met;
+      incomplete = immResult2.incomplete || false;
       facts.push(...immResult2.facts);
       break;
 
@@ -812,8 +859,19 @@ function evaluateDataElement(
       // Generic assessment - check if any matching data exists
       const assessResult = evaluateAssessment(patient, element, measure, mpStart, mpEnd);
       met = assessResult.met;
+      incomplete = assessResult.incomplete || false;
       facts.push(...assessResult.facts);
       break;
+  }
+
+  // Determine status: incomplete takes priority over pass/fail
+  let status         ;
+  if (incomplete) {
+    status = 'incomplete';
+  } else if (met) {
+    status = 'pass';
+  } else {
+    status = 'fail';
   }
 
   const node                 = {
@@ -821,7 +879,7 @@ function evaluateDataElement(
     title: getElementTitle(element),
     type: 'decision',
     description,
-    status: met ? 'pass' : 'fail',
+    status,
     facts,
     cqlSnippet: generateCqlSnippet(element),
     source: 'Test Patient Data',
@@ -1001,13 +1059,25 @@ function evaluateDiagnosis(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
 
   // Get codes to match against
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+
+  // If this element expects codes but has none configured, mark as incomplete
+  if (needsCodes) {
+    incomplete = true;
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete };
+  }
 
   for (const dx of patient.diagnoses) {
     // Check if diagnosis code matches
@@ -1029,7 +1099,7 @@ function evaluateDiagnosis(
     }
   }
 
-  if (!met) {
+  if (!met && !incomplete) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching diagnosis found for: ${element.description}`,
@@ -1037,7 +1107,7 @@ function evaluateDiagnosis(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete };
 }
 
 function evaluateEncounter(
@@ -1045,12 +1115,24 @@ function evaluateEncounter(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
 
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+
+  // If this element expects codes but has none configured, mark as incomplete
+  if (needsCodes) {
+    incomplete = true;
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete };
+  }
 
   for (const enc of patient.encounters) {
     const codeMatches = matchCode(enc.code, enc.system, codesToMatch);
@@ -1070,7 +1152,7 @@ function evaluateEncounter(
     }
   }
 
-  if (!met) {
+  if (!met && !incomplete) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching encounter found for: ${element.description}`,
@@ -1078,7 +1160,7 @@ function evaluateEncounter(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete };
 }
 
 function evaluateProcedure(
@@ -1086,12 +1168,24 @@ function evaluateProcedure(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
 
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+
+  // If this element expects codes but has none configured, mark as incomplete
+  if (needsCodes) {
+    incomplete = true;
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete };
+  }
 
   for (const proc of patient.procedures) {
     const codeMatches = matchCode(proc.code, proc.system, codesToMatch);
@@ -1132,7 +1226,7 @@ function evaluateProcedure(
     }
   }
 
-  if (!met) {
+  if (!met && !incomplete) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching procedure/immunization found for: ${element.description}`,
@@ -1140,7 +1234,7 @@ function evaluateProcedure(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete };
 }
 
 function evaluateObservation(
@@ -1148,12 +1242,24 @@ function evaluateObservation(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
 
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+
+  // If this element expects codes but has none configured, mark as incomplete
+  if (needsCodes) {
+    incomplete = true;
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete };
+  }
 
   for (const obs of patient.observations) {
     const codeMatches = matchCode(obs.code, obs.system, codesToMatch);
@@ -1207,7 +1313,7 @@ function evaluateObservation(
     }
   }
 
-  if (!met) {
+  if (!met && !incomplete) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching observation found for: ${element.description}`,
@@ -1215,7 +1321,7 @@ function evaluateObservation(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete };
 }
 
 function evaluateMedication(
@@ -1223,12 +1329,24 @@ function evaluateMedication(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
   let met = false;
+  let incomplete = false;
 
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+
+  // If this element expects codes but has none configured, mark as incomplete
+  if (needsCodes) {
+    incomplete = true;
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete };
+  }
 
   for (const med of patient.medications) {
     const codeMatches = matchCode(med.code, med.system, codesToMatch);
@@ -1254,7 +1372,7 @@ function evaluateMedication(
     }
   }
 
-  if (!met) {
+  if (!met && !incomplete) {
     facts.push({
       code: 'NO_MATCH',
       display: `No matching medication found for: ${element.description}`,
@@ -1262,7 +1380,7 @@ function evaluateMedication(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete };
 }
 
 // Common childhood immunization CVX codes mapped by vaccine type
@@ -1310,8 +1428,8 @@ function evaluateImmunization(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   const facts                   = [];
 
   if (!patient.immunizations || patient.immunizations.length === 0) {
@@ -1320,10 +1438,10 @@ function evaluateImmunization(
       display: 'No immunization records found for patient',
       source: 'Immunization Evaluation',
     });
-    return { met: false, facts };
+    return { met: false, facts, incomplete: false };
   }
 
-  const codesToMatch = getCodesFromElement(element, measure);
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
   const descLower = element.description.toLowerCase();
 
   // Extract required dose count from description (e.g., "4 DTaP" or "three doses")
@@ -1448,7 +1566,7 @@ function evaluateImmunization(
     });
   }
 
-  return { met, facts };
+  return { met, facts, incomplete: false };
 }
 
 function evaluateAssessment(
@@ -1456,14 +1574,26 @@ function evaluateAssessment(
   element             ,
   measure                      ,
   mpStart        ,
-  mpEnd        
-)                                            {
+  mpEnd
+)                                                              {
   // Generic assessment - try to match against any patient data
   const facts                   = [];
 
   // First check for age requirements
   if (element.description.toLowerCase().includes('age') || element.thresholds?.ageMin || element.thresholds?.ageMax) {
-    return evaluateAgeRequirement(patient, element, mpStart, mpEnd);
+    const ageResult = evaluateAgeRequirement(patient, element, mpStart, mpEnd);
+    return { ...ageResult, incomplete: false };
+  }
+
+  // Check if this element has no codes configured (incomplete)
+  const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
+  if (needsCodes) {
+    facts.push({
+      code: 'NO_CODES',
+      display: `Unable to evaluate — no value set codes configured for: ${element.valueSet?.name || element.description}`,
+      source: 'Configuration',
+    });
+    return { met: false, facts, incomplete: true };
   }
 
   // Try diagnosis
@@ -1497,39 +1627,50 @@ function evaluateAssessment(
     source: 'Assessment Evaluation',
   });
 
-  return { met: false, facts };
+  return { met: false, facts, incomplete: false };
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-function getCodesFromElement(element             , measure                      )                  {
+/**
+ * Get codes from element, returning both the codes array and a flag indicating if codes were expected but missing
+ */
+function getCodesFromElement(element             , measure                      )                                                        {
   const codes                  = [];
+  let hasValueSetReference = false;
 
   // Add direct codes
-  if (element.directCodes) {
+  if (element.directCodes && element.directCodes.length > 0) {
     codes.push(...element.directCodes);
   }
 
   // Add codes from value set reference
-  if (element.valueSet?.codes) {
-    codes.push(...element.valueSet.codes);
+  if (element.valueSet) {
+    hasValueSetReference = true;
+    if (element.valueSet.codes && element.valueSet.codes.length > 0) {
+      codes.push(...element.valueSet.codes);
+    }
   }
 
   // Look up value set in measure's valueSets array
-  if (element.valueSet?.id || element.valueSet?.name) {
-    const vsMatch = measure.valueSets.find(
+  if (element.valueSet?.id || element.valueSet?.name || element.valueSet?.oid) {
+    hasValueSetReference = true;
+    const vsMatch = measure.valueSets?.find(
       vs => vs.id === element.valueSet?.id ||
             vs.name === element.valueSet?.name ||
             vs.oid === element.valueSet?.oid
     );
-    if (vsMatch?.codes) {
+    if (vsMatch?.codes && vsMatch.codes.length > 0) {
       codes.push(...vsMatch.codes);
     }
   }
 
-  return codes;
+  // Determine if this element expects codes but doesn't have them
+  const needsCodes = hasValueSetReference && codes.length === 0;
+
+  return { codes, needsCodes, hasValueSetReference };
 }
 
 function matchCode(code        , system        , targetCodes                 )          {
@@ -1559,14 +1700,36 @@ function matchCode(code        , system        , targetCodes                 )  
 }
 
 function normalizeCodeSystem(system        )         {
-  const lower = system.toLowerCase();
-  if (lower.includes('icd') || lower.includes('10-cm')) return 'ICD10';
-  if (lower.includes('snomed') || lower.includes('sct')) return 'SNOMED';
-  if (lower.includes('cpt')) return 'CPT';
-  if (lower.includes('hcpcs')) return 'HCPCS';
+  if (!system) return '';
+  const lower = system.toLowerCase().trim();
+
+  // Handle FHIR URIs and short names for CPT
+  if (lower.includes('cpt') || lower.includes('ama-assn') || lower.includes('ama.org')) return 'CPT';
+
+  // ICD-10-CM
+  if (lower.includes('icd-10') || lower.includes('icd10') || lower.includes('10-cm')) return 'ICD10';
+
+  // SNOMED CT
+  if (lower.includes('snomed') || lower.includes('sct') || lower === 'http://snomed.info/sct') return 'SNOMED';
+
+  // LOINC
   if (lower.includes('loinc')) return 'LOINC';
-  if (lower.includes('rxnorm') || lower.includes('rx')) return 'RxNorm';
+
+  // CVX (vaccine codes)
   if (lower.includes('cvx')) return 'CVX';
+
+  // RxNorm
+  if (lower.includes('rxnorm') || lower.includes('nlm.nih.gov/research/umls/rxnorm')) return 'RXNORM';
+
+  // HCPCS
+  if (lower.includes('hcpcs')) return 'HCPCS';
+
+  // ICD-9 (legacy)
+  if (lower.includes('icd-9') || lower.includes('icd9')) return 'ICD9';
+
+  // NDC (drug codes)
+  if (lower.includes('ndc')) return 'NDC';
+
   return system.toUpperCase();
 }
 

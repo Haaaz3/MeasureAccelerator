@@ -18,6 +18,7 @@ import { parseMeasureSpec } from '../utils/specParser';
 ;                                                                                    
 ;                                                 
 import { parseHtmlSpec,                          } from './htmlSpecParser';
+import { VALUE_SET_BY_OID, getCodesForOids } from '../data/valuesets';
 
 /**
  * Smart truncation for LLM input - prioritizes HTML and CQL content over PDF/Excel.
@@ -80,6 +81,257 @@ function truncateForLLM(content        , maxChars        )         {
 
   console.log(`[truncateForLLM] Prioritized sections: ${sections.map(s => `${s.filename}(${s.priority})`).join(', ')}`);
   return result;
+}
+
+/**
+ * Resolve placeholder OIDs that survived initial enrichment.
+ * Uses fuzzy matching against CQL and HTML parsed value sets.
+ * Also handles composite value sets like "qualifying_encounters".
+ */
+function resolvePlaceholderOids(
+  ums                      ,
+  cqlParsed                ,
+  htmlParsed
+)       {
+  const isRealOid = (oid        ) => /^\d+\.\d+/.test(oid || '');
+
+  // Build lookup maps from CQL value sets (which have real OIDs)
+  const cqlVsByName = new Map                                       ();
+  const cqlVsByOid = new Map                                       ();
+  for (const vs of cqlParsed.valueSets) {
+    cqlVsByName.set(vs.name.toLowerCase(), vs);
+    cqlVsByOid.set(vs.oid, vs);
+  }
+
+  // Build lookup from HTML value sets
+  const htmlVsByName = new Map                                                  ();
+  for (const vs of htmlParsed.valueSets) {
+    htmlVsByName.set(vs.name.toLowerCase(), vs.oid);
+  }
+
+  // Common composite value set patterns and their constituent OIDs
+  // These are hardcoded for common CMS measures - ideally would be parsed from CQL
+  const compositeValueSets                                  = {
+    'qualifying_encounters': [
+      '2.16.840.1.113883.3.464.1003.101.12.1001', // Office Visit
+      '2.16.840.1.113883.3.464.1003.101.12.1022', // Preventive Care Initial 0-17
+      '2.16.840.1.113883.3.464.1003.101.12.1024', // Preventive Care Established 0-17
+      '2.16.840.1.113883.3.464.1003.101.12.1016', // Home Healthcare Services
+    ],
+    'hospice_encounter': [
+      '2.16.840.1.113883.3.464.1003.1003', // Hospice Encounter
+    ],
+  };
+
+  let resolvedCount = 0;
+  let compositeCount = 0;
+
+  function walkAndResolve(node                             )       {
+    if (!node) return;
+
+    if ('type' in node && !('children' in node)) {
+      // DataElement
+      const elem = node               ;
+
+      if (elem.valueSet?.oid && !isRealOid(elem.valueSet.oid)) {
+        const placeholderOid = elem.valueSet.oid.toLowerCase();
+
+        // Check if this is a known composite value set
+        if (compositeValueSets[placeholderOid]) {
+          // Create multiple value set references for composite
+          const constituentOids = compositeValueSets[placeholderOid];
+          const firstOid = constituentOids[0];
+          const firstVs = cqlVsByOid.get(firstOid);
+
+          // Set the primary value set
+          elem.valueSet.oid = firstOid;
+          if (firstVs) {
+            elem.valueSet.name = firstVs.name;
+          }
+
+          // Store additional OIDs in a composite field for later expansion
+          (elem       ).compositeValueSetOids = constituentOids;
+
+          console.log(`[resolvePlaceholderOids] Resolved composite "${placeholderOid}" to ${constituentOids.length} constituent OIDs`);
+          compositeCount++;
+          resolvedCount++;
+          return;
+        }
+
+        // Try to match by fuzzy name against CQL value sets
+        const vsName = (elem.valueSet.name || '').toLowerCase();
+        const description = (elem.description || '').toLowerCase();
+
+        // Try exact name match first
+        let matchedVs = cqlVsByName.get(vsName);
+
+        // Try HTML match
+        if (!matchedVs && vsName) {
+          const htmlOid = htmlVsByName.get(vsName);
+          if (htmlOid) {
+            elem.valueSet.oid = htmlOid;
+            console.log(`[resolvePlaceholderOids] Resolved "${vsName}" via HTML to OID ${htmlOid}`);
+            resolvedCount++;
+            return;
+          }
+        }
+
+        // Try fuzzy match against CQL value sets by keywords in description
+        if (!matchedVs) {
+          for (const [cqlName, cqlVs] of cqlVsByName) {
+            // Check if CQL value set name appears in element description or vice versa
+            const cqlWords = cqlName.split(/\s+/).filter(w => w.length >= 4);
+            const descWords = description.split(/\s+/).filter(w => w.length >= 4);
+
+            // Require at least 2 significant word matches for fuzzy matching
+            const matches = cqlWords.filter(cw => descWords.some(dw => dw.includes(cw) || cw.includes(dw)));
+            if (matches.length >= 2 || cqlName.includes(vsName) || vsName.includes(cqlName)) {
+              matchedVs = cqlVs;
+              break;
+            }
+          }
+        }
+
+        if (matchedVs) {
+          console.log(`[resolvePlaceholderOids] Resolved "${placeholderOid}" to OID ${matchedVs.oid} (${matchedVs.name})`);
+          elem.valueSet.oid = matchedVs.oid;
+          elem.valueSet.name = matchedVs.name;
+          elem.valueSet.version = matchedVs.version;
+          resolvedCount++;
+        }
+      }
+    } else {
+      // LogicalClause — recurse
+      const clause = node                 ;
+      if (clause.children) clause.children.forEach(walkAndResolve);
+    }
+  }
+
+  // Walk all populations
+  for (const pop of ums.populations || []) {
+    if (pop.criteria) walkAndResolve(pop.criteria);
+  }
+
+  console.log(`[resolvePlaceholderOids] Resolved ${resolvedCount} placeholder OIDs (${compositeCount} composite)`);
+}
+
+/**
+ * Populate value set codes from bundled expansions.
+ * This runs after OID resolution to fill in actual code lists.
+ */
+function populateBundledValueSetCodes(ums                      )       {
+  const isRealOid = (oid        ) => /^\d+\.\d+/.test(oid || '');
+
+  let populatedCount = 0;
+  let codesAdded = 0;
+
+  function walkAndPopulate(node                             )       {
+    if (!node) return;
+
+    if ('type' in node && !('children' in node)) {
+      // DataElement
+      const elem = node               ;
+
+      // Skip if already has codes
+      if (elem.valueSet?.codes && elem.valueSet.codes.length > 0) {
+        return;
+      }
+
+      // Check if we have bundled codes for this OID
+      let bundledVs = null;
+      if (elem.valueSet?.oid && isRealOid(elem.valueSet.oid)) {
+        bundledVs = VALUE_SET_BY_OID[elem.valueSet.oid];
+      }
+
+      // Fallback: try name-based matching if OID lookup failed
+      if (!bundledVs && elem.valueSet?.name) {
+        const nameKey = elem.valueSet.name.toLowerCase().trim();
+        for (const [oid, vs] of Object.entries(VALUE_SET_BY_OID)) {
+          if (vs.name.toLowerCase().trim() === nameKey) {
+            bundledVs = vs;
+            // Correct the OID to the canonical one
+            elem.valueSet.oid = oid;
+            console.log(`[populateBundledCodes] Matched "${elem.valueSet.name}" by NAME → OID ${oid}`);
+            break;
+          }
+        }
+      }
+
+      if (bundledVs && bundledVs.codes) {
+        elem.valueSet.codes = bundledVs.codes.map(c => ({
+          code: c.code,
+          display: c.display,
+          system: c.system,
+        }));
+        codesAdded += bundledVs.codes.length;
+        populatedCount++;
+        console.log(`[populateBundledCodes] Added ${bundledVs.codes.length} codes to "${elem.valueSet.name || elem.valueSet.oid}"`);
+      }
+
+      // Handle composite value sets (multiple OIDs combined)
+      if ((elem       ).compositeValueSetOids) {
+        const compositeOids = (elem       ).compositeValueSetOids;
+        const allCodes = getCodesForOids(compositeOids);
+        if (allCodes.length > 0) {
+          if (!elem.valueSet) {
+            (elem       ).valueSet = { id: '', oid: '', name: '', codes: [], confidence: 'high' };
+          }
+          elem.valueSet.codes = allCodes.map(c => ({
+            code: c.code,
+            display: c.display,
+            system: c.system,
+          }));
+          codesAdded += allCodes.length;
+          populatedCount++;
+          console.log(`[populateBundledCodes] Added ${allCodes.length} composite codes to "${elem.valueSet.name || 'composite'}"`);
+        }
+      }
+    } else {
+      // LogicalClause — recurse
+      const clause = node                 ;
+      if (clause.children) clause.children.forEach(walkAndPopulate);
+    }
+  }
+
+  // Walk all populations
+  for (const pop of ums.populations || []) {
+    if (pop.criteria) walkAndPopulate(pop.criteria);
+  }
+
+  // Also populate codes in the UMS valueSets array
+  for (const vs of ums.valueSets || []) {
+    if ((!vs.codes || vs.codes.length === 0)) {
+      let bundledVs = null;
+
+      // Try OID lookup first
+      if (vs.oid && isRealOid(vs.oid)) {
+        bundledVs = VALUE_SET_BY_OID[vs.oid];
+      }
+
+      // Fallback: try name-based matching
+      if (!bundledVs && vs.name) {
+        const nameKey = vs.name.toLowerCase().trim();
+        for (const [oid, bundled] of Object.entries(VALUE_SET_BY_OID)) {
+          if (bundled.name.toLowerCase().trim() === nameKey) {
+            bundledVs = bundled;
+            vs.oid = oid; // Correct to canonical OID
+            break;
+          }
+        }
+      }
+
+      if (bundledVs && bundledVs.codes) {
+        vs.codes = bundledVs.codes.map(c => ({
+          code: c.code,
+          display: c.display,
+          system: c.system,
+        }));
+        codesAdded += bundledVs.codes.length;
+      }
+    }
+  }
+
+  console.log(`[populateBundledValueSetCodes] Populated ${populatedCount} DataElements with ${codesAdded} total codes`);
 }
 
 ;                                   
@@ -220,16 +472,13 @@ export async function ingestMeasureFiles(
         },
       });
 
-      console.warn('🔴 CHECKPOINT 0: backendResult received:', { success: backendResult.success, hasUms: !!backendResult.ums, error: backendResult.error });
       if (backendResult.success && backendResult.ums) {
         console.log('[Measure Ingestion] Backend extraction successful');
-        console.log('[DEBUG] *** REACHED POST-EXTRACTION BLOCK ***');
         aiResult = {
           success: true,
           ums: backendResult.ums,
           tokensUsed: backendResult.tokensUsed,
         };
-        console.warn('🔴 CHECKPOINT 1: After backend extraction, aiResult.success =', aiResult.success);
       } else {
         console.warn('[Measure Ingestion] Backend extraction failed:', backendResult.error);
         throw new Error(backendResult.error || 'Backend extraction failed');
@@ -279,7 +528,6 @@ export async function ingestMeasureFiles(
     }
 
     if (!aiResult.success || !aiResult.ums) {
-      console.log('[DEBUG] *** EARLY RETURN - aiResult failed ***', { success: aiResult.success, hasUms: !!aiResult.ums });
       return {
         success: false,
         documentInfo: {
@@ -291,8 +539,6 @@ export async function ingestMeasureFiles(
       };
     }
 
-    console.log('[DEBUG] *** PASSED aiResult CHECK - proceeding to enrichment ***');
-
     // Wrap all enrichment in try/catch to catch any errors
     try {
     // Stage 3: Enrich with CQL-parsed codes
@@ -303,7 +549,6 @@ export async function ingestMeasureFiles(
     });
 
     // Parse CQL content deterministically to extract codes the LLM may have missed
-    console.warn('🔴 CHECKPOINT 2: About to run CQL parser');
     const { parseCqlFromDocument, normalizeCodeSystem } = await import('./cqlParser');
     const cqlParsed = parseCqlFromDocument(extractionResult.combinedContent);
 
@@ -312,14 +557,6 @@ export async function ingestMeasureFiles(
       codes: cqlParsed.codes.length,
       codeSystems: cqlParsed.codeSystems.length,
     });
-
-    // DEBUG: CQL parser details
-    console.log('[DEBUG-CQL] Parser returned:', JSON.stringify({
-      valueSetsCount: cqlParsed.valueSets.length,
-      codesCount: cqlParsed.codes.length,
-      firstVs: cqlParsed.valueSets[0],
-      firstCode: cqlParsed.codes[0],
-    }, null, 2));
 
     // Build a lookup of value set name -> parsed value set
     const vsLookup = new Map                                       ();
@@ -365,24 +602,7 @@ export async function ingestMeasureFiles(
       (aiResult.ums       ).parsedCqlCodes = parsedDirectCodes;
     }
 
-    // DEBUG: Check what content the HTML parser receives
-    console.log('[DEBUG] *** ABOUT TO CALL HTML PARSER ***');
-    console.log('[DEBUG-HTML] combinedContent length:', extractionResult.combinedContent?.length);
-    console.log('[DEBUG-HTML] First 500 chars:', extractionResult.combinedContent?.substring(0, 500));
-    console.log('[DEBUG-HTML] Contains "Terminology"?', extractionResult.combinedContent?.includes('Terminology'));
-    console.log('[DEBUG-HTML] Contains "Data Criteria"?', extractionResult.combinedContent?.includes('Data Criteria'));
-    console.log('[DEBUG-HTML] Contains "valueset"?', extractionResult.combinedContent?.includes('valueset'));
-    console.log('[DEBUG-HTML] Contains "<li>"?', extractionResult.combinedContent?.includes('<li>'));
-    console.log('[DEBUG-HTML] Contains "using"?', extractionResult.combinedContent?.includes('using'));
-    console.log('[DEBUG-HTML] Sample around "Terminology":',
-      extractionResult.combinedContent?.substring(
-        Math.max(0, (extractionResult.combinedContent?.indexOf('Terminology') || 0) - 50),
-        (extractionResult.combinedContent?.indexOf('Terminology') || 0) + 200
-      )
-    );
-
     // Parse HTML spec for codes and value sets (deterministic, no LLM needed)
-    console.warn('🔴 CHECKPOINT 3: About to run HTML parser');
     const htmlParsed = parseHtmlSpec(extractionResult.combinedContent);
     console.log('[Measure Ingestion] HTML parser found:', {
       codes: htmlParsed.codes.length,
@@ -390,37 +610,18 @@ export async function ingestMeasureFiles(
       dataElementMappings: htmlParsed.dataElementMappings.length,
     });
 
-    // DEBUG: HTML parser details
-    console.log('[DEBUG-HTML] Parser returned:', JSON.stringify({
-      codesCount: htmlParsed.codes.length,
-      valueSetsCount: htmlParsed.valueSets.length,
-      mappingsCount: htmlParsed.dataElementMappings.length,
-      firstCode: htmlParsed.codes[0],
-      firstVs: htmlParsed.valueSets[0],
-      firstMapping: htmlParsed.dataElementMappings[0],
-    }, null, 2));
-
-    // DEBUG: Count DataElements before enrichment
-    let totalDataElements = 0;
-    for (const pop of aiResult.ums.populations || []) {
-      function countElements(node     )         {
-        if (!node) return 0;
-        if ('children' in node) return (node.children || []).reduce((sum        , c     ) => sum + countElements(c), 0);
-        return 1;
-      }
-      totalDataElements += pop.criteria ? countElements(pop.criteria) : 0;
-    }
-    console.log('[DEBUG-UMS] Total DataElements before enrichment:', totalDataElements);
-    console.log('[DEBUG-UMS] First population criteria sample:', JSON.stringify(aiResult.ums.populations?.[0]?.criteria, null, 2)?.substring(0, 500));
-
     // Enrich DataElements with HTML-parsed data FIRST
     // HTML enrichment replaces placeholder OIDs (like "dtap_vaccine") with real OIDs
-    console.warn('🔴 CHECKPOINT 4: About to enrich with HTML data');
     enrichDataElementsWithHtmlSpec(aiResult.ums, htmlParsed);
 
     // THEN enrich with CQL-parsed data (can now match on real OIDs from HTML step)
-    console.warn('🔴 CHECKPOINT 4.5: About to enrich with CQL data');
     enrichDataElementsWithCqlCodes(aiResult.ums, cqlParsed, normalizeCodeSystem);
+
+    // FINAL PASS: Resolve remaining placeholder OIDs using CQL value sets
+    resolvePlaceholderOids(aiResult.ums, cqlParsed, htmlParsed);
+
+    // POPULATE CODES: Use bundled value set expansions to fill in code lists
+    populateBundledValueSetCodes(aiResult.ums);
 
     } catch (enrichmentError) {
       console.error('[ENRICHMENT FATAL ERROR]', enrichmentError);
@@ -437,12 +638,6 @@ export async function ingestMeasureFiles(
 
     // Update source documents
     aiResult.ums.metadata.sourceDocuments = files.map(f => f.name);
-
-    // DEBUG: Check measure before return
-    console.log('[DEBUG-MEASURE] About to return UMS. measureId:', aiResult.ums.metadata?.measureId);
-    console.log('[DEBUG-MEASURE] populations count:', aiResult.ums.populations?.length);
-    console.log('[DEBUG-MEASURE] valueSets count:', aiResult.ums.valueSets?.length);
-    console.warn('🔴 CHECKPOINT 5: About to return final UMS');
 
     return {
       success: true,

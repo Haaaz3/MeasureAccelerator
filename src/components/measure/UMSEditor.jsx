@@ -666,7 +666,7 @@ export function UMSEditor() {
     <div ref={containerRef} className="flex-1 flex overflow-hidden">
       {/* Main editor panel */}
       <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-4xl mx-auto">
+        <div className="w-full">
           {/* Success/Error Banners */}
           {success && (
             <InlineSuccessBanner message={success} onDismiss={() => setSuccess(null)} />

@@ -1,10 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Info, Code, FileText, User, AlertTriangle, Cpu, FileCode, Database, ChevronDown, ChevronUp, Heart, Calendar, Stethoscope, Pill, Syringe, Activity, Edit3, X, Save, Plus, Trash2, Library, ChevronRight, ArrowUpDown, Filter, ArrowUp, ArrowDown, BookOpen } from 'lucide-react';
+import { CheckCircle, XCircle, Info, Code, FileText, User, AlertTriangle, Cpu, FileCode, Database, ChevronDown, ChevronUp, Heart, Calendar, Stethoscope, Pill, Syringe, Activity, Edit3, X, Save, Plus, Trash2, Library, ChevronRight, ArrowUpDown, Filter, ArrowUp, ArrowDown } from 'lucide-react';
 import { useMeasureStore } from '../../stores/measureStore';
 import { generateTestPatients } from '../../services/testPatientGenerator';
 import { evaluatePatient } from '../../services/measureEvaluator';
-import { generateEvaluationNarrative, generateBriefSummary } from '../../services/narrativeGenerator';
 
 /** Strip standalone AND/OR/NOT operators that appear as line separators in descriptions */
 function cleanDescription(desc                    )         {
@@ -1318,7 +1317,6 @@ export function ValidationTraceViewer() {
   const [validationTraces, setValidationTraces] = useState                          ([]);
   const [testPatients, setTestPatients] = useState               ([]);
   const [showPatientDetails, setShowPatientDetails] = useState(true);
-  const [showNarrativePanel, setShowNarrativePanel] = useState(false);
   const [populationFilter, setPopulationFilter] = useState                  ('all');
   const [editingPatient, setEditingPatient] = useState                    (null);
   const [editedPatientData, setEditedPatientData] = useState                    (null);
@@ -1459,18 +1457,6 @@ export function ValidationTraceViewer() {
   // Keep filteredTraces as an alias for backwards compatibility
   const filteredTraces = filteredAndSortedTraces;
 
-  // Generate narrative for the selected patient/trace
-  const currentNarrative = useMemo(() => {
-    if (!selectedTrace || !selectedPatient || !measure) return null;
-
-    const measurementPeriod = {
-      start: measure.measurementPeriod?.start || `${new Date().getFullYear()}-01-01`,
-      end: measure.measurementPeriod?.end || `${new Date().getFullYear()}-12-31`
-    };
-
-    return generateEvaluationNarrative(selectedTrace, selectedPatient, measure, measurementPeriod);
-  }, [selectedTrace, selectedPatient, measure]);
-
   // Handle filter click
   const handleFilterClick = (filter                  ) => {
     setPopulationFilter(prev => prev === filter ? 'all' : filter);
@@ -1595,7 +1581,7 @@ export function ValidationTraceViewer() {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header with measure info and code format */}
       <div className="px-6 py-4 border-b border-[var(--border)] bg-[var(--bg-secondary)]">
-        <div className="max-w-5xl mx-auto">
+        <div className="w-full">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm mb-4">
             <button
@@ -1877,7 +1863,7 @@ export function ValidationTraceViewer() {
         {/* Trace detail */}
         {selectedTrace ? (
           <div className="flex-1 overflow-auto p-6">
-            <div className="max-w-5xl mx-auto">
+            <div className="w-full">
               {/* Patient header */}
               <div className="mb-6">
                 <div className="flex items-center gap-3">
@@ -1886,88 +1872,13 @@ export function ValidationTraceViewer() {
                 </div>
               </div>
 
-              {/* Measure Evaluation Summary - merged summary showing patient flow through measure logic */}
-              <div className="mb-6 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-light)] p-5">
-                <h3 className="text-sm font-semibold text-[var(--text)] mb-4 flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-[var(--accent)]" />
-                  Measure Evaluation Summary
-                </h3>
-                <div className="space-y-3">
-                  {/* Initial Population */}
-                  <EvaluationFlowItem
-                    label="Initial Population"
-                    met={selectedTrace.populations.initialPopulation.met}
-                    nodes={selectedTrace.populations.initialPopulation.nodes}
-                    metText="Patient qualifies"
-                    notMetText="Patient does not qualify"
-                  />
-
-                  {/* Denominator - only show if IP met */}
-                  {selectedTrace.populations.initialPopulation.met && (
-                    <EvaluationFlowItem
-                      label="Denominator"
-                      met={selectedTrace.populations.denominator?.met ?? selectedTrace.populations.initialPopulation.met}
-                      nodes={selectedTrace.populations.denominator?.nodes ?? []}
-                      metText="Included in denominator"
-                      notMetText="Not in denominator"
-                      isImplied={!selectedTrace.populations.denominator?.nodes?.length}
-                      impliedText="Equals Initial Population"
-                    />
-                  )}
-
-                  {/* Exclusions - only show if patient IS excluded */}
-                  {selectedTrace.populations.initialPopulation.met && selectedTrace.populations.exclusions.met && (
-                    <EvaluationFlowItem
-                      label="Denominator Exclusions"
-                      met={false}
-                      nodes={selectedTrace.populations.exclusions.nodes.filter(n => n.status === 'pass')}
-                      metText=""
-                      notMetText="Excluded from measure"
-                      showTrigger
-                    />
-                  )}
-
-                  {/* Numerator - only show if in denominator and not excluded */}
-                  {selectedTrace.populations.initialPopulation.met && !selectedTrace.populations.exclusions.met && (
-                    <EvaluationFlowItem
-                      label="Numerator"
-                      met={selectedTrace.populations.numerator.met}
-                      nodes={selectedTrace.populations.numerator.nodes}
-                      metText="Quality criteria met"
-                      notMetText="Quality criteria not met"
-                    />
-                  )}
-
-                  {/* Gap Analysis items inline */}
-                  {selectedTrace.howClose && selectedTrace.howClose.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                      <div className="text-xs font-medium text-[var(--accent)] mb-2 flex items-center gap-1.5">
-                        <Info className="w-3.5 h-3.5" />
-                        Gaps to Close
-                      </div>
-                      <ul className="space-y-1">
-                        {selectedTrace.howClose.map((item, i) => (
-                          <li key={i} className="text-sm text-[var(--text-muted)] flex items-start gap-2">
-                            <span className="text-[var(--warning)] mt-0.5">•</span>
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Detailed Evaluation Narrative */}
-              {currentNarrative && (
-                <div className="mb-6">
-                  <NarrativePanel
-                    narrative={currentNarrative}
-                    isExpanded={showNarrativePanel}
-                    onToggle={() => setShowNarrativePanel(!showNarrativePanel)}
-                  />
-                </div>
-              )}
+              {/* Measure Evaluation Summary - detailed view showing ALL criteria */}
+              <DetailedEvaluationSummary
+                trace={selectedTrace}
+                patient={selectedPatient}
+                measure={measure}
+                howClose={selectedTrace.howClose}
+              />
 
               {/* Patient Clinical Details Panel */}
               {selectedPatient && (
@@ -2922,230 +2833,298 @@ function SummaryPill({ label, value, positive }                                 
 }
 
 /**
- * NarrativePanel - Displays the full evaluation narrative with formatted sections
+ * DetailedEvaluationSummary - Enhanced evaluation summary that shows ALL criteria
+ * Replaces the simple Measure Evaluation Summary with detailed narrative for each criterion
  */
-function NarrativePanel({ narrative, isExpanded, onToggle }) {
-  if (!narrative) return null;
+function DetailedEvaluationSummary({ trace, patient, measure, howClose }) {
+  const [collapsedSections, setCollapsedSections] = useState({});
 
-  const { sections } = narrative;
+  const toggleSection = (sectionId) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [sectionId]: !prev[sectionId]
+    }));
+  };
 
-  return (
-    <div className="bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-light)] overflow-hidden">
-      <button
-        onClick={onToggle}
-        className="w-full px-5 py-4 flex items-center justify-between hover:bg-[var(--bg-tertiary)]/50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-            <BookOpen className="w-5 h-5 text-emerald-400" />
+  // Get measurement period for display
+  const mpStart = measure?.measurementPeriod?.start || `${new Date().getFullYear()}-01-01`;
+  const mpEnd = measure?.measurementPeriod?.end || `${new Date().getFullYear()}-12-31`;
+
+  // Helper to format dates
+  const formatDate = (dateStr) => {
+    if (!dateStr || dateStr === '—') return null;
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+  };
+
+  // Recursively flatten all nodes including nested children
+  const flattenNodes = (nodes) => {
+    if (!nodes) return [];
+    const result = [];
+    for (const node of nodes) {
+      result.push(node);
+      if (node.children && node.children.length > 0) {
+        result.push(...flattenNodes(node.children));
+      }
+    }
+    return result;
+  };
+
+  // Render a single criterion node with its facts
+  const renderCriterionNode = (node, index, isLast = false) => {
+    const isPass = node.status === 'pass' || node.status === 'partial';
+    const isIncomplete = node.status === 'incomplete';
+    const facts = node.facts || [];
+
+    // Get the most relevant fact for display
+    const primaryFact = facts.find(f =>
+      f.code && f.code !== 'NO_MATCH' && f.code !== 'NO_CODES' && f.code !== '—' && !f.code.includes('FAIL') && f.code !== 'GROUP_MATCH'
+    ) || facts.find(f => f.display && !f.display.includes('None found'));
+
+    // Determine styling based on status
+    let iconBgClass, iconComponent, badgeClass, badgeText;
+    if (isIncomplete) {
+      iconBgClass = 'bg-[var(--warning-light)]';
+      iconComponent = <AlertTriangle className="w-3 h-3 text-[var(--warning)]" />;
+      badgeClass = 'bg-[var(--warning-light)] text-[var(--warning)]';
+      badgeText = 'Incomplete';
+    } else if (isPass) {
+      iconBgClass = 'bg-[var(--success-light)]';
+      iconComponent = <CheckCircle className="w-3 h-3 text-[var(--success)]" />;
+      badgeClass = 'bg-[var(--success-light)] text-[var(--success)]';
+      badgeText = 'Met';
+    } else {
+      iconBgClass = 'bg-[var(--danger-light)]';
+      iconComponent = <XCircle className="w-3 h-3 text-[var(--danger)]" />;
+      badgeClass = 'bg-[var(--danger-light)] text-[var(--danger)]';
+      badgeText = 'Not Met';
+    }
+
+    // Clean description for inline display
+    const cleanedDesc = node.description ? cleanDescription(node.description) : null;
+
+    return (
+      <div key={node.id || index} className={`flex items-start gap-2 py-1.5 ${!isLast ? 'border-b border-[var(--border-light)]' : ''}`}>
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${iconBgClass}`}>
+          {iconComponent}
+        </div>
+        <div className="flex-1 min-w-0">
+          {/* Main line: Title + Badge + Description (all inline) */}
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-sm font-medium text-[var(--text)]">{node.title}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${badgeClass}`}>
+              {badgeText}
+            </span>
+            {cleanedDesc && (
+              <>
+                <span className="text-[var(--text-dim)]">—</span>
+                <span className="text-xs text-[var(--text-muted)]">{cleanedDesc}</span>
+              </>
+            )}
           </div>
-          <div className="text-left">
-            <h3 className="font-semibold text-[var(--text)]">Detailed Evaluation Narrative</h3>
-            <p className="text-xs text-[var(--text-muted)]">
-              Step-by-step explanation of each criterion evaluation
+          {/* Secondary line: fact details (code + display + date) - indented */}
+          {isIncomplete && (
+            <p className="text-[11px] text-[var(--warning)] mt-0.5 ml-0">
+              No value set codes configured
             </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-[var(--text-muted)]" />
-          ) : (
-            <ChevronDown className="w-5 h-5 text-[var(--text-muted)]" />
+          )}
+          {primaryFact && !isIncomplete && (
+            <div className="mt-0.5 ml-0 flex items-center gap-1.5 flex-wrap text-[11px]">
+              {primaryFact.code && primaryFact.code !== '—' && (
+                <code className={`px-1 py-0.5 rounded font-mono text-[10px] ${
+                  isPass
+                    ? 'text-[var(--accent)] bg-[var(--accent-light)]'
+                    : 'text-[var(--danger)] bg-[var(--danger-light)]'
+                }`}>
+                  {primaryFact.code}
+                </code>
+              )}
+              {primaryFact.display && (
+                <span className="text-[var(--text-muted)]">{primaryFact.display}</span>
+              )}
+              {primaryFact.date && primaryFact.date !== '—' && (
+                <span className="text-[var(--text-dim)]">on {formatDate(primaryFact.date)}</span>
+              )}
+              {/* Show count of additional matching records inline */}
+              {facts.filter(f => f.code && f.code !== 'NO_MATCH' && f.code !== '—' && f.date).length > 1 && (
+                <span className="text-[var(--text-dim)]">
+                  (+{facts.filter(f => f.code && f.code !== 'NO_MATCH' && f.code !== '—' && f.date).length - 1} more)
+                </span>
+              )}
+            </div>
           )}
         </div>
-      </button>
-
-      {isExpanded && (
-        <div className="px-5 pb-5 space-y-4">
-          {/* Measurement Period Header */}
-          <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] pb-3 border-b border-[var(--border)]">
-            <Calendar className="w-4 h-4" />
-            <span>Measurement Period: {narrative.measurementPeriod?.start} – {narrative.measurementPeriod?.end}</span>
-          </div>
-
-          {/* Render each section */}
-          {sections.filter(s => s.type !== 'header').map((section, idx) => (
-            <NarrativeSection key={idx} section={section} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * NarrativeSection - Renders a single population/outcome section
- */
-function NarrativeSection({ section }) {
-  const [isExpanded, setIsExpanded] = useState(section.type === 'outcome' || section.met === false);
-
-  // Parse the content into lines for rendering
-  const lines = section.content.split('\n').filter(line => line.trim());
-
-  // Extract header and body
-  const headerLine = lines.find(l => l.startsWith('##'));
-  const bodyLines = lines.filter(l => !l.startsWith('#') && l !== '---');
-
-  // Determine section styling based on type and status
-  const getSectionStyle = () => {
-    if (section.type === 'exclusion') {
-      return 'border-l-4 border-l-[var(--warning)]';
-    }
-    if (section.type === 'outcome') {
-      return 'border-l-4 border-l-[var(--accent)]';
-    }
-    if (section.met === true) {
-      return 'border-l-4 border-l-[var(--success)]';
-    }
-    if (section.met === false && section.evaluated !== false) {
-      return 'border-l-4 border-l-[var(--danger)]';
-    }
-    return 'border-l-4 border-l-[var(--text-dim)]';
+      </div>
+    );
   };
 
-  const getHeaderIcon = () => {
-    if (section.type === 'exclusion' || section.triggered) {
-      return <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />;
-    }
-    if (section.type === 'outcome') {
-      return <Info className="w-4 h-4 text-[var(--accent)]" />;
-    }
-    if (section.met === true) {
-      return <CheckCircle className="w-4 h-4 text-[var(--success)]" />;
-    }
-    if (section.met === false) {
-      return <XCircle className="w-4 h-4 text-[var(--danger)]" />;
-    }
-    return <Info className="w-4 h-4 text-[var(--text-dim)]" />;
+  // Render a population section
+  const renderPopulationSection = (
+    label,
+    populationResult,
+    sectionId,
+    options = {}
+  ) => {
+    const { isImplied, impliedText, showTrigger, hideIfEmpty } = options;
+    const { met, nodes } = populationResult || { met: false, nodes: [] };
+    const allNodes = flattenNodes(nodes);
+    const isCollapsed = collapsedSections[sectionId] || false;
+
+    // Skip if no nodes and hideIfEmpty is true
+    if (hideIfEmpty && allNodes.length === 0) return null;
+
+    // Count met/total
+    const metCount = allNodes.filter(n => n.status === 'pass' || n.status === 'partial').length;
+    const totalCount = allNodes.length;
+
+    return (
+      <div className="border-b border-[var(--border)] last:border-b-0 pb-3 mb-3 last:pb-0 last:mb-0">
+        <button
+          onClick={() => toggleSection(sectionId)}
+          className="w-full flex items-start gap-3 hover:bg-[var(--bg-tertiary)]/30 rounded-lg p-1 -m-1 transition-colors"
+        >
+          <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+            showTrigger ? 'bg-[var(--warning-light)]' : met ? 'bg-[var(--success-light)]' : 'bg-[var(--danger-light)]'
+          }`}>
+            {showTrigger ? (
+              <AlertTriangle className="w-3.5 h-3.5 text-[var(--warning)]" />
+            ) : met ? (
+              <CheckCircle className="w-3.5 h-3.5 text-[var(--success)]" />
+            ) : (
+              <XCircle className="w-3.5 h-3.5 text-[var(--danger)]" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0 text-left">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-[var(--text)]">{label}</span>
+              <span className={`text-xs px-2 py-0.5 rounded ${
+                showTrigger
+                  ? 'bg-[var(--warning-light)] text-[var(--warning)]'
+                  : met
+                    ? 'bg-[var(--success-light)] text-[var(--success)]'
+                    : 'bg-[var(--danger-light)] text-[var(--danger)]'
+              }`}>
+                {showTrigger ? 'Excluded' : met ? 'Qualifies' : 'Does Not Qualify'}
+              </span>
+              {totalCount > 0 && (
+                <span className="text-xs text-[var(--text-dim)]">
+                  ({metCount}/{totalCount} criteria)
+                </span>
+              )}
+            </div>
+            {isImplied && impliedText && (
+              <p className="text-xs text-[var(--text-dim)] mt-0.5">{impliedText}</p>
+            )}
+          </div>
+          <div className="flex-shrink-0 p-1">
+            {isCollapsed ? (
+              <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
+            ) : (
+              <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
+            )}
+          </div>
+        </button>
+
+        {!isCollapsed && allNodes.length > 0 && (
+          <div className="mt-1.5 ml-6 border-l-2 border-[var(--border)] pl-2">
+            {allNodes.map((node, idx) => renderCriterionNode(node, idx, idx === allNodes.length - 1))}
+          </div>
+        )}
+
+        {!isCollapsed && isImplied && allNodes.length === 0 && (
+          <div className="mt-2 ml-8 text-xs text-[var(--text-dim)]">
+            No additional criteria required.
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
-    <div className={`bg-[var(--bg-tertiary)] rounded-lg ${getSectionStyle()}`}>
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--bg-primary)]/30 transition-colors rounded-lg"
-      >
-        <div className="flex items-center gap-2">
-          {getHeaderIcon()}
-          <span className="font-medium text-[var(--text)]">
-            {section.name || 'Outcome'}
-          </span>
-          {section.met !== undefined && section.type !== 'outcome' && (
-            <span className={`text-xs px-2 py-0.5 rounded ${
-              section.met
-                ? 'bg-[var(--success-light)] text-[var(--success)]'
-                : section.evaluated === false
-                  ? 'bg-[var(--bg-secondary)] text-[var(--text-dim)]'
-                  : 'bg-[var(--danger-light)] text-[var(--danger)]'
-            }`}>
-              {section.met ? 'Qualifies' : section.evaluated === false ? 'Not Evaluated' : 'Does Not Qualify'}
-            </span>
-          )}
-          {section.triggered && (
-            <span className="text-xs px-2 py-0.5 rounded bg-[var(--warning-light)] text-[var(--warning)]">
-              Excluded
-            </span>
-          )}
-        </div>
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-[var(--text-muted)]" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-[var(--text-muted)]" />
-        )}
-      </button>
+    <div className="mb-6 bg-[var(--bg-secondary)] rounded-xl border border-[var(--border-light)] p-5">
+      <h3 className="text-sm font-semibold text-[var(--text)] mb-4 flex items-center gap-2">
+        <Activity className="w-4 h-4 text-[var(--accent)]" />
+        Measure Evaluation Summary
+      </h3>
 
-      {isExpanded && (
-        <div className="px-4 pb-4 space-y-2">
-          {bodyLines.map((line, idx) => (
-            <NarrativeLine key={idx} line={line} />
-          ))}
-        </div>
-      )}
+      <div className="space-y-0">
+        {/* Initial Population */}
+        {renderPopulationSection(
+          'Initial Population',
+          trace.populations.initialPopulation,
+          'ip'
+        )}
+
+        {/* Denominator - only show if IP met */}
+        {trace.populations.initialPopulation.met && renderPopulationSection(
+          'Denominator',
+          trace.populations.denominator,
+          'denom',
+          {
+            isImplied: !trace.populations.denominator?.nodes?.length,
+            impliedText: 'Equals Initial Population'
+          }
+        )}
+
+        {/* Exclusions - only show if patient IS excluded */}
+        {trace.populations.initialPopulation.met && trace.populations.exclusions?.met && renderPopulationSection(
+          'Denominator Exclusions',
+          { ...trace.populations.exclusions, nodes: trace.populations.exclusions.nodes.filter(n => n.status === 'pass') },
+          'exclusions',
+          { showTrigger: true }
+        )}
+
+        {/* Numerator - only show if in denominator and not excluded */}
+        {trace.populations.initialPopulation.met && !trace.populations.exclusions?.met && renderPopulationSection(
+          'Numerator',
+          trace.populations.numerator,
+          'numer'
+        )}
+
+        {/* Gap Analysis items - compute from failed numerator criteria if howClose is empty */}
+        {(() => {
+          // Compute gaps from failed numerator criteria
+          const numeratorNodes = flattenNodes(trace.populations.numerator?.nodes || []);
+          const failedCriteria = numeratorNodes.filter(n =>
+            n.status !== 'pass' && n.status !== 'partial' && n.status !== 'incomplete'
+          );
+
+          // Build gap messages from failed criteria descriptions
+          const computedGaps = failedCriteria.map(node => {
+            const desc = node.description ? cleanDescription(node.description) : null;
+            return desc ? `Missing: ${desc}` : `Missing: ${node.title}`;
+          });
+
+          // Use provided howClose if available, otherwise use computed gaps
+          const gapsToShow = (howClose && howClose.length > 0) ? howClose : computedGaps;
+
+          // Only show if patient is in denominator but not in numerator
+          const showGaps = trace.populations.initialPopulation.met &&
+                           !trace.populations.exclusions?.met &&
+                           !trace.populations.numerator?.met &&
+                           gapsToShow.length > 0;
+
+          if (!showGaps) return null;
+
+          return (
+            <div className="mt-4 pt-4 border-t border-[var(--border)]">
+              <div className="text-xs font-medium text-[var(--accent)] mb-2 flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5" />
+                Gaps to Close ({gapsToShow.length})
+              </div>
+              <ul className="space-y-1">
+                {gapsToShow.map((item, i) => (
+                  <li key={i} className="text-sm text-[var(--text-muted)] flex items-start gap-2">
+                    <span className="text-[var(--warning)] mt-0.5">•</span>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })()}
+      </div>
     </div>
-  );
-}
-
-/**
- * NarrativeLine - Renders a single line of narrative content with proper formatting
- */
-function NarrativeLine({ line }) {
-  // Check for criterion lines (start with emoji)
-  if (line.startsWith('✅') || line.startsWith('❌') || line.startsWith('⚠️')) {
-    const icon = line.charAt(0) === '✅' ? 'pass' : line.charAt(0) === '❌' ? 'fail' : 'warning';
-    const content = line.substring(2).trim();
-
-    // Parse bold text (component name)
-    const boldMatch = content.match(/\*\*([^*]+)\*\*/);
-    const componentName = boldMatch ? boldMatch[1] : '';
-    const narrativeText = content.replace(/\*\*[^*]+\*\*\s*—?\s*/, '');
-
-    return (
-      <div className="flex items-start gap-2 py-1.5">
-        <span className="text-lg leading-none mt-0.5">
-          {icon === 'pass' ? '✅' : icon === 'fail' ? '❌' : '⚠️'}
-        </span>
-        <div className="flex-1">
-          {componentName && (
-            <span className="font-semibold text-[var(--text)]">{componentName}</span>
-          )}
-          {componentName && narrativeText && <span className="text-[var(--text-muted)]"> — </span>}
-          <span className="text-[var(--text-muted)] text-sm">{narrativeText}</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Check for gap items (start with -)
-  if (line.startsWith('-') || line.startsWith('•')) {
-    return (
-      <div className="flex items-start gap-2 py-0.5 pl-4">
-        <span className="text-[var(--warning)] mt-1">•</span>
-        <span className="text-sm text-[var(--text-muted)]">{line.substring(1).trim()}</span>
-      </div>
-    );
-  }
-
-  // Check for result line
-  if (line.startsWith('**Result:**') || line.startsWith('**Patient')) {
-    const content = line.replace(/\*\*/g, '');
-    return (
-      <div className="pt-2 mt-2 border-t border-[var(--border)]">
-        <p className="text-sm font-medium text-[var(--text)]">{content}</p>
-      </div>
-    );
-  }
-
-  // Check for section headers
-  if (line.startsWith('###')) {
-    return (
-      <h4 className="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider mt-3 mb-1">
-        {line.replace(/###\s*/, '')}
-      </h4>
-    );
-  }
-
-  // Check for preamble text
-  if (line.includes('must meet')) {
-    // Parse bold text
-    const parts = line.split(/(\*\*[^*]+\*\*)/);
-    return (
-      <p className="text-sm text-[var(--text-muted)] mb-2">
-        {parts.map((part, idx) =>
-          part.startsWith('**') ? (
-            <strong key={idx} className="text-[var(--text)] font-semibold">
-              {part.replace(/\*\*/g, '')}
-            </strong>
-          ) : (
-            <span key={idx}>{part}</span>
-          )
-        )}
-      </p>
-    );
-  }
-
-  // Default paragraph
-  return (
-    <p className="text-sm text-[var(--text-muted)]">{line}</p>
   );
 }
 
