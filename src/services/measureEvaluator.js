@@ -1519,15 +1519,27 @@ function evaluateImmunization(
   const { codes: codesToMatch, needsCodes } = getCodesFromElement(element, measure);
   const descLower = element.description.toLowerCase();
 
-  // Extract required dose count from description (e.g., "4 DTaP" or "three doses")
-  const doseMatch = descLower.match(/(\d+)\s*(dose|shot|vaccine|dtap|ipv|mmr|hib|hep|pcv|rota|varicella)/i);
-  const wordDoseMatch = descLower.match(/(one|two|three|four|five)\s*(dose|shot|vaccine)/i);
+  // Extract required dose count from description
+  // Examples: "Four DTaP vaccinations", "At least three hepatitis B", "2 doses of IPV"
+  const wordToNum = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
   let requiredDoses = 1;
-  if (doseMatch) {
-    requiredDoses = parseInt(doseMatch[1]);
-  } else if (wordDoseMatch) {
-    const wordToNum                         = { one: 1, two: 2, three: 3, four: 4, five: 5 };
-    requiredDoses = wordToNum[wordDoseMatch[1].toLowerCase()] || 1;
+
+  // Try word numbers first: "Four DTaP", "Three IPV", "One MMR"
+  const wordMatch = descLower.match(/\b(one|two|three|four|five|six)\b/);
+  if (wordMatch) {
+    requiredDoses = wordToNum[wordMatch[1]];
+  } else {
+    // Try digits: "4 DTaP", "3 doses", "at least 2"
+    const digitMatch = descLower.match(/\b(\d+)\s*(?:dose|shot|vaccin|dtap|ipv|mmr|hib|hep|pcv|rota|varicella|influenza|pneumo)/i);
+    if (digitMatch) {
+      requiredDoses = parseInt(digitMatch[1]);
+    } else {
+      // Try "at least N"
+      const atLeastMatch = descLower.match(/at least (\d+)/);
+      if (atLeastMatch) {
+        requiredDoses = parseInt(atLeastMatch[1]);
+      }
+    }
   }
 
   // Determine CVX codes to match based on description keywords

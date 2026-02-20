@@ -2427,89 +2427,113 @@ function ValidationNodeList({
 }) {
   return (
     <div className="space-y-0">
-      {nodes.map((node, i) => (
-        <div key={node.id}>
-          {i > 0 && <OperatorSeparator operator={operator} />}
-          {node.children && node.children.length > 0 ? (
-            /* Group node — render as a nested section */
-            <div className={`ml-2 rounded-lg border p-3 ${
-              node.status === 'skipped'
-                ? 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/30 opacity-60'
-                : 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/50'
-            }`}>
-              <div className="flex items-center gap-2 mb-2">
-                {node.status === 'pass' ? (
-                  <CheckCircle className="w-4 h-4 text-[var(--success)]" />
-                ) : node.status === 'partial' ? (
-                  <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />
-                ) : node.status === 'skipped' ? (
-                  <div className="w-4 h-4 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--text-dim)]">○</div>
+      {nodes.map((node, i) => {
+        // For OR groups: flatten by rendering only the met child directly
+        // Skip anaphylaxis/contraindication alternatives entirely
+        if (node.children && node.children.length > 0 && node.operator === 'OR') {
+          // Find the met child (the qualifying path)
+          const metChild = node.children.find(c => c.status === 'pass' || c.status === 'partial');
+          // Filter out anaphylaxis/skipped alternatives
+          const relevantChildren = node.children.filter(c => {
+            const titleLower = (c.title || '').toLowerCase();
+            const descLower = (c.description || '').toLowerCase();
+            const isAnaphylaxis = titleLower.includes('anaphyla') || descLower.includes('anaphyla') ||
+                                  titleLower.includes('contraindic') || descLower.includes('contraindic');
+            return !isAnaphylaxis && c.status !== 'skipped';
+          });
+
+          if (metChild) {
+            // Render only the met child, skip the OR wrapper
+            return (
+              <div key={node.id}>
+                {i > 0 && <OperatorSeparator operator={operator} />}
+                {metChild.children && metChild.children.length > 0 ? (
+                  <ValidationNodeList nodes={[metChild]} operator="AND" onInspect={onInspect} />
                 ) : (
-                  <XCircle className="w-4 h-4 text-[var(--danger)]" />
-                )}
-                <span className={`px-2 py-0.5 rounded font-mono text-[10px] ${
-                  node.operator === 'AND' ? 'bg-[var(--success-light)] text-[var(--success)]' :
-                  node.operator === 'OR' ? 'bg-[var(--warning-light)] text-[var(--warning)]' :
-                  'bg-[var(--danger-light)] text-[var(--danger)]'
-                }`}>
-                  {node.operator}
-                </span>
-                <h4 className="text-sm font-medium text-[var(--text-muted)]">{cleanDescription(node.title)}</h4>
-                {/* Show human-readable status instead of GROUP_MATCH */}
-                {node.status === 'pass' && node.operator === 'OR' && node.satisfiedBy && (
-                  <span className="text-xs text-[var(--success)] italic">via {node.satisfiedBy}</span>
-                )}
-                {node.status === 'skipped' && node.skipReason && (
-                  <span className="text-xs text-[var(--text-dim)] italic">{node.skipReason}</span>
-                )}
-                {node.facts?.[0] && !['GROUP_MATCH', 'OR_SATISFIED', 'AND_STATUS'].includes(node.facts[0].code) && (
-                  <span className="text-xs text-[var(--text-dim)]">{node.facts[0].display}</span>
+                  <ValidationNodeRow node={metChild} onClick={() => onInspect(metChild)} />
                 )}
               </div>
-              {node.status !== 'skipped' && (
-                <ValidationNodeList
-                  nodes={node.children}
-                  operator={node.operator || 'AND'}
-                  onInspect={onInspect}
-                />
-              )}
-            </div>
-          ) : (
-            /* Leaf node — render as a row */
-            <ValidationNodeRow node={node} onClick={() => onInspect(node)} />
-          )}
-        </div>
-      ))}
+            );
+          } else if (relevantChildren.length > 0) {
+            // Nothing met - show the first non-anaphylaxis child as Not Met
+            const firstChild = relevantChildren[0];
+            return (
+              <div key={node.id}>
+                {i > 0 && <OperatorSeparator operator={operator} />}
+                <ValidationNodeRow node={firstChild} onClick={() => onInspect(firstChild)} />
+              </div>
+            );
+          }
+          // All children are anaphylaxis - skip entirely
+          return null;
+        }
+
+        return (
+          <div key={node.id}>
+            {i > 0 && <OperatorSeparator operator={operator} />}
+            {node.children && node.children.length > 0 ? (
+              /* AND group node — render as a nested section */
+              <div className={`ml-2 rounded-lg border p-3 ${
+                node.status === 'skipped'
+                  ? 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/30 opacity-60'
+                  : 'border-[var(--border-light)] bg-[var(--bg-tertiary)]/50'
+              }`}>
+                <div className="flex items-center gap-2 mb-2">
+                  {node.status === 'pass' ? (
+                    <CheckCircle className="w-4 h-4 text-[var(--success)]" />
+                  ) : node.status === 'partial' ? (
+                    <AlertTriangle className="w-4 h-4 text-[var(--warning)]" />
+                  ) : node.status === 'skipped' ? (
+                    <div className="w-4 h-4 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] flex items-center justify-center text-[10px] text-[var(--text-dim)]">○</div>
+                  ) : (
+                    <XCircle className="w-4 h-4 text-[var(--danger)]" />
+                  )}
+                  <h4 className="text-sm font-medium text-[var(--text-muted)]">{cleanDescription(node.title)}</h4>
+                </div>
+                {node.status !== 'skipped' && (
+                  <ValidationNodeList
+                    nodes={node.children}
+                    operator={node.operator || 'AND'}
+                    onInspect={onInspect}
+                  />
+                )}
+              </div>
+            ) : (
+              /* Leaf node — render as a row */
+              <ValidationNodeRow node={node} onClick={() => onInspect(node)} />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function ValidationNodeRow({ node, onClick }) {
-  // Get dose summary fact (new format)
+  // Get dose summary fact (new format) - contains requiredCount and foundCount
   const doseSummaryFact = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
   // Get individual dose facts (have doseNumber property)
   const doseFacts = node.facts?.filter(f => f.doseNumber !== undefined) || [];
-  // Get other detail facts (skip internal codes)
+  // Get other detail facts (skip ALL internal codes)
+  const internalCodes = ['PROGRESS', 'NO_MATCH', 'NO_IMMUNIZATIONS', 'DOSE_SUMMARY', 'DOSE_COUNT',
+                         'INSUFFICIENT_DOSES', 'GROUP_MATCH', 'OR_SATISFIED', 'AND_STATUS', 'AGE',
+                         'AGE_TURNS', 'AGE_RANGE', 'AGE_TURNS_PASS'];
   const detailFacts = node.facts?.filter(f =>
-    f.code !== 'PROGRESS' && f.code !== 'NO_MATCH' && f.code !== 'NO_IMMUNIZATIONS' &&
-    f.code !== 'DOSE_SUMMARY' && f.code !== 'DOSE_COUNT' && f.code !== 'INSUFFICIENT_DOSES' &&
-    f.doseNumber === undefined
+    !internalCodes.includes(f.code) && f.doseNumber === undefined
   ) || [];
   const noMatchFact = node.facts?.find(f => f.code === 'NO_MATCH' || f.code === 'NO_IMMUNIZATIONS');
 
-  // Handle skipped nodes
+  // Skip anaphylaxis/contraindication nodes entirely
+  const titleLower = (node.title || '').toLowerCase();
+  const descLower = (node.description || '').toLowerCase();
+  if (titleLower.includes('anaphyla') || descLower.includes('anaphyla') ||
+      titleLower.includes('contraindic') || descLower.includes('contraindic')) {
+    return null;
+  }
+
+  // Handle skipped nodes - don't render them at all
   if (node.status === 'skipped' || node.skipped) {
-    return (
-      <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-[var(--bg-tertiary)]/30 border-[var(--border-light)] opacity-60">
-        <div className="flex-shrink-0">
-          <div className="w-5 h-5 rounded-full bg-[var(--bg-tertiary)] border border-[var(--border)] flex items-center justify-center text-xs text-[var(--text-dim)]">○</div>
-        </div>
-        <div className="flex-1 min-w-0">
-          <h4 className="font-medium text-[var(--text-muted)] text-sm">{cleanDescription(node.title)}</h4>
-          <p className="text-xs text-[var(--text-dim)] mt-0.5 italic">{node.skipReason || 'Not evaluated'}</p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -2538,42 +2562,46 @@ function ValidationNodeRow({ node, onClick }) {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <h4 className="font-medium text-[var(--text)] text-sm">{cleanDescription(node.title)}</h4>
-          {doseSummaryFact && (
-            <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${
-              node.status === 'pass'
-                ? 'bg-[var(--success)]/15 text-[var(--success)]'
-                : 'bg-[var(--danger)]/15 text-[var(--danger)]'
-            }`}>
-              {doseSummaryFact.display}
-            </span>
-          )}
+          <span className={`text-xs ${
+            node.status === 'pass' ? 'text-[var(--success)]' : 'text-[var(--danger)]'
+          }`}>
+            — {node.status === 'pass' ? 'Met' : 'Not Met'}
+          </span>
         </div>
+
+        {/* Show dose count summary (without internal label) */}
+        {doseSummaryFact && (
+          <p className={`text-xs mt-1 ${
+            node.status === 'pass' ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'
+          }`}>
+            {doseSummaryFact.foundCount || 0} of {doseSummaryFact.requiredCount || 1} required dose{doseSummaryFact.requiredCount !== 1 ? 's' : ''}
+          </p>
+        )}
 
         {/* Show dose-by-dose detail for immunizations */}
         {doseFacts.length > 0 ? (
-          <div className="mt-2 ml-1 border-l-2 border-[var(--border-light)] pl-3 space-y-1">
+          <div className="mt-2 space-y-0.5 font-mono text-xs">
             {doseFacts.map((fact, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
-                <span className="text-[var(--text-dim)] w-12">Dose {fact.doseNumber}</span>
-                <code className="text-[var(--accent)] bg-[var(--accent-light)] px-1.5 py-0.5 rounded font-mono text-[10px]">
-                  {fact.system || 'CVX'} {fact.code}
-                </code>
-                <span className="text-[var(--text-muted)] flex-1 truncate">{fact.display}</span>
+              <div key={i} className="flex items-center gap-3 text-[var(--text-muted)]">
+                <code className="text-[var(--accent)] w-16">{fact.system || 'CVX'} {fact.code}</code>
+                <span className="flex-1 truncate">{fact.display}</span>
                 {fact.date && (
                   <span className="text-[var(--text-dim)] flex-shrink-0">{new Date(fact.date).toLocaleDateString()}</span>
                 )}
               </div>
             ))}
             {/* Show missing doses if not met */}
-            {node.status !== 'pass' && doseSummaryFact?.requiredCount > doseSummaryFact?.foundCount && (
-              Array.from({ length: doseSummaryFact.requiredCount - doseSummaryFact.foundCount }).map((_, i) => (
-                <div key={`missing-${i}`} className="flex items-center gap-2 text-xs text-[var(--danger)]">
-                  <span className="w-12">Dose {doseSummaryFact.foundCount + i + 1}</span>
-                  <span className="italic">Missing</span>
+            {node.status !== 'pass' && doseSummaryFact?.requiredCount > (doseSummaryFact?.foundCount || 0) && (
+              Array.from({ length: doseSummaryFact.requiredCount - (doseSummaryFact.foundCount || 0) }).map((_, i) => (
+                <div key={`missing-${i}`} className="flex items-center gap-3 text-xs text-[var(--danger)] italic">
+                  <span className="w-16">???</span>
+                  <span>Missing dose</span>
                 </div>
               ))
             )}
           </div>
+        ) : noMatchFact ? (
+          <p className="text-xs text-[var(--text-dim)] mt-1">No matching immunization records found</p>
         ) : detailFacts.length > 0 ? (
           /* Show other detail facts if no dose facts */
           <div className="mt-1.5 space-y-0.5">
