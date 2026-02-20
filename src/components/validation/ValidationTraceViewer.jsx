@@ -1877,7 +1877,6 @@ export function ValidationTraceViewer() {
                 trace={selectedTrace}
                 patient={selectedPatient}
                 measure={measure}
-                howClose={selectedTrace.howClose}
               />
 
               {/* Patient Clinical Details Panel */}
@@ -2836,7 +2835,7 @@ function SummaryPill({ label, value, positive }                                 
  * DetailedEvaluationSummary - Enhanced evaluation summary that shows ALL criteria
  * Replaces the simple Measure Evaluation Summary with detailed narrative for each criterion
  */
-function DetailedEvaluationSummary({ trace, patient, measure, howClose }) {
+function DetailedEvaluationSummary({ trace, patient, measure }) {
   const [collapsedSections, setCollapsedSections] = useState({});
 
   const toggleSection = (sectionId) => {
@@ -3081,22 +3080,77 @@ function DetailedEvaluationSummary({ trace, patient, measure, howClose }) {
           'numer'
         )}
 
-        {/* Gap Analysis items - compute from failed numerator criteria if howClose is empty */}
+        {/* Gap Analysis items - compute from failed numerator criteria */}
         {(() => {
-          // Compute gaps from failed numerator criteria
-          const numeratorNodes = flattenNodes(trace.populations.numerator?.nodes || []);
-          const failedCriteria = numeratorNodes.filter(n =>
-            n.status !== 'pass' && n.status !== 'partial' && n.status !== 'incomplete'
-          );
+          /**
+           * Compute gaps respecting AND/OR logic:
+           * - AND groups: each failed child is a separate required gap
+           * - OR groups: only show ONE gap for the whole group if ALL children fail
+           *              (because any ONE passing satisfies the OR)
+           */
+          const computeGaps = (nodes, parentOperator = 'AND') => {
+            const gaps = [];
 
-          // Build gap messages from failed criteria descriptions
-          const computedGaps = failedCriteria.map(node => {
-            const desc = node.description ? cleanDescription(node.description) : null;
-            return desc ? `Missing: ${desc}` : `Missing: ${node.title}`;
-          });
+            for (const node of nodes) {
+              const isPass = node.status === 'pass' || node.status === 'partial';
+              const isIncomplete = node.status === 'incomplete';
 
-          // Use provided howClose if available, otherwise use computed gaps
-          const gapsToShow = (howClose && howClose.length > 0) ? howClose : computedGaps;
+              // If node has children (it's a group), recurse with its operator
+              if (node.children && node.children.length > 0) {
+                const childOperator = node.operator || 'AND';
+
+                if (childOperator === 'OR') {
+                  // OR group: check if ALL children failed
+                  const anyChildPassed = node.children.some(c =>
+                    c.status === 'pass' || c.status === 'partial'
+                  );
+
+                  if (!anyChildPassed) {
+                    // All OR children failed - show as ONE combined gap
+                    // Filter to non-contraindication alternatives for cleaner display
+                    const alternatives = node.children
+                      .filter(c => c.status !== 'pass' && c.status !== 'partial')
+                      .map(c => {
+                        const desc = c.description ? cleanDescription(c.description) : c.title;
+                        // Shorten descriptions for cleaner display
+                        return desc.length > 60 ? desc.substring(0, 57) + '...' : desc;
+                      })
+                      .filter(d => d && !d.toLowerCase().includes('anaphyla')); // Skip anaphylaxis alternatives
+
+                    if (alternatives.length === 1) {
+                      gaps.push(`Missing: ${alternatives[0]}`);
+                    } else if (alternatives.length > 1) {
+                      gaps.push(`Missing one of: ${alternatives.slice(0, 2).join(' OR ')}`);
+                    } else {
+                      // All alternatives were anaphylaxis - use group title
+                      const groupDesc = node.description ? cleanDescription(node.description) : node.title;
+                      gaps.push(`Missing: ${groupDesc}`);
+                    }
+                  }
+                  // If any child passed, OR is satisfied - no gap
+                } else {
+                  // AND group: recurse to get individual gaps
+                  gaps.push(...computeGaps(node.children, childOperator));
+                }
+              } else {
+                // Leaf node (no children)
+                if (!isPass && !isIncomplete && parentOperator === 'AND') {
+                  // Failed leaf in AND context = required gap
+                  const desc = node.description ? cleanDescription(node.description) : null;
+                  // Skip anaphylaxis/contraindication entries - they're alternatives, not requirements
+                  const descLower = (desc || node.title).toLowerCase();
+                  if (!descLower.includes('anaphyla') && !descLower.includes('contraindic')) {
+                    gaps.push(desc ? `Missing: ${desc}` : `Missing: ${node.title}`);
+                  }
+                }
+                // Failed leaves in OR context are handled by parent OR group logic
+              }
+            }
+
+            return gaps;
+          };
+
+          const gapsToShow = computeGaps(trace.populations.numerator?.nodes || []);
 
           // Only show if patient is in denominator but not in numerator
           const showGaps = trace.populations.initialPopulation.met &&
