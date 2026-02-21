@@ -1304,6 +1304,14 @@ export function UMSEditor() {
                     setError(null);
                     setSuccess(null);
 
+                    // Validate all selected elements have library component IDs
+                    const elementsWithoutLibrary = selectedElements.filter((el) => !el.libraryComponentId);
+                    if (elementsWithoutLibrary.length > 0) {
+                      const names = elementsWithoutLibrary.map((el) => `"${el.description}"`).join(', ');
+                      setError(`Cannot merge: ${names} ${elementsWithoutLibrary.length === 1 ? 'is' : 'are'} not linked to the component library. Link all components to the library first.`);
+                      return;
+                    }
+
                     try {
                       // Collect all value sets from selected elements (keep them separate)
                       // Look up full value set data including codes from measure.valueSets
