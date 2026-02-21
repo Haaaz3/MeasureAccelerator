@@ -1256,6 +1256,84 @@ export function enrichDataElementsWithCqlCodes(
   console.log('[enrichDataElementsWithCqlCodes] Enriched', enrichedCount, 'DataElements,', codesAttached, 'codes attached');
 }
 
+/**
+ * Fallback enrichment: Match data elements by description keywords to known vaccine value sets.
+ * This catches cases where the LLM outputs stub entries without OIDs.
+ */
+export function enrichVaccinesByDescription(ums                      )       {
+  // Map of description keywords → correct OID and name for childhood immunization vaccines
+  const vaccineOidMap = [
+    { keywords: ['dtap', 'diphtheria', 'tetanus', 'pertussis'], oid: '2.16.840.1.113883.3.464.1003.196.12.1214', name: 'DTaP Vaccine' },
+    { keywords: ['ipv', 'polio', 'inactivated polio'], oid: '2.16.840.1.113883.3.464.1003.196.12.1219', name: 'Inactivated Polio Vaccine (IPV)' },
+    { keywords: ['mmr', 'measles', 'mumps', 'rubella'], oid: '2.16.840.1.113883.3.464.1003.196.12.1224', name: 'Measles, Mumps and Rubella (MMR) Vaccine' },
+    { keywords: ['hib', 'h influenza', 'haemophilus'], oid: '2.16.840.1.113883.3.464.1003.110.12.1083', name: 'Hib Vaccine (3 dose schedule)' },
+    { keywords: ['hepatitis b', 'hep b', 'hepb'], oid: '2.16.840.1.113883.3.464.1003.196.12.1189', name: 'Hepatitis B Vaccine' },
+    { keywords: ['vzv', 'varicella', 'chicken pox', 'chickenpox'], oid: '2.16.840.1.113883.3.464.1003.196.12.1170', name: 'Varicella Zoster Vaccine (VZV)' },
+    { keywords: ['pcv', 'pneumococcal'], oid: '2.16.840.1.113883.3.464.1003.196.12.1221', name: 'Pneumococcal Conjugate Vaccine' },
+    { keywords: ['hepatitis a', 'hep a', 'hepa'], oid: '2.16.840.1.113883.3.464.1003.196.12.1215', name: 'Hepatitis A Vaccine' },
+    { keywords: ['rotavirus', 'rota'], oid: '2.16.840.1.113883.3.464.1003.196.12.1223', name: 'Rotavirus Vaccine (2 dose schedule)' },
+    { keywords: ['influenza', 'flu'], oid: '2.16.840.1.113883.3.464.1003.196.12.1218', name: 'Child Influenza Vaccine' },
+  ];
+
+  let enrichedCount = 0;
+
+  // Helper: check if element already has a real OID
+  const hasRealOid = (elem     )          => {
+    const oid = elem.valueSet?.oid || elem.valueSetOid;
+    return oid && /^\d+\.\d+/.test(oid);
+  };
+
+  // Walk the criteria tree
+  function walkAndEnrich(node     )       {
+    if (!node) return;
+
+    // If it's a clause with children, recurse
+    if (node.children && Array.isArray(node.children)) {
+      for (const child of node.children) {
+        walkAndEnrich(child);
+      }
+      return;
+    }
+
+    // It's a data element - check if it needs OID enrichment
+    if (hasRealOid(node)) return;
+
+    const desc = (node.description || '').toLowerCase();
+
+    // Try to match by keywords
+    for (const mapping of vaccineOidMap) {
+      if (mapping.keywords.some(kw => desc.includes(kw))) {
+        console.log(`[enrichVaccinesByDescription] Matched "${node.description}" → ${mapping.name} (${mapping.oid})`);
+
+        // Attach OID to the element
+        if (!node.valueSet) {
+          node.valueSet = { oid: mapping.oid, name: mapping.name, codes: [] };
+        } else {
+          node.valueSet.oid = mapping.oid;
+          node.valueSet.name = mapping.name;
+        }
+        node.valueSetOid = mapping.oid;
+        node.valueSetName = mapping.name;
+
+        // Also fix type to immunization if it's a vaccine
+        if (desc.includes('vaccin') || desc.includes('immuniz')) {
+          node.type = 'immunization';
+        }
+
+        enrichedCount++;
+        break;
+      }
+    }
+  }
+
+  // Walk all populations
+  for (const pop of ums.populations || []) {
+    if (pop.criteria) walkAndEnrich(pop.criteria);
+  }
+
+  console.log(`[enrichVaccinesByDescription] Enriched ${enrichedCount} vaccine DataElements with OIDs`);
+}
+
 export default {
   extractMeasure,
   extractMeasureMultiPass,
