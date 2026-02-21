@@ -1208,7 +1208,7 @@ function buildVerificationPrompt(documentContent        , extractedData         
   };
 
   // Truncate document for verification — we need less detail than extraction
-  const maxDocLength = 80000;
+  const maxDocLength = 150000;
   const truncatedDoc = documentContent.length > maxDocLength
     ? documentContent.substring(0, maxDocLength) + '\n\n[Document truncated...]'
     : documentContent;

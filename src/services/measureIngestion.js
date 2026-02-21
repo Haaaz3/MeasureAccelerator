@@ -446,7 +446,8 @@ export async function ingestMeasureFiles(
 
     // Truncate content for LLM - it only needs structure, not all codes
     // Full content is kept for CQL/HTML deterministic parsers
-    const MAX_LLM_CHARS = 80000; // ~20K tokens - enough for structure extraction
+    // 200K chars is well within Claude's 200K token context window
+    const MAX_LLM_CHARS = 200000; // ~50K tokens - needed for complex measures like CMS117 with 10 vaccine groups
     const contentForLLM = truncateForLLM(extractionResult.combinedContent, MAX_LLM_CHARS);
     if (extractionResult.combinedContent.length > MAX_LLM_CHARS) {
       console.log(`[Measure Ingestion] Truncated content for LLM: ${extractionResult.combinedContent.length} → ${contentForLLM.length} chars`);
