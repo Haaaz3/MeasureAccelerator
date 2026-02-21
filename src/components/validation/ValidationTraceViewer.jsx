@@ -2213,44 +2213,6 @@ export function ValidationTraceViewer() {
                 </div>
               )}
 
-              {/* Initial Population - shows each criterion (age, sex, diagnosis, etc.) */}
-              {selectedTrace.populations.initialPopulation.nodes.length > 0 && (
-                <ValidationSection
-                  title="Initial Population"
-                  subtitle="Patient must meet ALL criteria to be included in the measure"
-                  nodes={selectedTrace.populations.initialPopulation.nodes}
-                  operator="AND"
-                  resultChip={selectedTrace.populations.initialPopulation.met ? 'IN POPULATION' : 'NOT IN POPULATION'}
-                  resultPositive={selectedTrace.populations.initialPopulation.met}
-                  onInspect={setInspectNode}
-                />
-              )}
-
-              {selectedTrace.populations.exclusions.nodes.length > 0 && (
-                <ValidationSection
-                  title="Denominator Exclusions"
-                  subtitle="ANY one triggers exclusion"
-                  nodes={selectedTrace.populations.exclusions.nodes}
-                  operator="OR"
-                  resultChip={selectedTrace.populations.exclusions.met ? 'EXCLUDED' : 'Not Excluded'}
-                  resultPositive={!selectedTrace.populations.exclusions.met}
-                  onInspect={setInspectNode}
-                />
-              )}
-
-              {selectedTrace.populations.numerator.nodes.length > 0 && !selectedTrace.populations.exclusions.met && (
-                <ValidationSection
-                  title="Numerator"
-                  subtitle={isScreeningMeasure(measure.metadata.title, measure.metadata.measureId || '')
-                    ? "ANY ONE screening test qualifies"
-                    : "Quality action / outcome criteria"}
-                  nodes={selectedTrace.populations.numerator.nodes}
-                  operator={isScreeningMeasure(measure.metadata.title, measure.metadata.measureId || '') ? "OR" : "AND"}
-                  resultChip={selectedTrace.populations.numerator.met ? 'MET' : 'NOT MET'}
-                  resultPositive={selectedTrace.populations.numerator.met}
-                  onInspect={setInspectNode}
-                />
-              )}
             </div>
           </div>
         ) : (
