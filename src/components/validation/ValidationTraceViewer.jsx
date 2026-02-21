@@ -3192,8 +3192,8 @@ function DetailedEvaluationSummary({ trace, patient, measure }) {
     );
   };
 
-  // Render a single vaccine/criterion as a clean card (for Numerator)
-  const renderVaccineCard = (node, index) => {
+  // Render a single vaccine/criterion as a clean row (matches renderCriterionNode style)
+  const renderVaccineCard = (node, index, isLast = false) => {
     // Extract dose info from facts
     const doseFacts = node.facts?.filter(f => f.doseNumber !== undefined) || [];
     const doseSummary = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
@@ -3202,6 +3202,7 @@ function DetailedEvaluationSummary({ trace, patient, measure }) {
     const required = doseSummary?.requiredCount || parseRequiredDoses(node.description || node.title);
     const found = doseSummary?.foundCount ?? doseFacts.length;
     const isMet = node.status === 'pass' || node.status === 'partial';
+    const isIncomplete = node.status === 'incomplete';
 
     // Check if this is an anaphylaxis/medical exclusion qualification
     const titleLower = (node.title || '').toLowerCase();
@@ -3209,69 +3210,83 @@ function DetailedEvaluationSummary({ trace, patient, measure }) {
                                         titleLower.includes('encephalitis') ||
                                         titleLower.includes('reaction to');
 
-    // Clean up the title
-    let displayTitle = cleanDescription(node.title || 'Criterion');
+    // Clean up the title and description
+    const displayTitle = cleanDescription(node.title || 'Criterion');
+    const cleanedDesc = node.description ? cleanDescription(node.description) : null;
+
+    // Styling based on status (matches renderCriterionNode)
+    let iconBgClass, iconComponent, badgeClass, badgeText;
+    if (isIncomplete) {
+      iconBgClass = 'bg-[var(--warning-light)]';
+      iconComponent = <AlertTriangle className="w-3 h-3 text-[var(--warning)]" />;
+      badgeClass = 'bg-[var(--warning-light)] text-[var(--warning)]';
+      badgeText = 'Incomplete';
+    } else if (isMet) {
+      iconBgClass = 'bg-[var(--success-light)]';
+      iconComponent = <CheckCircle className="w-3 h-3 text-[var(--success)]" />;
+      badgeClass = 'bg-[var(--success-light)] text-[var(--success)]';
+      badgeText = 'Met';
+    } else {
+      iconBgClass = 'bg-[var(--danger-light)]';
+      iconComponent = <XCircle className="w-3 h-3 text-[var(--danger)]" />;
+      badgeClass = 'bg-[var(--danger-light)] text-[var(--danger)]';
+      badgeText = 'Not Met';
+    }
 
     return (
-      <div key={node.id || index} className={`mb-2 p-3 rounded-lg border ${
-        isMet
-          ? 'bg-[var(--success)]/5 border-[var(--success)]/20'
-          : 'bg-[var(--danger)]/5 border-[var(--danger)]/20'
-      }`}>
-        {/* Header: icon + name + Met/Not Met */}
-        <div className="flex items-center gap-2">
-          {isMet ? (
-            <CheckCircle className="w-4 h-4 text-[var(--success)] flex-shrink-0" />
-          ) : (
-            <XCircle className="w-4 h-4 text-[var(--danger)] flex-shrink-0" />
-          )}
-          <span className="font-medium text-sm text-[var(--text)]">{displayTitle}</span>
-          <span className={`text-xs ${isMet ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
-            — {isMet ? 'Met' : 'Not Met'}
-          </span>
+      <div key={node.id || index} className={`flex items-start gap-2 py-1.5 ${!isLast ? 'border-b border-[var(--border-light)]' : ''}`}>
+        <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${iconBgClass}`}>
+          {iconComponent}
         </div>
+        <div className="flex-1 min-w-0">
+          {/* Main line: Title + Badge + Description (all inline) */}
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-sm font-medium text-[var(--text)]">{displayTitle}</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${badgeClass}`}>
+              {badgeText}
+            </span>
+            {cleanedDesc && (
+              <>
+                <span className="text-[var(--text-dim)]">—</span>
+                <span className="text-xs text-[var(--text-muted)]">{cleanedDesc}</span>
+              </>
+            )}
+          </div>
 
-        {/* For anaphylaxis qualifications, show simple message */}
-        {isAnaphylaxisQualification && isMet ? (
-          <p className="text-xs text-[var(--text-muted)] ml-6 mt-1 italic">
-            Qualifies via medical exclusion
-          </p>
-        ) : (
-          <>
-            {/* Dose count */}
-            <p className={`text-xs ml-6 mt-1 ${isMet ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'}`}>
-              {found} of {required} required dose{required !== 1 ? 's' : ''}
+          {/* For anaphylaxis qualifications, show simple message */}
+          {isAnaphylaxisQualification && isMet ? (
+            <p className="text-[11px] text-[var(--text-muted)] mt-0.5 italic">
+              Qualifies via medical exclusion
             </p>
-
-            {/* Individual doses - just description and date */}
-            {doseFacts.length > 0 ? (
-              <div className="ml-6 mt-2 space-y-0.5 text-xs">
-                {doseFacts.map((dose, i) => (
-                  <div key={i} className="flex items-center gap-3 text-[var(--text-muted)]">
-                    <span className="flex-1">{dose.display}</span>
-                    {dose.date && (
-                      <span className="text-[var(--text-dim)] flex-shrink-0">
-                        {new Date(dose.date).toLocaleDateString()}
-                      </span>
-                    )}
-                  </div>
-                ))}
-                {/* Show missing dose placeholders */}
-                {!isMet && required > found && (
-                  Array.from({ length: required - found }).map((_, i) => (
-                    <div key={`missing-${i}`} className="flex items-center gap-3 text-xs text-[var(--danger)] italic">
-                      <span className="w-16">???</span>
-                      <span>Missing dose</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            ) : !isMet ? (
-              <p className="text-xs text-[var(--text-dim)] ml-6 mt-1 italic">
-                No matching immunization records found
+          ) : (
+            <>
+              {/* Dose count line */}
+              <p className={`text-[11px] mt-0.5 ${isMet ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'}`}>
+                {found} of {required} required dose{required !== 1 ? 's' : ''}
               </p>
-            ) : null}
-          </>
+
+              {/* Individual doses - shown as evidence lines like denominator facts */}
+              {doseFacts.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {doseFacts.map((dose, i) => (
+                    <div key={i} className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-[var(--text-muted)]">{dose.display}</span>
+                      {dose.date && (
+                        <span className="text-[var(--text-dim)]">on {new Date(dose.date).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Show missing message if no doses found */}
+              {doseFacts.length === 0 && !isMet && (
+                <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">
+                  No matching immunization records found
+                </p>
+              )}
+            </>
+          )}
         )}
       </div>
     );
@@ -3350,15 +3365,16 @@ function DetailedEvaluationSummary({ trace, patient, measure }) {
 
         {!isCollapsed && allNodes.length > 0 && (
           <div className="mt-2 ml-4">
-            {isNumerator ? (
-              // Use clean vaccine cards for Numerator
-              allNodes.map((node, idx) => renderVaccineCard(node, idx))
-            ) : (
-              // Use simple criterion rendering for other sections
-              <div className="border-l-2 border-[var(--border)] pl-2">
-                {allNodes.map((node, idx) => renderCriterionNode(node, idx, idx === allNodes.length - 1))}
-              </div>
-            )}
+            {/* Same rendering style for all sections - consistent border-l treatment */}
+            <div className="border-l-2 border-[var(--border)] pl-2">
+              {isNumerator ? (
+                // Use vaccine card rendering for Numerator (shows dose counts)
+                allNodes.map((node, idx) => renderVaccineCard(node, idx, idx === allNodes.length - 1))
+              ) : (
+                // Use simple criterion rendering for other sections
+                allNodes.map((node, idx) => renderCriterionNode(node, idx, idx === allNodes.length - 1))
+              )}
+            </div>
           </div>
         )}
 
