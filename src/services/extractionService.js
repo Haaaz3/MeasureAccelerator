@@ -192,6 +192,8 @@ Important guidelines:
 9. CRITICAL - EXTRACT CODES: For each value set, extract ALL individual codes found in the document (look in CQL valueset declarations, XML, tables, appendices). Include code, display name, and system (ICD10, SNOMED, CPT, LOINC, CVX, RxNorm, HCPCS).
 10. Look for CQL "valueset" declarations like: valueset "DTaP Vaccine": 'urn:oid:2.16.840.1...' and "code" declarations like: code "Disorder Name": '12345' from "SNOMEDCT"
 11. For directCodes in criteria, extract individual codes that are NOT part of a value set but are directly referenced
+12. CRITICAL - EXTRACT ALL CRITERIA: For populations with multiple criteria (especially numerator), you MUST extract EVERY criterion and sub-criterion. Do NOT abbreviate, summarize, or stop early. If a numerator has 10 vaccine requirement groups, output all 10. If criteria have OR clauses with alternatives (e.g., vaccine OR anaphylaxis exception), include BOTH branches of every OR.
+13. For immunization measures like CMS117, the numerator typically requires ALL of these vaccines: DTaP, IPV, MMR, HiB, HepB, VZV/Varicella, PCV/Pneumococcal, Hepatitis A, Rotavirus, and Influenza. If your output has fewer than 10 groups in such a numerator, you have missed some — go back and include them all.
 
 Return ONLY the JSON object, no additional text or markdown.`;
 

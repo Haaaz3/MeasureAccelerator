@@ -419,7 +419,10 @@ Be extremely thorough. A complete extraction should have:
 - 5-8+ value sets for a typical measure
 - 10-50+ codes per value set (but OID is more important than individual codes)
 - Structured criteria for each population with valueSet references
-- Every value set should have an OID if mentioned in the document`;
+- Every value set should have an OID if mentioned in the document
+
+CRITICAL - EXTRACT ALL CRITERIA (DO NOT STOP EARLY):
+For populations with multiple criteria (especially numerator), you MUST extract EVERY criterion. Do NOT abbreviate, summarize, or output only the first few. If a numerator has 10 vaccine groups, output ALL 10 in the criteria array. If you find yourself generating "..." or stopping after 3-4 criteria when more exist, GO BACK and include them all. Incomplete extraction is a failure.`;
 }
 
 /**
