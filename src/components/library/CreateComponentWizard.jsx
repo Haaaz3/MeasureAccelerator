@@ -4,8 +4,6 @@ import {
   ChevronRight,
   Plus,
   Check,
-  Zap,
-  Layers,
   Building2,
   Stethoscope,
   Scissors,
@@ -598,8 +596,8 @@ function StepBar({ step, labels }) {
 // Main Component
 // ============================================================================
 export default function CreateComponentWizard({ onSave, onClose }) {
-  const [step, setStep] = useState(0);
-  const [compType, setCompType] = useState('atomic');
+  // No atomic/composite toggle - starts directly at category selection (Step 0)
+  const [step, setStep] = useState(0); // 0=category, 1=subtype, 2=configure, 3=review+code
   const [catId, setCatId] = useState(null);
   const [subId, setSubId] = useState(null);
   const [form, setForm] = useState({ codes: [] });
@@ -636,7 +634,7 @@ export default function CreateComponentWizard({ onSave, onClose }) {
   const cqlCode = editedCql !== null ? editedCql : generateCQL(form, cat, sub);
   const synapseCode = editedSynapse !== null ? editedSynapse : generateSynapse(form, cat, sub);
 
-  const stepLabels = ['Type', cat?.label || 'Subtype', 'Configure', 'Review & Code'];
+  const stepLabels = ['Category', cat?.label || 'Subtype', 'Configure', 'Review & Code'];
 
   // Filter categories by search
   const filteredGroups = useMemo(() => {
@@ -705,96 +703,57 @@ export default function CreateComponentWizard({ onSave, onClose }) {
     onSave();
   }, [form, cat, sub, catId, subId, editedCql, editedSynapse, addComponent, onSave]);
 
-  const canNext = step === 0 ? (compType === 'atomic' && catId)
+  const canNext = step === 0 ? catId
     : step === 1 ? subId
     : step === 2 ? (form.name || '').trim()
     : false;
 
   // ============================================================================
-  // Step 0: Category Selection
+  // Step 0: Category Selection (no atomic/composite toggle - starts here directly)
   // ============================================================================
   const renderStep0 = () => (
     <div>
       <div className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-        Component structure
+        What type of component are you building?
       </div>
-      <div className="flex gap-2 mb-4">
-        {[
-          { key: 'atomic', label: 'Atomic', desc: 'Single criterion, one value set', Icon: Zap },
-          { key: 'composite', label: 'Composite', desc: 'Combines components (AND/OR)', Icon: Layers },
-        ].map(opt => (
-          <button
-            key={opt.key}
-            type="button"
-            onClick={() => setCompType(opt.key)}
-            className="flex-1 p-3 rounded-lg text-left transition-all"
-            style={{
-              border: compType === opt.key ? '2px solid var(--accent)' : '1.5px solid var(--border)',
-              backgroundColor: compType === opt.key ? 'var(--accent-muted)' : 'var(--bg-primary)',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-0.5">
-              <opt.Icon size={16} style={{ color: compType === opt.key ? 'var(--accent)' : 'var(--text-secondary)' }} />
-              <span className="text-sm font-semibold" style={{ color: compType === opt.key ? 'var(--accent)' : 'var(--text)' }}>
-                {opt.label}
-              </span>
+      <input
+        type="text"
+        className="w-full px-3 py-2 rounded-lg border text-sm outline-none mb-2.5"
+        style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)', color: 'var(--text)' }}
+        placeholder="Search categories..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+      />
+      <div className="max-h-[380px] overflow-y-auto pr-1">
+        {filteredGroups.map(group => (
+          <div key={group.group} className="mb-3">
+            <div className="text-[10px] font-bold uppercase tracking-wider mb-1.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
+              {group.group}
             </div>
-            <div className="text-xs" style={{ color: 'var(--text-secondary)' }}>{opt.desc}</div>
-          </button>
+            {group.cats.map(c => {
+              const IconComponent = ICONS[c.icon] || Code;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => selectCat(c.id)}
+                  className="flex items-center gap-2.5 p-2.5 rounded-lg border text-left w-full mb-1 transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]"
+                  style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-primary)' }}
+                >
+                  <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                    <IconComponent size={14} style={{ color: 'var(--text-secondary)' }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{c.label}</div>
+                    <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{c.desc}</div>
+                  </div>
+                  <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
+                </button>
+              );
+            })}
+          </div>
         ))}
       </div>
-
-      {compType === 'atomic' && (
-        <>
-          <div className="text-[10px] font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-            Select category
-          </div>
-          <input
-            type="text"
-            className="w-full px-3 py-2 rounded-lg border text-sm outline-none mb-2.5"
-            style={{ backgroundColor: 'var(--bg-primary)', borderColor: 'var(--border)', color: 'var(--text)' }}
-            placeholder="Search categories..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <div className="max-h-[300px] overflow-y-auto pr-1">
-            {filteredGroups.map(group => (
-              <div key={group.group} className="mb-3">
-                <div className="text-[10px] font-bold uppercase tracking-wider mb-1.5 px-0.5" style={{ color: 'var(--text-secondary)' }}>
-                  {group.group}
-                </div>
-                {group.cats.map(c => {
-                  const IconComponent = ICONS[c.icon] || Code;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => selectCat(c.id)}
-                      className="flex items-center gap-2.5 p-2.5 rounded-lg border text-left w-full mb-1 transition-all hover:border-[var(--accent)] hover:bg-[var(--accent-muted)]"
-                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--bg-primary)' }}
-                    >
-                      <div className="w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                        <IconComponent size={14} style={{ color: 'var(--text-secondary)' }} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold" style={{ color: 'var(--text)' }}>{c.label}</div>
-                        <div className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{c.desc}</div>
-                      </div>
-                      <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {compType === 'composite' && (
-        <div className="p-3.5 rounded-lg text-sm" style={{ backgroundColor: 'var(--info-bg)', color: 'var(--info-text)', lineHeight: 1.5 }}>
-          Composite components combine existing atomic components with AND/OR logic. Create atomic components first, then combine from the UMS Editor.
-        </div>
-      )}
     </div>
   );
 

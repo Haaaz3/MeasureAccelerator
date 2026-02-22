@@ -10,6 +10,7 @@ import {
   GitBranch,
   Tag,
   CheckCircle,
+  Check,
   Clock,
   FileEdit,
   Archive,
@@ -20,6 +21,7 @@ import {
   ArrowUp,
   ArrowDown,
   Building2,
+  GitMerge,
 } from 'lucide-react';
 import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useMeasureStore } from '../../stores/measureStore';
@@ -27,6 +29,7 @@ import { getComplexityColor, getComplexityDots } from '../../services/complexity
 import { ComponentDetail } from './ComponentDetail';
 import ComponentEditor from './ComponentEditor';
 import CreateComponentWizard from './CreateComponentWizard';
+import MergeComponentsWizard from './MergeComponentsWizard';
 import { ErrorBoundary } from '../shared/ErrorBoundary';
 
 const CATEGORIES                                                      = [
@@ -231,6 +234,41 @@ export function LibraryBrowser() {
     setEditingComponent(null);
   };
 
+  // Merge mode state
+  const [mergeMode, setMergeMode] = useState(false);
+  const [mergeSelectedIds, setMergeSelectedIds] = useState([]);
+  const [showMergeWizard, setShowMergeWizard] = useState(false);
+
+  const handleMergeComponents = () => {
+    setMergeMode(true);
+    setMergeSelectedIds([]);
+  };
+
+  const handleCancelMergeMode = () => {
+    setMergeMode(false);
+    setMergeSelectedIds([]);
+  };
+
+  const handleToggleMergeSelect = (componentId) => {
+    setMergeSelectedIds(prev =>
+      prev.includes(componentId)
+        ? prev.filter(id => id !== componentId)
+        : [...prev, componentId]
+    );
+  };
+
+  const handleProceedToMerge = () => {
+    if (mergeSelectedIds.length >= 2) {
+      setShowMergeWizard(true);
+    }
+  };
+
+  const handleCloseMergeWizard = () => {
+    setShowMergeWizard(false);
+    setMergeMode(false);
+    setMergeSelectedIds([]);
+  };
+
   // Resizable panel state
   const [detailPanelWidth, setDetailPanelWidth] = useState(420);
   const isResizing = useRef(false);
@@ -275,13 +313,34 @@ export function LibraryBrowser() {
               Reusable measure logic blocks
             </p>
           </div>
-          <button
-            onClick={handleNewComponent}
-            className="h-10 px-4 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" />
-            New Component
-          </button>
+          <div className="flex items-center gap-2">
+            {mergeMode ? (
+              <button
+                onClick={handleCancelMergeMode}
+                className="h-10 px-4 bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg font-medium hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 border border-[var(--border)]"
+              >
+                <X className="w-4 h-4" />
+                Cancel
+              </button>
+            ) : (
+              <>
+                <button
+                  onClick={handleMergeComponents}
+                  className="h-10 px-4 bg-[var(--bg-tertiary)] text-[var(--text)] rounded-lg font-medium hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 border border-[var(--border)]"
+                >
+                  <GitMerge className="w-4 h-4" />
+                  Merge
+                </button>
+                <button
+                  onClick={handleNewComponent}
+                  className="h-10 px-4 bg-[var(--primary)] text-white rounded-lg font-medium hover:bg-[var(--primary-hover)] transition-colors flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  New Component
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -418,7 +477,9 @@ export function LibraryBrowser() {
                       key={component.id}
                       component={component}
                       isSelected={selectedComponentId === component.id}
-                      onClick={() => handleCardClick(component.id)}
+                      onClick={() => mergeMode ? handleToggleMergeSelect(component.id) : handleCardClick(component.id)}
+                      mergeMode={mergeMode}
+                      isMergeSelected={mergeSelectedIds.includes(component.id)}
                     />
                   ))}
                 </div>
@@ -498,6 +559,56 @@ export function LibraryBrowser() {
           />
         </ErrorBoundary>
       )}
+
+      {/* Merge Mode Floating Action Bar */}
+      {mergeMode && !showMergeWizard && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="bg-[var(--bg-elevated,var(--bg-secondary))] border border-[var(--border)] rounded-xl shadow-2xl px-5 py-3 flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <GitMerge className="w-5 h-5 text-purple-500" />
+              <span className="text-sm font-medium text-[var(--text)]">
+                {mergeSelectedIds.length === 0
+                  ? 'Select components to merge'
+                  : `${mergeSelectedIds.length} component${mergeSelectedIds.length !== 1 ? 's' : ''} selected`}
+              </span>
+            </div>
+            {mergeSelectedIds.length > 0 && mergeSelectedIds.length < 2 && (
+              <span className="text-xs text-[var(--text-muted)]">Select at least 2</span>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleCancelMergeMode}
+                className="px-4 py-2 text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleProceedToMerge}
+                disabled={mergeSelectedIds.length < 2}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+                  mergeSelectedIds.length >= 2
+                    ? 'bg-purple-600 text-white hover:bg-purple-700 shadow-md'
+                    : 'bg-[var(--border)] text-[var(--text-muted)] cursor-not-allowed'
+                }`}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Merge Components Wizard */}
+      {showMergeWizard && (
+        <ErrorBoundary fallbackName="Merge Components Wizard">
+          <MergeComponentsWizard
+            preSelectedIds={mergeSelectedIds}
+            startAtStep={1}
+            onSave={handleCloseMergeWizard}
+            onClose={handleCloseMergeWizard}
+          />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
@@ -510,21 +621,106 @@ function ComponentCard({
   component,
   isSelected,
   onClick,
-}   
-                              
-                      
-                      
- ) {
+  mergeMode = false,
+  isMergeSelected = false,
+}) {
   const statusBadge = getStatusBadge(component.versionInfo.status);
   const complexityColor = getComplexityColor(component.complexity.level);
   const complexityDots = getComplexityDots(component.complexity.level);
   const isComposite = component.type === 'composite';
   const isArchived = component.versionInfo.status === 'archived';
 
+  // When in merge mode, use a flex layout with checkbox in left gutter
+  if (mergeMode) {
+    return (
+      <div
+        onClick={onClick}
+        className="flex gap-2.5 cursor-pointer"
+        style={{ alignItems: 'stretch' }}
+      >
+        {/* LEFT GUTTER — checkbox only, vertically centered */}
+        <div className="flex items-center flex-shrink-0 pt-1">
+          <div
+            className={`w-5 h-5 rounded flex items-center justify-center transition-all ${
+              isMergeSelected
+                ? 'bg-purple-600 border-2 border-purple-600'
+                : 'bg-[var(--bg-primary)] border-2 border-[var(--border)]'
+            }`}
+          >
+            {isMergeSelected && <Check className="w-3 h-3 text-white" />}
+          </div>
+        </div>
+
+        {/* TILE — full card, no checkbox inside */}
+        <div
+          className={`flex-1 border rounded-xl p-4 transition-all group ${
+            isArchived
+              ? 'bg-[var(--bg-secondary)] border-[var(--border)] opacity-50 grayscale'
+              : isMergeSelected
+                ? 'bg-purple-500/10 border-purple-500'
+                : 'bg-[var(--bg-elevated,var(--bg))] border-[var(--border)] hover:border-purple-500/40 hover:shadow-md'
+          }`}
+        >
+          {/* Header: Name + Type Badge */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <h3 className="text-sm font-semibold text-[var(--text)] truncate group-hover:text-purple-400 transition-colors">
+              {component.name}
+            </h3>
+            <span
+              className={`flex-shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide ${
+                isComposite
+                  ? 'bg-purple-500/10 text-purple-400'
+                  : 'bg-sky-500/10 text-sky-400'
+              }`}
+            >
+              {isComposite ? (
+                <GitBranch className="w-3 h-3" />
+              ) : (
+                <Atom className="w-3 h-3" />
+              )}
+              {isComposite ? 'Composite' : 'Atomic'}
+            </span>
+          </div>
+
+          {/* Description */}
+          <p className="text-xs text-[var(--text-muted)] line-clamp-2 mb-3 min-h-[2rem]">
+            {component.description || 'No description provided'}
+          </p>
+
+          {/* Complexity */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs text-[var(--text-dim)]">Complexity</span>
+            <span className={`text-sm ${complexityColor}`} title={`Score: ${component.complexity.score}`}>
+              {complexityDots}
+            </span>
+            <span className={`text-xs font-medium capitalize ${complexityColor}`}>
+              {component.complexity.level}
+            </span>
+          </div>
+
+          {/* Footer: Usage + Status */}
+          <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
+            <span className="text-xs text-[var(--text-dim)] flex items-center gap-1">
+              <Tag className="w-3 h-3" />
+              Used in {component.usage.usageCount} measure{component.usage.usageCount !== 1 ? 's' : ''}
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${statusBadge.color}`}
+            >
+              {statusBadge.icon}
+              {statusBadge.label}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal mode (non-merge)
   return (
     <div
       onClick={onClick}
-      className={`border rounded-xl p-4 cursor-pointer transition-all group ${
+      className={`border rounded-xl p-4 cursor-pointer transition-all group relative ${
         isArchived
           ? 'bg-[var(--bg-secondary)] border-[var(--border)] opacity-50 grayscale'
           : isSelected
