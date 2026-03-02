@@ -55,6 +55,9 @@ const PROGRAM_OPTIONS                                             = [
   { value: 'Custom', label: 'Custom' },
 ];
 
+// Map program values to display labels
+const PROGRAM_LABEL_MAP = Object.fromEntries(PROGRAM_OPTIONS.map(p => [p.value, p.label]));
+
 // Category key to display label mapping
 function getCategoryLabel(key) {
   const map = {
@@ -343,6 +346,21 @@ export function LibraryBrowser() {
 
     return list;
   }, [programFilteredComponents, columnSort]);
+
+  // Build a map of componentId → derived catalog labels from measure usage
+  const derivedCatalogMap = useMemo(() => {
+    const map = new Map();
+    const measureLookup = new Map(measures.map(m => [m.id, m]));
+
+    for (const c of sortedComponents) {
+      const programs = c.usage.measureIds
+        .map(id => measureLookup.get(id)?.metadata?.program)
+        .filter(Boolean);
+      const uniqueLabels = [...new Set(programs.map(p => PROGRAM_LABEL_MAP[p] || p))];
+      map.set(c.id, uniqueLabels);
+    }
+    return map;
+  }, [sortedComponents, measures]);
 
   const handleNewComponent = () => {
     setEditingComponent('new');
@@ -805,6 +823,7 @@ export function LibraryBrowser() {
                         mergeMode={mergeMode}
                         isMergeSelected={mergeSelectedIds.includes(component.id)}
                         columnWidths={columnWidths}
+                        derivedCatalogs={derivedCatalogMap.get(component.id) || []}
                       />
                     ))}
                   </tbody>
@@ -950,6 +969,7 @@ function ComponentRow({
   mergeMode = false,
   isMergeSelected = false,
   columnWidths = {},
+  derivedCatalogs = [],
 }) {
   const statusBadge = getStatusBadge(component.versionInfo.status);
   const complexityColor = getComplexityColor(component.complexity.level);
@@ -960,6 +980,12 @@ function ComponentRow({
     component.type === 'atomic' &&
     component.metadata?.category !== 'demographics' &&
     (!component.valueSet?.codes || component.valueSet.codes.length === 0);
+
+  // Merge derived catalogs (from measures) + manual catalogs (from component.catalogs)
+  const manualCatalogs = (component.catalogs || [])
+    .map(p => PROGRAM_LABEL_MAP[p] || p)
+    .filter(label => !derivedCatalogs.includes(label));
+  const allCatalogs = [...derivedCatalogs, ...manualCatalogs];
 
   // Row styling based on state
   let rowClasses = 'cursor-pointer transition-colors border-b border-[var(--border-light)]';
@@ -1039,14 +1065,18 @@ function ComponentRow({
       {/* Catalog */}
       <td style={{ width: columnWidths.catalog }} className="px-3 py-3 align-top">
         <div className="flex flex-wrap gap-1">
-          {(component.catalogs || []).map((cat) => (
-            <span
-              key={cat}
-              className="text-[10px] font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border-light)] px-1.5 py-0.5 rounded whitespace-nowrap"
-            >
-              {cat}
-            </span>
-          ))}
+          {allCatalogs.length > 0 ? (
+            allCatalogs.map((cat) => (
+              <span
+                key={cat}
+                className="text-[10px] font-medium text-[var(--text-secondary)] bg-[var(--bg-secondary)] border border-[var(--border-light)] px-1.5 py-0.5 rounded whitespace-nowrap"
+              >
+                {cat}
+              </span>
+            ))
+          ) : (
+            <span className="text-[10px] text-[var(--text-dim)] italic">—</span>
+          )}
         </div>
       </td>
 

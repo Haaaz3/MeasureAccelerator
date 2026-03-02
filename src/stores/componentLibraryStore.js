@@ -460,9 +460,10 @@ export const useComponentLibraryStore = create                       ()(
       initializeWithSampleData: () => {
         if (get().initialized) return;
 
-        // Hydrate atomics with complexity scores
+        // Hydrate atomics with complexity scores and ensure catalogs field
         const hydratedAtomics                    = sampleAtomics.map((atomic) => ({
           ...atomic,
+          catalogs: atomic.catalogs || [],
           complexity: calculateAtomicComplexity(atomic),
         }));
 
@@ -470,9 +471,10 @@ export const useComponentLibraryStore = create                       ()(
         const componentMap = new Map                          ();
         hydratedAtomics.forEach((a) => componentMap.set(a.id, a));
 
-        // Hydrate composites with complexity scores
+        // Hydrate composites with complexity scores and ensure catalogs field
         const hydratedComposites                       = sampleComposites.map((composite) => ({
           ...composite,
+          catalogs: composite.catalogs || [],
           complexity: calculateCompositeComplexity(
             composite,
             (id) => componentMap.get(id) || null,

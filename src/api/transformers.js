@@ -446,6 +446,7 @@ export function transformComponentSummary(dto                  )                
       lastUsedAt: dto.updatedAt || undefined,
     },
     metadata: createDefaultMetadata(category),
+    catalogs: dto.catalogs || [],
   };
 
   return atomic;
@@ -514,6 +515,7 @@ export function transformComponentDto(dto              )                   {
       versionInfo,
       usage,
       metadata,
+      catalogs: dto.catalogs || [],
     };
     return composite;
   }
@@ -549,6 +551,7 @@ export function transformComponentDto(dto              )                   {
     versionInfo,
     usage,
     metadata,
+    catalogs: dto.catalogs || [],
   };
 
   return atomic;
