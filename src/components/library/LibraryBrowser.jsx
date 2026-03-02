@@ -129,6 +129,20 @@ export function LibraryBrowser() {
   // Column sort state for list view
   const [columnSort, setColumnSort] = useState({ col: 'name', dir: 'asc' });
 
+  // Column widths for resizable columns (in pixels)
+  const [columnWidths, setColumnWidths] = useState({
+    name: 200,
+    description: 250,
+    category: 100,
+    complexity: 100,
+    usage: 70,
+    catalog: 120,
+    status: 110,
+  });
+  const resizingColumn = useRef(null);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
   // Bulk VSAC fetch state
   const [bulkFetchLoading, setBulkFetchLoading] = useState(false);
   const [bulkFetchProgress, setBulkFetchProgress] = useState({ current: 0, total: 0, name: '' });
@@ -468,14 +482,25 @@ export function LibraryBrowser() {
 
   useEffect(() => {
     const handleMouseMove = (e            ) => {
-      if (!isResizing.current || !containerRef.current) return;
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const newWidth = containerRect.right - e.clientX;
-      setDetailPanelWidth(Math.min(Math.max(newWidth, 300), 600));
+      // Handle detail panel resize
+      if (isResizing.current && containerRef.current) {
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const newWidth = containerRect.right - e.clientX;
+        setDetailPanelWidth(Math.min(Math.max(newWidth, 300), 600));
+      }
+      // Handle column resize
+      if (resizingColumn.current) {
+        const delta = e.clientX - resizeStartX.current;
+        const newWidth = Math.max(60, resizeStartWidth.current + delta);
+        setColumnWidths(prev => ({ ...prev, [resizingColumn.current]: newWidth }));
+      }
     };
 
     const handleMouseUp = () => {
       isResizing.current = false;
+      resizingColumn.current = null;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
 
     document.addEventListener('mousemove', handleMouseMove);
@@ -485,6 +510,17 @@ export function LibraryBrowser() {
       document.removeEventListener('mouseup', handleMouseUp);
     };
   }, []);
+
+  // Start column resize
+  const handleColumnResizeStart = useCallback((e, columnKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizingColumn.current = columnKey;
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = columnWidths[columnKey];
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [columnWidths]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -640,87 +676,117 @@ export function LibraryBrowser() {
             {/* List Table */}
             <div className="flex-1 overflow-y-auto">
               {sortedComponents.length > 0 ? (
-                <table className="w-full border-collapse">
+                <table className="w-full border-collapse table-fixed">
                   <thead>
                     <tr>
                       {mergeMode && (
                         <th className="w-10 px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10" />
                       )}
                       <th
-                        onClick={() => handleColumnSort('name')}
-                        className={`px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
+                        style={{ width: columnWidths.name }}
+                        className={`relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
                           columnSort.col === 'name'
                             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
                             : 'text-[var(--text-dim)] border-b-2 border-[var(--border)]'
                         }`}
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" onClick={() => handleColumnSort('name')}>
                           Name
                           {columnSort.col === 'name' && (
                             columnSort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                           )}
                         </span>
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10">
-                        Description
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'name')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
                       </th>
                       <th
-                        onClick={() => handleColumnSort('category')}
-                        className={`px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
+                        style={{ width: columnWidths.description }}
+                        className="relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10"
+                      >
+                        Description
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'description')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
+                      </th>
+                      <th
+                        style={{ width: columnWidths.category }}
+                        className={`relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
                           columnSort.col === 'category'
                             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
                             : 'text-[var(--text-dim)] border-b-2 border-[var(--border)]'
                         }`}
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" onClick={() => handleColumnSort('category')}>
                           Category
                           {columnSort.col === 'category' && (
                             columnSort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                           )}
                         </span>
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'category')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
                       </th>
                       <th
-                        onClick={() => handleColumnSort('complexity')}
-                        className={`px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
+                        style={{ width: columnWidths.complexity }}
+                        className={`relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
                           columnSort.col === 'complexity'
                             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
                             : 'text-[var(--text-dim)] border-b-2 border-[var(--border)]'
                         }`}
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" onClick={() => handleColumnSort('complexity')}>
                           Complexity
                           {columnSort.col === 'complexity' && (
                             columnSort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                           )}
                         </span>
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'complexity')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
                       </th>
                       <th
-                        onClick={() => handleColumnSort('usage')}
-                        className={`px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
+                        style={{ width: columnWidths.usage }}
+                        className={`relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
                           columnSort.col === 'usage'
                             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
                             : 'text-[var(--text-dim)] border-b-2 border-[var(--border)]'
                         }`}
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" onClick={() => handleColumnSort('usage')}>
                           Used In
                           {columnSort.col === 'usage' && (
                             columnSort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
                           )}
                         </span>
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10">
-                        Catalog
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'usage')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
                       </th>
                       <th
-                        onClick={() => handleColumnSort('status')}
-                        className={`px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
+                        style={{ width: columnWidths.catalog }}
+                        className="relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10"
+                      >
+                        Catalog
+                        <div
+                          onMouseDown={(e) => handleColumnResizeStart(e, 'catalog')}
+                          className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"
+                        />
+                      </th>
+                      <th
+                        style={{ width: columnWidths.status }}
+                        className={`relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold cursor-pointer select-none bg-[var(--bg-secondary)] sticky top-0 z-10 ${
                           columnSort.col === 'status'
                             ? 'text-[var(--accent)] border-b-2 border-[var(--accent)]'
                             : 'text-[var(--text-dim)] border-b-2 border-[var(--border)]'
                         }`}
                       >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1" onClick={() => handleColumnSort('status')}>
                           Status
                           {columnSort.col === 'status' && (
                             columnSort.dir === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
@@ -738,6 +804,7 @@ export function LibraryBrowser() {
                         onClick={() => mergeMode ? handleToggleMergeSelect(component.id) : handleCardClick(component.id)}
                         mergeMode={mergeMode}
                         isMergeSelected={mergeSelectedIds.includes(component.id)}
+                        columnWidths={columnWidths}
                       />
                     ))}
                   </tbody>
@@ -882,6 +949,7 @@ function ComponentRow({
   onClick,
   mergeMode = false,
   isMergeSelected = false,
+  columnWidths = {},
 }) {
   const statusBadge = getStatusBadge(component.versionInfo.status);
   const complexityColor = getComplexityColor(component.complexity.level);
@@ -909,7 +977,7 @@ function ComponentRow({
     <tr onClick={onClick} className={rowClasses}>
       {/* Checkbox column (merge mode only) */}
       {mergeMode && (
-        <td className="w-10 px-3 py-3 align-middle">
+        <td className="w-10 px-3 py-3 align-top">
           <div
             className={`w-5 h-5 rounded flex items-center justify-center transition-all ${
               isMergeSelected
@@ -922,10 +990,10 @@ function ComponentRow({
         </td>
       )}
 
-      {/* Name */}
-      <td className="px-3 py-3 align-middle">
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-semibold truncate ${isSelected && !mergeMode ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>
+      {/* Name - wraps instead of truncates */}
+      <td style={{ width: columnWidths.name }} className="px-3 py-3 align-top">
+        <div className="flex flex-wrap items-start gap-2">
+          <span className={`text-sm font-semibold ${isSelected && !mergeMode ? 'text-[var(--accent)]' : 'text-[var(--text)]'}`}>
             {component.name}
           </span>
           {isComposite && (
@@ -938,21 +1006,21 @@ function ComponentRow({
       </td>
 
       {/* Description */}
-      <td className="px-3 py-3 align-middle">
-        <span className="text-xs text-[var(--text-muted)] truncate block max-w-[300px]">
+      <td style={{ width: columnWidths.description }} className="px-3 py-3 align-top">
+        <span className="text-xs text-[var(--text-muted)] line-clamp-2">
           {component.description || 'No description'}
         </span>
       </td>
 
       {/* Category */}
-      <td className="px-3 py-3 align-middle">
+      <td style={{ width: columnWidths.category }} className="px-3 py-3 align-top">
         <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-tertiary)] px-2 py-1 rounded whitespace-nowrap">
           {getCategoryLabel(component.metadata?.category)}
         </span>
       </td>
 
       {/* Complexity */}
-      <td className="px-3 py-3 align-middle">
+      <td style={{ width: columnWidths.complexity }} className="px-3 py-3 align-top">
         <div className="flex items-center gap-1.5">
           <span className={`text-xs ${complexityColor}`}>{complexityDots}</span>
           <span className={`text-xs font-medium capitalize ${complexityColor}`}>
@@ -962,14 +1030,14 @@ function ComponentRow({
       </td>
 
       {/* Used In */}
-      <td className="px-3 py-3 align-middle">
+      <td style={{ width: columnWidths.usage }} className="px-3 py-3 align-top">
         <span className={`text-xs ${component.usage.usageCount > 0 ? 'text-[var(--text-secondary)]' : 'text-[var(--text-dim)]'}`}>
           {component.usage.usageCount}
         </span>
       </td>
 
       {/* Catalog */}
-      <td className="px-3 py-3 align-middle">
+      <td style={{ width: columnWidths.catalog }} className="px-3 py-3 align-top">
         <div className="flex flex-wrap gap-1">
           {(component.catalogs || []).map((cat) => (
             <span
@@ -983,7 +1051,7 @@ function ComponentRow({
       </td>
 
       {/* Status */}
-      <td className="px-3 py-3 align-middle">
+      <td style={{ width: columnWidths.status }} className="px-3 py-3 align-top">
         <div className="flex flex-col gap-1">
           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium w-fit ${statusBadge.color}`}>
             {statusBadge.icon}
