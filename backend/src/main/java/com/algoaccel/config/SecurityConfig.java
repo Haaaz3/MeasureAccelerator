@@ -64,13 +64,11 @@ public class SecurityConfig {
                 );
         } else {
             // Production: basic auth (placeholder for future OAuth2/JWT)
-            // API endpoints are permitted for frontend access
             http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                    .requestMatchers("/h2-console/**").permitAll()
-                    .requestMatchers("/actuator/**").permitAll()
-                    .requestMatchers("/api/**").permitAll()
+                    .requestMatchers("/actuator/health").permitAll()
+                    .requestMatchers("/api/**").authenticated()
                     .anyRequest().authenticated()
                 )
                 .httpBasic(Customizer.withDefaults());

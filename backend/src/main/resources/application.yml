@@ -10,7 +10,7 @@ spring:
 
   h2:
     console:
-      enabled: true
+      enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
 
   jpa:
@@ -54,8 +54,8 @@ security:
 # Spring Security basic auth credentials
 spring.security:
   user:
-    name: username
-    password: password
+    name: ${SPRING_SECURITY_USER:admin}
+    password: ${SPRING_SECURITY_PASSWORD:changeme}
 
 # LLM configuration - API keys read from environment variables for security
 llm:

@@ -15,6 +15,7 @@ import { ErrorBoundary } from './components/shared/ErrorBoundary';
 import { DraggableFAB } from './components/copilot/DraggableFAB';
 import { ToastContainer } from './components/notifications/ToastContainer';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { PasswordGate } from './components/shared/PasswordGate';
 
 // Map routes to tab names
 const ROUTE_TO_TAB = {
@@ -200,9 +201,11 @@ function AppContent() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <AppContent />
-    </BrowserRouter>
+    <PasswordGate>
+      <BrowserRouter>
+        <AppContent />
+      </BrowserRouter>
+    </PasswordGate>
   );
 }
 
