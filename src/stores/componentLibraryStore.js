@@ -671,9 +671,25 @@ export const useComponentLibraryStore = create                       ()(
               get().clearPendingSync(id);
             } catch (err) {
               const errorMsg = err instanceof Error ? err.message : 'Failed to update';
-              console.warn(`[updateComponent] Failed to persist component ${id} to backend:`, err);
-              // Mark as pending sync for retry
-              get().markPendingSync(id, 'update', errorMsg);
+              const is404 = err?.status === 404 || errorMsg.includes('404') || errorMsg.includes('Not Found');
+              // If 404, component doesn't exist in backend - create it instead
+              if (is404) {
+                console.log(`[updateComponent] Component ${id} not in backend, creating...`);
+                try {
+                  const { createAtomicComponent } = await import('../api/components');
+                  await createAtomicComponent(requestBody);
+                  console.log(`[updateComponent] Created component ${id} in backend`);
+                  get().clearPendingSync(id);
+                } catch (createErr) {
+                  const createErrorMsg = createErr instanceof Error ? createErr.message : 'Failed to create';
+                  console.warn(`[updateComponent] Failed to create component ${id}:`, createErr);
+                  get().markPendingSync(id, 'create', createErrorMsg);
+                }
+              } else {
+                console.warn(`[updateComponent] Failed to persist component ${id} to backend:`, err);
+                // Mark as pending sync for retry
+                get().markPendingSync(id, 'update', errorMsg);
+              }
             }
           }).catch(err => {
             const errorMsg = err instanceof Error ? err.message : 'Failed to load API';
