@@ -129,6 +129,9 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
     existingComponent?.metadata.tags.join(', ') ?? ''
   );
   const [catalogs, setCatalogs] = useState(existingComponent?.catalogs ?? []);
+  const [catalogueDefaults, setCatalogueDefaults] = useState(
+    existingComponent?.catalogueDefaults ?? {}
+  );
 
   // --------------------------------------------------------------------------
   // State: Composite Fields
@@ -248,6 +251,8 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
       (component       ).valueSet.codes = codes;
       // Attach catalogs
       component.catalogs = catalogs;
+      // Attach catalogue defaults (e.g., HEDIS defaults)
+      component.catalogueDefaults = catalogueDefaults;
 
       if (isEditMode && existingComponent) {
         const updates = {
@@ -260,6 +265,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
           dueDateDaysOverridden: dueDateOverridden,
           ageEvaluatedAt,
           catalogs,
+          catalogueDefaults,
           metadata: {
             ...existingComponent.metadata,
             category,
@@ -326,6 +332,8 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
       });
       // Attach catalogs
       component.catalogs = catalogs;
+      // Attach catalogue defaults (e.g., HEDIS defaults)
+      component.catalogueDefaults = catalogueDefaults;
 
       if (isEditMode && existingComponent) {
         const updates = {
@@ -334,6 +342,7 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
           children: component.children,
           complexity: component.complexity,
           catalogs,
+          catalogueDefaults,
           metadata: {
             ...existingComponent.metadata,
             category,
@@ -972,6 +981,79 @@ export default function ComponentEditor({ componentId, onSave, onClose }        
               })}
             </div>
           </div>
+
+          {/* HEDIS Defaults - only visible when hedis catalogue is selected */}
+          {catalogs.includes('hedis') && (
+            <div
+              className="p-4 rounded-lg border"
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--bg-secondary)',
+              }}
+            >
+              <label className="block text-sm font-medium mb-3" style={{ color: 'var(--text)' }}>
+                HEDIS Defaults
+              </label>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                These defaults will be applied when this component is added to a HEDIS measure.
+              </p>
+
+              {/* Collection Type */}
+              <div className="mb-3">
+                <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                  Default Collection Type
+                </label>
+                <select
+                  value={catalogueDefaults?.hedis?.collectionType || ''}
+                  onChange={(e) => {
+                    setCatalogueDefaults((prev) => ({
+                      ...prev,
+                      hedis: {
+                        ...(prev?.hedis || {}),
+                        collectionType: e.target.value || null,
+                      },
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-lg text-sm border"
+                  style={{
+                    backgroundColor: 'var(--bg-primary)',
+                    borderColor: 'var(--border)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <option value="">Not specified</option>
+                  <option value="administrative">Administrative (claims only)</option>
+                  <option value="hybrid">Hybrid (claims + medical record)</option>
+                  <option value="ecd">ECD (Electronic Clinical Data)</option>
+                  <option value="ecds">ECDS (Electronic Clinical Data Systems)</option>
+                </select>
+              </div>
+
+              {/* Hybrid Source Flag */}
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={catalogueDefaults?.hedis?.hybridSourceFlag || false}
+                  onChange={(e) => {
+                    setCatalogueDefaults((prev) => ({
+                      ...prev,
+                      hedis: {
+                        ...(prev?.hedis || {}),
+                        hybridSourceFlag: e.target.checked,
+                      },
+                    }));
+                  }}
+                  className="w-4 h-4 rounded"
+                  style={{
+                    accentColor: 'var(--accent)',
+                  }}
+                />
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  Medical Record Review Element (hybrid source)
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Complexity Preview */}
           <div

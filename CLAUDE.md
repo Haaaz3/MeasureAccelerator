@@ -160,6 +160,12 @@ npm run build       # Output to dist/
   - Hybrid Source Flag checkbox
   - Only visible for HEDIS measures on applicable element types
 
+**Task 5 Complete: HEDIS defaults in component editor**
+- `ComponentEditor.jsx` - Added HEDIS Defaults section (visible when hedis catalogue selected):
+  - Default Collection Type dropdown
+  - Medical Record Review Element checkbox (hybridSourceFlag)
+  - catalogueDefaults state and persistence to component
+
 ### Feature 1b: Catalogue Auto-Detection (March 2026)
 - `src/utils/catalogueClassifier.js` - Signal-based document classifier
 - `src/components/ingestion/CatalogueConfirmationChip.jsx` - Confirmation UI
