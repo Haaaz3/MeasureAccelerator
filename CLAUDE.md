@@ -166,6 +166,12 @@ npm run build       # Output to dist/
   - Medical Record Review Element checkbox (hybridSourceFlag)
   - catalogueDefaults state and persistence to component
 
+**Task 6 Complete: Catalogue filter on add-component widget**
+- `AddComponentModal.jsx` - Added catalogue filter pills (HEDIS, eCQM, MIPS, QOF):
+  - Toggle pills to filter by catalogue
+  - Current measure's catalogue highlighted with accent border
+  - Components with no catalogues show for all filters (universal)
+
 ### Feature 1b: Catalogue Auto-Detection (March 2026)
 - `src/utils/catalogueClassifier.js` - Signal-based document classifier
 - `src/components/ingestion/CatalogueConfirmationChip.jsx` - Confirmation UI

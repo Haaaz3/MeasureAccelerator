@@ -184,6 +184,7 @@ export default function AddComponentModal({
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [filterCat, setFilterCat] = useState([]);
+  const [filterCatalogue, setFilterCatalogue] = useState([]);
   const [sortBy, setSortBy] = useState('name');
   const [added, setAdded] = useState(false);
   const [showCategoryFilter, setShowCategoryFilter] = useState(true);
@@ -230,6 +231,16 @@ export default function AddComponentModal({
     // Category filter: OR logic (show components matching ANY selected category)
     if (filterCat.length > 0) {
       items = items.filter(c => filterCat.includes(getComponentCategory(c)));
+    }
+
+    // Catalogue filter: OR logic (show components matching ANY selected catalogue)
+    if (filterCatalogue.length > 0) {
+      items = items.filter(c => {
+        // If component has no catalogues, it's considered universal (show it)
+        if (!c.catalogs || c.catalogs.length === 0) return true;
+        // Otherwise, check if any of the component's catalogues match the filter
+        return c.catalogs.some(cat => filterCatalogue.includes(cat));
+      });
     }
 
     // Apply catalogue-aware sorting: matching components sort first
@@ -674,6 +685,55 @@ export default function AddComponentModal({
                 {s === 'used' ? 'Most Used' : s}
               </button>
             ))}
+          </div>
+
+          {/* Catalogue filter pills */}
+          <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+            <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>Catalogue:</span>
+            {[
+              { value: 'hedis', label: 'HEDIS' },
+              { value: 'ecqm', label: 'eCQM' },
+              { value: 'mips_cqm', label: 'MIPS' },
+              { value: 'qof', label: 'QOF' },
+            ].map(cat => {
+              const isActive = filterCatalogue.includes(cat.value);
+              const isCurrentMeasure = measureCatalog === cat.value;
+              return (
+                <button
+                  key={cat.value}
+                  type="button"
+                  onClick={() => {
+                    setFilterCatalogue(prev =>
+                      isActive
+                        ? prev.filter(c => c !== cat.value)
+                        : [...prev, cat.value]
+                    );
+                  }}
+                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold transition-all border"
+                  style={{
+                    backgroundColor: isActive ? 'var(--accent)' : 'transparent',
+                    borderColor: isActive ? 'var(--accent)' : isCurrentMeasure ? 'var(--accent)' : 'var(--border)',
+                    color: isActive ? 'white' : isCurrentMeasure ? 'var(--accent)' : 'var(--text-secondary)',
+                  }}
+                  title={isCurrentMeasure ? 'Current measure catalogue' : undefined}
+                >
+                  {cat.label}
+                  {isCurrentMeasure && !isActive && (
+                    <span className="ml-0.5">●</span>
+                  )}
+                </button>
+              );
+            })}
+            {filterCatalogue.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilterCatalogue([])}
+                className="text-[10px] underline"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Clear
+              </button>
+            )}
           </div>
 
           {/* Count */}
