@@ -40,13 +40,22 @@ Insight Forge is a powerful platform for developing, validating, and deploying c
 1. Navigate to **Measures** tab
 2. Click **Import Measure**
 3. Upload your measure specification document (PDF or Word)
-4. The AI will extract:
+4. **Catalogue Auto-Detection** analyzes the document:
+   - Detects the catalogue type (eCQM, MIPS_CQM, HEDIS, QOF, Clinical_Standard)
+   - For **high confidence** detections (≥3 strong signals with 2× the next best match), proceeds automatically
+   - For **medium/low confidence** detections, displays a confirmation chip
+5. If the confirmation chip appears:
+   - Review the detected catalogue type and confidence level
+   - **Confirm** to proceed with the detection, or
+   - **Override** to select a different catalogue type from the dropdown
+   - Your confirmation/override is recorded to improve future detection accuracy
+6. The AI will extract:
    - Measure title and description
    - Population definitions
    - Value set references
    - Timing requirements
-5. Review the extracted data for accuracy
-6. Click **Save** to add to your measure library
+7. Review the extracted data for accuracy
+8. Click **Save** to add to your measure library
 
 #### Manual Creation
 
@@ -570,3 +579,4 @@ For self-hosted models (Ollama, LM Studio, vLLM, etc.):
 | 1.7 | Feb 2026 | Component Library sidebar navigation, category submenu, removed legacy AI chat panel |
 | 1.8 | Feb 2026 | UMS Editor parity: full value set editing (OID, name, add/delete codes, inline VSAC fetch) |
 | 1.9 | Feb 2026 | Extraction Feedback System: correction capture, prompt injection, feedback dashboard |
+| 1.10 | Mar 2026 | Catalogue Auto-Detection: automatic catalogue type classification during import with confirmation chip for medium/low confidence detections, user feedback recording for classifier improvement |

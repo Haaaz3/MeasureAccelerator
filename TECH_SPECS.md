@@ -30,6 +30,7 @@ src/
 │   ├── layout/          # App shell (Sidebar)
 │   ├── library/         # Component Library UI
 │   ├── measure/         # Measure editing components
+│   ├── ingestion/       # Document ingestion UI (CatalogueConfirmationChip)
 │   ├── validation/      # Validation and testing UI
 │   ├── valueset/        # Value set management
 │   └── settings/        # Application settings
@@ -473,6 +474,35 @@ Calculates complexity scores for components and measures.
 - Nesting depth (+1 per level)
 - Zero-code warnings
 
+### catalogueClassifier.js
+Signal-based document classifier for auto-detecting catalogue types during ingestion.
+
+**Supported Catalogue Types:**
+- `eCQM` - Electronic Clinical Quality Measures
+- `MIPS_CQM` - Merit-based Incentive Payment System measures
+- `HEDIS` - Healthcare Effectiveness Data and Information Set
+- `QOF` - Quality and Outcomes Framework (UK)
+- `Clinical_Standard` - General clinical standards
+
+**Classification Process:**
+1. Extracts text from uploaded document
+2. Scans for catalogue-specific signals (keywords, patterns)
+3. Calculates raw scores based on signal counts
+4. Determines confidence level:
+   - **High**: ≥3 signals AND score ≥2× second-highest
+   - **Medium**: ≥2 signals OR score ≥1.5× second-highest
+   - **Low**: Otherwise
+
+**Key Functions:**
+- `classifyDocument(text)` - Returns `{ detected, confidence, signals, rawScores }`
+
+### classifierFeedback.js (API Client)
+Fire-and-forget API client for recording user classifier feedback.
+
+**Functions:**
+- `recordClassifierFeedback(feedback)` - POST to `/api/classifier/feedback`
+- `recordClassifierFeedbackAsync(feedback)` - Non-blocking wrapper that catches errors
+
 ## UI Components
 
 ### UMSEditor.tsx
@@ -630,6 +660,23 @@ Measure library view with:
 - Status indicators
 - Quick actions
 - Import new measures
+- **Catalogue auto-detection during import with confirmation flow**
+
+### CatalogueConfirmationChip.jsx
+Inline confirmation UI for catalogue type detection during ingestion.
+
+**Features:**
+- Displays detected catalogue type with confidence styling
+- Color-coded confidence indicators (green=high, yellow=medium, red=low)
+- Override dropdown for selecting alternative catalogue type
+- Confirm/Cancel buttons for user decision
+- Records feedback to backend for classifier improvement
+
+**Props:**
+- `classification` - Detection result from catalogueClassifier
+- `onConfirm(detectedType, overrideType)` - Called on confirmation
+- `onCancel()` - Called on cancellation
+- `documentName` - Display name for context
 
 ### MeasureCreator.tsx
 New measure creation wizard.
@@ -640,6 +687,31 @@ New measure creation wizard.
 - **VSAC API** - Value set lookup and validation
 - **FHIR Terminology Server** - Code system validation
 - **AI Providers** - Claude (Anthropic) or GPT (OpenAI)
+
+### Backend Classifier Feedback Endpoint
+Records user confirmation/override decisions for catalogue classification to improve future detection.
+
+**Endpoint:** `POST /api/classifier/feedback`
+
+**Request Body:**
+```json
+{
+  "documentName": "measure-spec.pdf",
+  "detectedType": "eCQM",
+  "confirmedType": "MIPS_CQM",
+  "confidence": "medium",
+  "wasOverride": true,
+  "signals": ["cms qualifier", "quality measure"]
+}
+```
+
+**Response:** `{ "recorded": true }`
+
+**Backend Components:**
+- `ClassifierFeedback.java` - JPA entity
+- `ClassifierFeedbackRepository.java` - Spring Data repository
+- `ClassifierFeedbackController.java` - REST controller
+- `V21__create_classifier_feedback_table.sql` - Flyway migration
 
 ### API Configuration (settingsStore)
 ```typescript
@@ -726,3 +798,4 @@ Application navigation with nested category support.
 7. **Export formats** - MAT XML, HQMF, additional SQL dialects
 8. ~~**Due Date tracking**~~ - ✅ Implemented: T-Days calculation for patient outreach
 9. ~~**Extraction feedback loop**~~ - ✅ Implemented: Correction capture and prompt injection
+10. ~~**Catalogue auto-detection**~~ - ✅ Implemented: Signal-based classifier with confirmation chip

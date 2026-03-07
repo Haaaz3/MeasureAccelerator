@@ -274,6 +274,8 @@ A comprehensive map of how components, stores, and services connect and communic
 | `copilotProviders.js` | Modular LLM provider architecture | `AnthropicProvider`, `OpenAIProvider`, `getProvider` |
 | `vsacService.js` | VSAC API integration | `fetchValueSetExpansion` |
 | `vsacCodeCache.js` | Local VSAC code cache | `getCodesForOid`, `hasCodesForOid` |
+| `catalogueClassifier.js` | Document catalogue type detection | `classifyDocument` |
+| `classifierFeedback.js` | Classifier feedback API client | `recordClassifierFeedback`, `recordClassifierFeedbackAsync` |
 | `api.js` | External API calls | `fetchVSACValueSet`, `callLLM` |
 
 ---
@@ -479,6 +481,9 @@ A comprehensive map of how components, stores, and services connect and communic
 | extractionService | feedbackStore | Prompt injection guidance |
 | measureStore | feedbackStore | Correction capture on edits |
 | SettingsPage | feedbackStore | Feedback dashboard display |
+| MeasureLibrary | catalogueClassifier | Document classification before ingestion |
+| MeasureLibrary | classifierFeedback | Record user confirmation/override |
+| CatalogueConfirmationChip | classifierFeedback | Fire-and-forget feedback recording |
 
 ---
 
@@ -1198,6 +1203,99 @@ Result: Extraction quality improves over time as corrections accumulate
 
 ---
 
+### Flow 22: Catalogue Auto-Detection During Import
+
+```
+User Action: Upload document(s) in MeasureLibrary import flow
+    │
+    ▼
+MeasureLibrary.jsx::processNext() (lines 180-240)
+    │
+    ├──▶ documentLoader.js::extractFromFiles()
+    │         │
+    │         └──▶ Extract raw text from PDF/Word document
+    │
+    ├──▶ catalogueClassifier.js::classifyDocument(rawText)
+    │         │
+    │         ├──▶ Scan for eCQM signals (CMS, QDM, FHIR patterns)
+    │         ├──▶ Scan for MIPS_CQM signals (MIPS, QPP patterns)
+    │         ├──▶ Scan for HEDIS signals (HEDIS, NCQA patterns)
+    │         ├──▶ Scan for QOF signals (QOF, NHS patterns)
+    │         ├──▶ Scan for Clinical_Standard signals
+    │         │
+    │         ├──▶ Calculate raw scores per catalogue type
+    │         └──▶ Determine confidence: high/medium/low
+    │
+    ▼
+Decision Branch:
+    │
+    ├──▶ If confidence === 'high':
+    │         │
+    │         └──▶ continueIngestion() directly with detected type
+    │
+    └──▶ If confidence === 'medium' or 'low':
+              │
+              └──▶ Show CatalogueConfirmationChip
+                        │
+                        ├──▶ Display detected type + confidence
+                        ├──▶ Show override dropdown
+                        │
+                        └──▶ Wait for user action
+                                  │
+                                  ├──▶ On Confirm:
+                                  │         │
+                                  │         ├──▶ classifierFeedback.js::recordClassifierFeedbackAsync()
+                                  │         │         │
+                                  │         │         └──▶ POST /api/classifier/feedback
+                                  │         │                   │
+                                  │         │                   └──▶ Backend stores feedback for training
+                                  │         │
+                                  │         └──▶ continueIngestion(confirmedType)
+                                  │
+                                  └──▶ On Cancel:
+                                            │
+                                            └──▶ processQueue.cancel()
+    │
+    ▼
+continueIngestion() (MeasureLibrary.jsx)
+    │
+    ├──▶ measureIngestion.js::ingestMeasureFiles()
+    │         │
+    │         └──▶ Uses detected/confirmed catalogue type for extraction
+    │
+    └──▶ componentLibraryStore.linkMeasureComponents()
+    │
+    ▼
+UI: Measure appears in library with correct catalogue type
+```
+
+**State Management:**
+
+```
+pendingConfirmation: {
+  files: File[],
+  classification: ClassificationResult,
+  queueItemId: string
+} | null
+```
+
+**Ref Pattern (Stale Closure Fix):**
+```javascript
+const continueIngestionRef = useRef(null);
+
+// In processNext:
+if (continueIngestionRef.current) {
+  await continueIngestionRef.current(files, catalogueType, queueItemId);
+}
+
+// After continueIngestion definition:
+useEffect(() => {
+  continueIngestionRef.current = continueIngestion;
+}, [continueIngestion]);
+```
+
+---
+
 ## 4. Orphan Report
 
 ### Summary
@@ -1473,3 +1571,4 @@ CodeGeneration.jsx
 | 1.2 | Feb 2026 | AI-assisted | Added vsacService, vsacCodeCache to services; Sidebar category submenu; NodeDetailPanel value set editing flows (15-17); AddComponentModal flow (18) |
 | 1.3 | Feb 2026 | AI-assisted | Added feedbackStore, extraction feedback pipeline, feedback capture flows (19-20), updated cross-store dependencies |
 | 1.4 | Feb 2026 | AI-assisted | Added sync status tracking (pendingSync, retryPendingSync), Flow 21 for sync retry |
+| 1.5 | Mar 2026 | AI-assisted | Added catalogue auto-detection: catalogueClassifier, classifierFeedback, CatalogueConfirmationChip, Flow 22 |

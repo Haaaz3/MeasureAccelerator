@@ -17,6 +17,8 @@ src/
 │   │   └── Sidebar.tsx       # Navigation sidebar
 │   ├── copilot/              # AND/OR.ai Co-Pilot
 │   │   └── CopilotPanel.jsx  # Floating chat interface with proposals
+│   ├── ingestion/            # Document ingestion UI
+│   │   └── CatalogueConfirmationChip.jsx  # Catalogue type confirmation
 │   ├── library/              # Component Library UI
 │   │   ├── LibraryBrowser.tsx
 │   │   ├── ComponentDetail.tsx
@@ -79,6 +81,7 @@ src/
 │   └── standardValueSets.ts  # Built-in value sets
 │
 ├── utils/                    # Utility functions
+│   ├── catalogueClassifier.js # Document catalogue type detection
 │   ├── constraintSync.ts     # Timing sync utilities
 │   ├── inferCategory.ts      # Auto-category assignment
 │   ├── integrityCheck.ts     # Data validation
@@ -91,6 +94,7 @@ src/
 │   ├── measures.ts           # Measure API calls
 │   ├── components.ts         # Component API calls
 │   ├── import.ts             # Import API calls
+│   ├── classifierFeedback.js # Classifier feedback API
 │   └── transformers.ts       # DTO ↔ UMS transformers
 │
 └── data/                     # Sample data
@@ -290,6 +294,16 @@ Document Upload
     ↓
 documentLoader.ts::extractFromFiles()
     ↓ (PDF.js for PDFs)
+    ↓
+catalogueClassifier.js::classifyDocument()
+    ↓ (Signal-based catalogue type detection)
+    ↓
+    ├── If high confidence: proceed automatically
+    │
+    └── If medium/low confidence: show CatalogueConfirmationChip
+            ↓
+            User confirms/overrides → recordClassifierFeedback()
+            ↓
 measureIngestion.ts::ingestMeasureFiles()
     ↓
 extractionService.ts::extractMeasure()
@@ -448,6 +462,7 @@ backend/
 | `/api/components/{id}` | GET/PUT/DELETE | Component CRUD |
 | `/api/import` | POST | Import measures + auto-create components |
 | `/api/llm/extract` | POST | Proxy LLM extraction requests |
+| `/api/classifier/feedback` | POST | Record catalogue classification feedback |
 
 ## Testing
 
