@@ -57,6 +57,9 @@ export function MeasureLibrary() {
   const [pendingConfirmation, setPendingConfirmation] = useState(null);
   // Shape: { files: File[], classification: ClassificationResult, documentName: string, extractedContent: string }
 
+  // Ref to hold continueIngestion function - avoids stale closure in processNext
+  const continueIngestionRef = useRef(null);
+
   // Batch queue state
   const [batchQueue, setBatchQueue] = useState          ([]);
   const [batchIndex, setBatchIndex] = useState(0);
@@ -185,8 +188,10 @@ export function MeasureLibrary() {
           confidence: classification.confidence,
           signals: classification.signals,
         });
-        // Continue with ingestion using detected type
-        await continueIngestion(files, classification.detected, currentQueueItemId);
+        // Continue with ingestion using detected type (use ref to avoid stale closure)
+        if (continueIngestionRef.current) {
+          await continueIngestionRef.current(files, classification.detected, currentQueueItemId);
+        }
       } else {
         // Show confirmation chip and pause processing
         console.log('[processNext] Showing confirmation chip for:', documentName);
@@ -389,6 +394,11 @@ export function MeasureLibrary() {
     // Brief pause then process next
     setTimeout(() => processNext(), 1500);
   }, [getActiveApiKey, importMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, rebuildUsageIndex, measures, navigate, getComponent, processNext, addNotification]);
+
+  // Keep ref updated with latest continueIngestion function
+  useEffect(() => {
+    continueIngestionRef.current = continueIngestion;
+  }, [continueIngestion]);
 
   // Handle catalogue confirmation from CatalogueConfirmationChip
   const handleCatalogueConfirm = useCallback((catalogueType, wasOverridden, classifierSignals) => {
