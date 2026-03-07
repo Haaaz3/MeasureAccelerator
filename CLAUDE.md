@@ -187,6 +187,24 @@ npm run build       # Output to dist/
   - Returns warnings listing affected elements
   - Validates in all generation paths (CQL component-aware, CQL standard, Synapse SQL)
 
+**Task 9 Complete: Code generator reads hedis block**
+- `cqlGenerator.js` - Added `generateHedisComment()` helper and HEDIS comments in CQL output:
+  - Prepends `/* HEDIS Collection: <type>, Hybrid Source */` comments to data element expressions
+  - Only adds comments when `hedis.collectionType` is present
+- `hdiSqlGenerator.js` - Updated `dataElementToPredicate()` to extract and pass hedis metadata to all predicate types
+- `hdiSqlTemplates.js` - Added `generateHedisComment()` helper and updated all predicate CTE generators:
+  - `generateConditionPredicateCTE`
+  - `generateResultPredicateCTE`
+  - `generateProcedurePredicateCTE`
+  - `generateMedicationPredicateCTE`
+  - `generateImmunizationPredicateCTE`
+  - `generateEncounterPredicateCTE`
+  - Prepends `-- HEDIS Collection: <type>, Hybrid Source` SQL comments to CTEs
+
+**HEDIS comment format:**
+- CQL: `/* HEDIS Collection: administrative */` or `/* HEDIS Collection: hybrid, Hybrid Source */`
+- SQL: `-- HEDIS Collection: administrative` or `-- HEDIS Collection: hybrid, Hybrid Source`
+
 ### Feature 1b: Catalogue Auto-Detection (March 2026)
 - `src/utils/catalogueClassifier.js` - Signal-based document classifier
 - `src/components/ingestion/CatalogueConfirmationChip.jsx` - Confirmation UI

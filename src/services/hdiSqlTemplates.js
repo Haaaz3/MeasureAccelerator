@@ -73,6 +73,19 @@ const C = {
 };
 
 // ============================================================================
+// HEDIS Comment Helper
+// ============================================================================
+
+/**
+ * Generate SQL comment with HEDIS metadata if present on a predicate
+ */
+function generateHedisComment(predicate     )         {
+  if (!predicate?.hedis?.collectionType) return '';
+  const hybridFlag = predicate.hedis.hybridSourceFlag ? ', Hybrid Source' : '';
+  return `-- HEDIS Collection: ${predicate.hedis.collectionType}${hybridFlag}\n`;
+}
+
+// ============================================================================
 // Ontology CTE Template
 // ============================================================================
 
@@ -490,12 +503,13 @@ export function generateConditionPredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
   const indexJoin = needsIndexJoin
     ? `\n  inner join ${ie .cteAlias} I\n    on C.empi_id = I.empi_id\n    and C.population_id = I.population_id`
     : '';
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     C.population_id
     , C.empi_id
@@ -595,8 +609,9 @@ export function generateResultPredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     R.population_id
     , R.empi_id
@@ -664,8 +679,9 @@ export function generateProcedurePredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     PR.population_id
     , PR.empi_id
@@ -761,12 +777,13 @@ export function generateMedicationPredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
   const indexJoin = needsIndexJoin
     ? `\n  inner join ${ie .cteAlias} I\n    on M.empi_id = I.empi_id\n    and M.population_id = I.population_id`
     : '';
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     M.population_id
     , M.empi_id
@@ -834,8 +851,9 @@ export function generateImmunizationPredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     I.population_id
     , I.empi_id
@@ -925,12 +943,13 @@ export function generateEncounterPredicateCTE(
   const description = predicate.description
     ? `-- ${predicate.description}\n`
     : '';
+  const hedisComment = generateHedisComment(predicate);
 
   const indexJoin = needsIndexJoin
     ? `\n  inner join ${ie .cteAlias} I\n    on E.empi_id = I.empi_id\n    and E.population_id = I.population_id`
     : '';
 
-  return `${description}${predicate.alias} as (
+  return `${description}${hedisComment}${predicate.alias} as (
   select distinct
     E.population_id
     , E.empi_id

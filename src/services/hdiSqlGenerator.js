@@ -341,6 +341,11 @@ function dataElementToPredicate(
     ? { valueSetOid, valueSetName }
     : undefined;
 
+  // Extract HEDIS metadata if present
+  const hedis = element.hedis?.collectionType
+    ? { collectionType: element.hedis.collectionType, hybridSourceFlag: element.hedis.hybridSourceFlag }
+    : undefined;
+
   switch (element.type) {
     // UMS uses 'diagnosis' which maps to HDI 'condition' data model
     case 'diagnosis':
@@ -350,6 +355,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName,
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                      ;
 
     case 'procedure':
@@ -359,6 +365,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName,
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                      ;
 
     case 'medication':
@@ -368,6 +375,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName,
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                       ;
 
     case 'observation':
@@ -378,6 +386,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName,
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                   ;
 
     case 'immunization':
@@ -387,6 +396,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName,
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                         ;
 
     case 'encounter':
@@ -396,6 +406,7 @@ function dataElementToPredicate(
         description: element.description || valueSetName || 'Encounter requirement',
         codes,
         timing: extractTimingFromElement(element),
+        hedis,
       }                                                      ;
 
     case 'demographic': {

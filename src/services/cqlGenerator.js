@@ -614,22 +614,37 @@ function generateCriteriaExpression(
 }
 
 /**
+ * Generate HEDIS metadata comment for data elements with hedis block
+ */
+function generateHedisComment(element             )         {
+  if (!element.hedis?.collectionType) {
+    return '';
+  }
+  const collectionType = element.hedis.collectionType;
+  const hybridFlag = element.hedis.hybridSourceFlag ? ', Hybrid Source' : '';
+  return `/* HEDIS Collection: ${collectionType}${hybridFlag} */\n  `;
+}
+
+/**
  * Generate CQL expression for a data element
  */
 function generateDataElementExpression(
   element             ,
-  _measure                      
+  _measure
 )         {
   if (!element) {
     return '/* WARNING: Null data element encountered */\n  true';
   }
+
+  // Generate HEDIS comment prefix if applicable
+  const hedisComment = generateHedisComment(element);
 
   // Handle missing valueSet gracefully
   const hasValueSet = element.valueSet?.name || element.valueSet?.id;
   if (!hasValueSet && element.type !== 'demographic') {
     // No value set specified for a non-demographic element
     const desc = element.description || `${element.type} criterion`;
-    return `/* WARNING: No value set defined for "${desc}" */\n  true`;
+    return `${hedisComment}/* WARNING: No value set defined for "${desc}" */\n  true`;
   }
 
   const vsName = element.valueSet?.name || 'Unspecified Value Set';
@@ -646,7 +661,7 @@ function generateDataElementExpression(
 
   switch (element.type) {
     case 'demographic':
-      return generateDemographicExpression(element);
+      return hedisComment + generateDemographicExpression(element);
 
     case 'diagnosis':
     case 'encounter':
@@ -654,7 +669,7 @@ function generateDataElementExpression(
     case 'immunization': {
       const config = resourceTypeMap[element.type];
       const timing = generateTimingExpression(element.timingRequirements, config.alias, config.resourceType);
-      return existsQueryTemplate({
+      return hedisComment + existsQueryTemplate({
         resourceType: config.resourceType,
         valueSet: vsName,
         alias: config.alias,
@@ -664,7 +679,7 @@ function generateDataElementExpression(
 
     case 'observation': {
       const timing = generateTimingExpression(element.timingRequirements, 'O', 'Observation');
-      return existsQueryTemplate({
+      return hedisComment + existsQueryTemplate({
         resourceType: 'Observation',
         valueSet: vsName,
         alias: 'O',
@@ -675,7 +690,7 @@ function generateDataElementExpression(
 
     case 'medication': {
       const timing = generateTimingExpression(element.timingRequirements, 'M', 'MedicationRequest');
-      return existsQueryTemplate({
+      return hedisComment + existsQueryTemplate({
         resourceType: 'MedicationRequest',
         valueSet: vsName,
         alias: 'M',
@@ -684,7 +699,7 @@ function generateDataElementExpression(
     }
 
     default:
-      return `// TODO: ${element.description || 'Unknown criterion'}`;
+      return hedisComment + `// TODO: ${element.description || 'Unknown criterion'}`;
   }
 }
 
