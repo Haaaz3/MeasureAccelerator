@@ -206,10 +206,10 @@ const ValueSetDisplay = ({
                 : 'bg-red-500/10 border border-red-500/30'
               }
             `}>
-              {/* Catalog match info */}
+              {/* Catalogue match info */}
               {oidValidation.catalogMatch && (
                 <div className="mb-2">
-                  <span className="text-green-500 font-medium">Catalog Match:</span>{' '}
+                  <span className="text-green-500 font-medium">Catalogue Match:</span>{' '}
                   <span className="text-[var(--text)]">{oidValidation.catalogMatch.name}</span>
                   {oidValidation.catalogMatch.steward && (
                     <span className="text-[var(--text-dim)]"> ({oidValidation.catalogMatch.steward})</span>

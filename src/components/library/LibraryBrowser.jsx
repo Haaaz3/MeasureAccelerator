@@ -790,7 +790,7 @@ export function LibraryBrowser() {
                         style={{ width: columnWidths.catalog }}
                         className="relative px-3 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[var(--text-dim)] bg-[var(--bg-secondary)] border-b-2 border-[var(--border)] sticky top-0 z-10"
                       >
-                        Catalog
+                        Catalogue
                         <div
                           onMouseDown={(e) => handleColumnResizeStart(e, 'catalog')}
                           className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--accent)] transition-colors"

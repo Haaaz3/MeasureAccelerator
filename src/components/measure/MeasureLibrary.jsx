@@ -7,8 +7,12 @@ import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useImportQueueStore } from '../../stores/importQueueStore';
 import { ingestMeasureFiles } from '../../services/measureIngestion';
+import { extractFromFiles } from '../../services/documentLoader';
+import { classifyDocument } from '../../utils/catalogueClassifier';
+import { recordClassifierFeedbackAsync } from '../../api/classifierFeedback';
 import { MeasureCreator } from './MeasureCreator';
 import { ImportQueuePanel } from './ImportQueuePanel';
+import { CatalogueConfirmationChip } from '../ingestion/CatalogueConfirmationChip';
 
 const PROGRAM_LABELS                                 = {
   'MIPS_CQM': 'MIPS CQM',
@@ -48,6 +52,10 @@ export function MeasureLibrary() {
   const [error, setError] = useState               (null);
   const [showCreator, setShowCreator] = useState(false);
   const [importExpanded, setImportExpanded] = useState(false);
+
+  // Catalogue confirmation state
+  const [pendingConfirmation, setPendingConfirmation] = useState(null);
+  // Shape: { files: File[], classification: ClassificationResult, documentName: string, extractedContent: string }
 
   // Batch queue state
   const [batchQueue, setBatchQueue] = useState          ([]);
@@ -108,6 +116,8 @@ export function MeasureLibrary() {
   }, [SUPPORTED_EXTENSIONS]);
 
   // Process the next item in the queue (or the first file group)
+  // Phase 1: Extract text and classify, show confirmation chip
+  // Phase 2: After confirmation, proceed with AI extraction
   const processNext = useCallback(async () => {
     console.log('[processNext] START - queue length:', batchQueueRef.current.length);
     const queue = batchQueueRef.current;
@@ -140,45 +150,111 @@ export function MeasureLibrary() {
       }
     } catch (e) { /* ignore - UI store error should never interrupt pipeline */ }
 
+    const label = counter.total > 1 ? `[${counter.index}/${counter.total}] ` : '';
+    setProgress({ stage: 'loading', message: `${label}Extracting text...`, progress: 5 });
+
+    try {
+      // Phase 1: Extract text and classify
+      console.log('[processNext] Extracting text from files...');
+      const extractionResult = await extractFromFiles(files);
+
+      if (!extractionResult.combinedContent || extractionResult.combinedContent.length < 100) {
+        setError('Could not extract sufficient text from the document. Please try a text-based PDF.');
+        setTimeout(() => processNext(), 1500);
+        return;
+      }
+
+      // Classify the document
+      const classification = classifyDocument(extractionResult.combinedContent);
+      console.log('[processNext] Classification result:', classification);
+
+      // Get document name for display
+      const documentName = files.length === 1
+        ? files[0].name
+        : `${files.length} files (${files[0].name}, ...)`;
+
+      // If high confidence, auto-confirm; otherwise show confirmation chip
+      if (classification.confidence === 'high' && classification.detected) {
+        console.log('[processNext] High confidence detection, auto-confirming:', classification.detected);
+        // Record feedback (non-blocking)
+        recordClassifierFeedbackAsync({
+          documentName,
+          detectedType: classification.detected,
+          confirmedType: classification.detected,
+          wasOverridden: false,
+          confidence: classification.confidence,
+          signals: classification.signals,
+        });
+        // Continue with ingestion using detected type
+        await continueIngestion(files, classification.detected, currentQueueItemId);
+      } else {
+        // Show confirmation chip and pause processing
+        console.log('[processNext] Showing confirmation chip for:', documentName);
+        setProgress({ stage: 'confirming', message: `${label}Awaiting catalogue confirmation...`, progress: 15 });
+        setPendingConfirmation({
+          files,
+          classification,
+          documentName,
+          extractedContent: extractionResult.combinedContent,
+          queueItemId: currentQueueItemId,
+        });
+        // Processing pauses here - will resume when user confirms or cancels
+        return;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      setTimeout(() => processNext(), 1500);
+    }
+  }, [getActiveApiKey, selectedProvider, selectedModel, getCustomLlmConfig]);
+
+  // Continue ingestion after catalogue confirmation
+  const continueIngestion = useCallback(async (files, confirmedType, queueItemId) => {
     const activeApiKey = getActiveApiKey();
     const customConfig = selectedProvider === 'custom' ? getCustomLlmConfig() : undefined;
 
+    const counter = batchCounterRef.current;
     const label = counter.total > 1 ? `[${counter.index}/${counter.total}] ` : '';
-    setProgress({ stage: 'loading', message: `${label}Starting...`, progress: 0 });
 
-    const wrappedSetProgress = (p                   ) => {
+    const wrappedSetProgress = (p) => {
       const ct = batchCounterRef.current;
       const lbl = ct.total > 1 ? `[${ct.index}/${ct.total}] ` : '';
       setProgress({ ...p, message: `${lbl}${p.message}` });
 
       // Fire-and-forget: Report progress to UI store
       try {
-        const queueItemId = queueItemIdsRef.current[ct.index - 1];
         if (queueItemId) {
           useImportQueueStore.getState().reportProgress(queueItemId, p.progress || 0, p.stage || 'processing', p.message);
         }
-      } catch (e) { /* ignore - UI store error should never interrupt pipeline */ }
+      } catch (e) { /* ignore */ }
     };
 
     try {
-      console.log('[processNext] Calling ingestMeasureFiles...');
+      console.log('[continueIngestion] Calling ingestMeasureFiles with confirmed type:', confirmedType);
       const result = await ingestMeasureFiles(files, activeApiKey, wrappedSetProgress, selectedProvider, selectedModel, customConfig);
-      console.log('[processNext] ingestMeasureFiles returned:', { success: result.success, hasUms: !!result.ums, error: result.error });
+      console.log('[continueIngestion] ingestMeasureFiles returned:', { success: result.success, hasUms: !!result.ums, error: result.error });
 
       // Check if cancelled after LLM extraction (natural breakpoint)
-      if (currentQueueItemId && cancelledItemsRef.current.has(currentQueueItemId)) {
-        console.log('[processNext] Import cancelled, skipping remaining steps');
+      if (queueItemId && cancelledItemsRef.current.has(queueItemId)) {
+        console.log('[continueIngestion] Import cancelled, skipping remaining steps');
         setProgress({ stage: 'cancelled', message: 'Import cancelled', progress: 0 });
         setTimeout(() => processNext(), 500);
         return;
       }
 
       if (result.success && result.ums) {
-        const measureWithStatus = { ...result.ums, status: 'in_progress'                  };
+        // Apply confirmed catalogue type to the measure
+        const measureWithStatus = {
+          ...result.ums,
+          status: 'in_progress',
+          metadata: {
+            ...result.ums.metadata,
+            program: confirmedType, // Use the user-confirmed catalogue type
+          },
+        };
 
         // Check if cancelled before backend import (natural breakpoint)
-        if (currentQueueItemId && cancelledItemsRef.current.has(currentQueueItemId)) {
-          console.log('[processNext] Import cancelled before save');
+        if (queueItemId && cancelledItemsRef.current.has(queueItemId)) {
+          console.log('[continueIngestion] Import cancelled before save');
           setProgress({ stage: 'cancelled', message: 'Import cancelled', progress: 0 });
           setTimeout(() => processNext(), 500);
           return;
@@ -312,7 +388,51 @@ export function MeasureLibrary() {
 
     // Brief pause then process next
     setTimeout(() => processNext(), 1500);
-  }, [getActiveApiKey, importMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, rebuildUsageIndex, measures, navigate, getComponent]);
+  }, [getActiveApiKey, importMeasure, updateMeasure, selectedProvider, selectedModel, getCustomLlmConfig, linkMeasureComponents, rebuildUsageIndex, measures, navigate, getComponent, processNext, addNotification]);
+
+  // Handle catalogue confirmation from CatalogueConfirmationChip
+  const handleCatalogueConfirm = useCallback((catalogueType, wasOverridden, classifierSignals) => {
+    if (!pendingConfirmation) return;
+
+    const { files, classification, documentName, queueItemId } = pendingConfirmation;
+
+    // Record feedback (non-blocking)
+    recordClassifierFeedbackAsync({
+      documentName,
+      detectedType: classification?.detected || null,
+      confirmedType: catalogueType,
+      wasOverridden,
+      confidence: classification?.confidence || 'low',
+      signals: classifierSignals,
+    });
+
+    // Clear pending confirmation
+    setPendingConfirmation(null);
+
+    // Continue with ingestion
+    continueIngestion(files, catalogueType, queueItemId);
+  }, [pendingConfirmation, continueIngestion]);
+
+  // Handle catalogue confirmation cancel
+  const handleCatalogueCancel = useCallback(() => {
+    if (!pendingConfirmation) return;
+
+    const { queueItemId } = pendingConfirmation;
+
+    // Report cancellation
+    if (queueItemId) {
+      try {
+        useImportQueueStore.getState().reportCancelled(queueItemId);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Clear pending confirmation
+    setPendingConfirmation(null);
+
+    // Continue processing the queue
+    setProgress(null);
+    setTimeout(() => processNext(), 500);
+  }, [pendingConfirmation, processNext]);
 
   // Handle files: either start processing or add to queue
   const handleFiles = useCallback(async (files        ) => {
@@ -814,6 +934,16 @@ export function MeasureLibrary() {
           onCancelActive={cancelActiveImport}
           onCancelAll={cancelAllImports}
         />
+
+        {/* Catalogue Confirmation Chip - shown when awaiting user confirmation */}
+        {pendingConfirmation && (
+          <CatalogueConfirmationChip
+            classification={pendingConfirmation.classification}
+            documentName={pendingConfirmation.documentName}
+            onConfirm={handleCatalogueConfirm}
+            onCancel={handleCatalogueCancel}
+          />
+        )}
 
         {/* Error display */}
         {error && (
