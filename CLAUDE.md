@@ -181,6 +181,12 @@ npm run build       # Output to dist/
 - Added NDC to `STANDARD_CODE_SYSTEMS` in `cqlTemplates.js`
 - NDC URI: `http://hl7.org/fhir/sid/ndc` (already defined in fhir-measure.js)
 
+**Task 8 Complete: HEDIS export validation warning**
+- `CodeGeneration.jsx` - Added `validateHedisFields()` function that:
+  - Checks HEDIS measures for data elements missing `collectionType`
+  - Returns warnings listing affected elements
+  - Validates in all generation paths (CQL component-aware, CQL standard, Synapse SQL)
+
 ### Feature 1b: Catalogue Auto-Detection (March 2026)
 - `src/utils/catalogueClassifier.js` - Signal-based document classifier
 - `src/components/ingestion/CatalogueConfirmationChip.jsx` - Confirmation UI

@@ -13,6 +13,48 @@ import { useComponentLibraryStore } from '../../stores/componentLibraryStore';
 import { generateComponentAwareMeasureCode } from '../../services/componentAwareCodeGenerator';
 import { MeasureCodeEditor } from './MeasureCodeEditor';
 
+/**
+ * Validate HEDIS-specific fields on data elements and return warnings.
+ * Returns warnings for any HEDIS-applicable data element missing collectionType.
+ */
+function validateHedisFields(measure) {
+  const warnings = [];
+
+  // Only validate HEDIS measures
+  if (measure?.metadata?.program !== 'HEDIS') {
+    return warnings;
+  }
+
+  const hedisApplicableTypes = ['encounter', 'procedure', 'laboratory', 'medication', 'diagnosis', 'condition'];
+  const elementsWithMissingFields = [];
+
+  // Traverse all populations and find data elements with missing HEDIS fields
+  const checkNode = (node) => {
+    if (!node) return;
+    if ('operator' in node && 'children' in node) {
+      node.children?.forEach(checkNode);
+    } else {
+      // It's a data element
+      const elementType = node.type?.toLowerCase();
+      if (hedisApplicableTypes.includes(elementType)) {
+        if (!node.hedis?.collectionType) {
+          elementsWithMissingFields.push(node.description || node.id || 'Unnamed element');
+        }
+      }
+    }
+  };
+
+  measure.populations?.forEach(pop => {
+    checkNode(pop.criteria);
+  });
+
+  if (elementsWithMissingFields.length > 0) {
+    warnings.push(`HEDIS: ${elementsWithMissingFields.length} data element(s) missing Collection Type: ${elementsWithMissingFields.slice(0, 3).join(', ')}${elementsWithMissingFields.length > 3 ? '...' : ''}`);
+  }
+
+  return warnings;
+}
+
 export function CodeGeneration() {
   const navigate = useNavigate();
   const {
@@ -321,6 +363,12 @@ export function CodeGeneration() {
             result.warnings?.unshift(`${composed.overrideCount} component(s) with code overrides`);
           }
 
+          // Add HEDIS validation warnings
+          const hedisWarnings = validateHedisFields(measure);
+          if (hedisWarnings.length > 0) {
+            result.warnings?.push(...hedisWarnings);
+          }
+
           // Run local syntax validation
           const syntaxResult = validateCQLSyntax(result.cql);
           setSyntaxValidationResult(syntaxResult);
@@ -342,6 +390,12 @@ export function CodeGeneration() {
             // Add warning about overrides if any were applied
             if (appliedOverrides > 0 && result.warnings) {
               result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+            }
+
+            // Add HEDIS validation warnings
+            const hedisWarnings = validateHedisFields(measure);
+            if (hedisWarnings.length > 0 && result.warnings) {
+              result.warnings.push(...hedisWarnings);
             }
 
             // Run local syntax validation immediately after generation
@@ -409,6 +463,12 @@ export function CodeGeneration() {
             result.warnings.unshift(`${composed.overrideCount} component(s) with code overrides`);
           }
 
+          // Add HEDIS validation warnings
+          const hedisWarnings = validateHedisFields(measure);
+          if (hedisWarnings.length > 0) {
+            result.warnings.push(...hedisWarnings);
+          }
+
           setSynapseResult(result);
           setSynapseValidation(null);
 
@@ -439,6 +499,12 @@ export function CodeGeneration() {
             // Add warning about overrides if any were applied
             if (appliedOverrides > 0) {
               result.warnings.unshift(`${appliedOverrides} component(s) using manually overridden code`);
+            }
+
+            // Add HEDIS validation warnings
+            const hedisWarnings = validateHedisFields(measure);
+            if (hedisWarnings.length > 0) {
+              result.warnings.push(...hedisWarnings);
             }
           }
 
