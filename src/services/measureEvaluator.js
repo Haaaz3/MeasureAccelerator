@@ -588,14 +588,15 @@ function evaluateDataElement(
     case 'demographic':
       // Handle patient sex check
       if (element.genderValue) {
-        const patientGender = patient.demographics.gender;
-        const genderMet = patientGender === element.genderValue;
+        const patientGender = (patient.demographics.gender || '').toLowerCase();
+        const expectedGender = (element.genderValue || '').toLowerCase();
+        const genderMet = patientGender === expectedGender;
         met = genderMet;
         facts.push({
           code: 'sex',
           display: genderMet
-            ? `Patient sex (${patientGender}) matches required (${element.genderValue})`
-            : `Patient sex (${patientGender}) does not match required (${element.genderValue})`,
+            ? `Patient sex (${patientGender}) matches required (${expectedGender})`
+            : `Patient sex (${patientGender}) does not match required (${expectedGender})`,
           source: 'demographics',
         });
       } else {

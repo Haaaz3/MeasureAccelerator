@@ -2372,16 +2372,23 @@ function parseRequiredDoses(text) {
 
 /**
  * Render a single vaccine/criterion result as a clean card.
- * Shows: title, Met/Not Met, dose count, individual doses with dates.
+ * Shows: title, Met/Not Met, dose count (for immunizations only), individual doses with dates.
  */
 function VaccineResultCard({ node, onClick }) {
   // Extract dose info from facts
   const doseFacts = node.facts?.filter(f => f.doseNumber !== undefined) || [];
   const doseSummary = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
 
-  // Get required count from summary fact or parse from description
-  const required = doseSummary?.requiredCount || parseRequiredDoses(node.description || node.title);
-  const found = doseSummary?.foundCount ?? doseFacts.length;
+  // Determine if this is an immunization element (only immunizations have dose requirements)
+  const isImmunization = node.type === 'immunization';
+
+  // Get required count from summary fact or parse from description (only for immunizations)
+  const required = isImmunization
+    ? (doseSummary?.requiredCount || parseRequiredDoses(node.description || node.title))
+    : 1;
+  const found = isImmunization
+    ? (doseSummary?.foundCount ?? doseFacts.length)
+    : (node.status === 'pass' || node.status === 'partial' ? 1 : 0);
   const isMet = node.status === 'pass' || node.status === 'partial';
 
   // Check if this is an anaphylaxis/medical exclusion qualification
@@ -2439,9 +2446,9 @@ function VaccineResultCard({ node, onClick }) {
           <p className="text-[11px] text-[var(--text-muted)] mt-0.5 italic">
             Qualifies via medical exclusion
           </p>
-        ) : (
+        ) : isImmunization ? (
           <>
-            {/* Dose count line */}
+            {/* Dose count line - only for immunizations */}
             <p className={`text-[11px] mt-0.5 ${isMet ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'}`}>
               {found} of {required} required dose{required !== 1 ? 's' : ''}
             </p>
@@ -2460,10 +2467,33 @@ function VaccineResultCard({ node, onClick }) {
               </div>
             )}
 
-            {/* Show missing message if no doses found */}
+            {/* Show missing message if no doses found - only for immunizations */}
             {doseFacts.length === 0 && !isMet && (
               <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">
                 No matching immunization records found
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            {/* For non-immunization elements (procedures, observations, etc.), show evidence from facts */}
+            {node.facts && node.facts.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {node.facts.slice(0, 3).map((fact, i) => (
+                  <div key={i} className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                    <span className="text-[var(--text-muted)]">{fact.display || fact.code}</span>
+                    {fact.date && (
+                      <span className="text-[var(--text-dim)]">on {new Date(fact.date).toLocaleDateString()}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Show not found message for non-immunization elements */}
+            {(!node.facts || node.facts.length === 0) && !isMet && (
+              <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">
+                No matching records found
               </p>
             )}
           </>
@@ -2643,6 +2673,8 @@ function ValidationNodeList({
 }
 
 function ValidationNodeRow({ node, onClick }) {
+  // Determine if this is an immunization element
+  const isImmunization = node.type === 'immunization';
   // Get dose summary fact (new format) - contains requiredCount and foundCount
   const doseSummaryFact = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
   // Get individual dose facts (have doseNumber property)
@@ -2706,15 +2738,15 @@ function ValidationNodeRow({ node, onClick }) {
           )}
         </div>
 
-        {/* Show dose count summary */}
-        {doseSummaryFact && (
+        {/* Show dose count summary - only for immunizations */}
+        {isImmunization && doseSummaryFact && (
           <p className={`text-[11px] mt-0.5 ${isPass ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'}`}>
             {doseSummaryFact.foundCount || 0} of {doseSummaryFact.requiredCount || 1} required dose{doseSummaryFact.requiredCount !== 1 ? 's' : ''}
           </p>
         )}
 
         {/* Show dose-by-dose detail for immunizations */}
-        {doseFacts.length > 0 ? (
+        {isImmunization && doseFacts.length > 0 ? (
           <div className="mt-1 space-y-0.5">
             {doseFacts.map((fact, i) => (
               <div key={i} className="flex items-center gap-1.5 flex-wrap text-[11px]">
@@ -2725,7 +2757,7 @@ function ValidationNodeRow({ node, onClick }) {
               </div>
             ))}
           </div>
-        ) : noMatchFact ? (
+        ) : isImmunization && noMatchFact ? (
           <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">No matching immunization records found</p>
         ) : detailFacts.length > 0 ? (
           /* Show other detail facts if no dose facts */
@@ -3159,13 +3191,19 @@ function DetailedEvaluationSummary({ trace, _patient, measure }) {
 
   // Render a single vaccine/criterion as a clean row (matches renderCriterionNode style)
   const renderVaccineCard = (node, index, isLast = false) => {
+    // Determine if this is an immunization element
+    const isImmunization = node.type === 'immunization';
     // Extract dose info from facts
     const doseFacts = node.facts?.filter(f => f.doseNumber !== undefined) || [];
     const doseSummary = node.facts?.find(f => f.code === 'DOSE_SUMMARY');
 
-    // Get required count from summary fact or parse from description
-    const required = doseSummary?.requiredCount || parseRequiredDoses(node.description || node.title);
-    const found = doseSummary?.foundCount ?? doseFacts.length;
+    // Get required count from summary fact or parse from description (only for immunizations)
+    const required = isImmunization
+      ? (doseSummary?.requiredCount || parseRequiredDoses(node.description || node.title))
+      : 1;
+    const found = isImmunization
+      ? (doseSummary?.foundCount ?? doseFacts.length)
+      : (node.status === 'pass' || node.status === 'partial' ? 1 : 0);
     const isMet = node.status === 'pass' || node.status === 'partial';
     const isIncomplete = node.status === 'incomplete';
 
@@ -3223,9 +3261,9 @@ function DetailedEvaluationSummary({ trace, _patient, measure }) {
             <p className="text-[11px] text-[var(--text-muted)] mt-0.5 italic">
               Qualifies via medical exclusion
             </p>
-          ) : (
+          ) : isImmunization ? (
             <>
-              {/* Dose count line */}
+              {/* Dose count line - only for immunizations */}
               <p className={`text-[11px] mt-0.5 ${isMet ? 'text-[var(--text-muted)]' : 'text-[var(--danger)]'}`}>
                 {found} of {required} required dose{required !== 1 ? 's' : ''}
               </p>
@@ -3244,10 +3282,33 @@ function DetailedEvaluationSummary({ trace, _patient, measure }) {
                 </div>
               )}
 
-              {/* Show missing message if no doses found */}
+              {/* Show missing message if no doses found - only for immunizations */}
               {doseFacts.length === 0 && !isMet && (
                 <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">
                   No matching immunization records found
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              {/* For non-immunization elements, show evidence from facts */}
+              {node.facts && node.facts.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {node.facts.slice(0, 3).map((fact, i) => (
+                    <div key={i} className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                      <span className="text-[var(--text-muted)]">{fact.display || fact.code}</span>
+                      {fact.date && (
+                        <span className="text-[var(--text-dim)]">on {new Date(fact.date).toLocaleDateString()}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Show not found message for non-immunization elements */}
+              {(!node.facts || node.facts.length === 0) && !isMet && (
+                <p className="text-[11px] text-[var(--text-dim)] mt-0.5 italic">
+                  No matching records found
                 </p>
               )}
             </>
