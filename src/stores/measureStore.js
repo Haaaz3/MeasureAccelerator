@@ -343,11 +343,21 @@ export const useMeasureStore = create              ()(
               // It's a DataElement - update libraryComponentId if we have a link
               if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
                 const linkedComponentId = linkMap[node.id];
+                const linkedComponent = componentStore.components[linkedComponentId];
                 let updatedNode = { ...node, libraryComponentId: linkedComponentId };
+
+                // Copy genderValue and resourceType from linked demographic components
+                if (linkedComponent) {
+                  if (linkedComponent.genderValue && !updatedNode.genderValue) {
+                    updatedNode = { ...updatedNode, genderValue: linkedComponent.genderValue };
+                  }
+                  if (linkedComponent.resourceType && !updatedNode.resourceType) {
+                    updatedNode = { ...updatedNode, resourceType: linkedComponent.resourceType };
+                  }
+                }
 
                 // For HEDIS measures, populate hedis block from component's catalogueDefaults
                 if (isHedisMeasure && hedisApplicableTypes.includes(node.type?.toLowerCase())) {
-                  const linkedComponent = componentStore.components[linkedComponentId];
                   const catalogueDefaults = linkedComponent?.catalogueDefaults;
                   const hedisDefaults = catalogueDefaults?.hedis;
 
@@ -489,11 +499,21 @@ export const useMeasureStore = create              ()(
               // It's a DataElement - update libraryComponentId if we have a link
               if (linkMap[node.id] && linkMap[node.id] !== '__ZERO_CODES__') {
                 const linkedComponentId = linkMap[node.id];
+                const linkedComponent = componentStore.components[linkedComponentId];
                 let updatedNode = { ...node, libraryComponentId: linkedComponentId };
+
+                // Copy genderValue and resourceType from linked demographic components
+                if (linkedComponent) {
+                  if (linkedComponent.genderValue && !updatedNode.genderValue) {
+                    updatedNode = { ...updatedNode, genderValue: linkedComponent.genderValue };
+                  }
+                  if (linkedComponent.resourceType && !updatedNode.resourceType) {
+                    updatedNode = { ...updatedNode, resourceType: linkedComponent.resourceType };
+                  }
+                }
 
                 // For HEDIS measures, populate hedis block from component's catalogueDefaults
                 if (isHedisMeasure && hedisApplicableTypes.includes(node.type?.toLowerCase())) {
-                  const linkedComponent = componentStore.components[linkedComponentId];
                   const catalogueDefaults = linkedComponent?.catalogueDefaults;
                   const hedisDefaults = catalogueDefaults?.hedis;
 

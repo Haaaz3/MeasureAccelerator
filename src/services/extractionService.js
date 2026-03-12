@@ -845,6 +845,23 @@ function convertCriteria(criteria                    , isHedisMeasure          =
         };
       }
 
+      // Detect and set genderValue for demographic elements with sex/gender criteria
+      if (dataElement.type === 'demographic') {
+        const descLower = (criterion.description || '').toLowerCase();
+        // Check for female indicators
+        if (descLower.includes('female') || descLower.includes('women') || descLower.includes('woman')) {
+          dataElement.genderValue = 'female';
+        }
+        // Check for male indicators
+        else if (descLower.includes('male') || descLower.includes('men ') || descLower.includes(' men') || descLower.includes('man ')) {
+          dataElement.genderValue = 'male';
+        }
+        // Also check if criterion has explicit gender field from AI extraction
+        if (criterion.gender === 'female' || criterion.gender === 'male') {
+          dataElement.genderValue = criterion.gender;
+        }
+      }
+
       return dataElement;
     });
   }
